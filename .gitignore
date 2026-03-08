@@ -1,0 +1,42 @@
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# vscode
+.vscode/
+
+# gradle
+build
+.gradle
+
+# runtime
+eclipse
+run
+runs
+run-data
+
+# local maven publish output
+repo
+
+# JVM crash logs / replays
+hs_err_pid*
+replay_pid*
+
+# generic logs
+*.log
+logs/
+
+# OS noise
+.DS_Store
+Thumbs.db
