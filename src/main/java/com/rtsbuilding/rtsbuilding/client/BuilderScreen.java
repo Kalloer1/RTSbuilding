@@ -15,6 +15,7 @@ import org.lwjgl.glfw.GLFW;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsInteractPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsToggleCameraPayload;
 import com.rtsbuilding.rtsbuilding.network.RtsStorageSort;
+import com.rtsbuilding.rtsbuilding.network.S2CRtsStoragePagePayload;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -58,10 +59,9 @@ public final class BuilderScreen extends Screen {
     private static final int CRAFT_PANEL_SLOT = 18;
     private static final int CRAFT_PANEL_PITCH = 20;
     private static final int CRAFT_PANEL_SEARCH_H = 12;
+    private static final int CRAFT_PANEL_APPLY_W = 16;
     private static final int CRAFT_PANEL_TOGGLE_W = 30;
-    private static final long CRAFT_REPEAT_START_MS = 320L;
-    private static final long CRAFT_REPEAT_MIN_MS = 75L;
-    private static final long CRAFT_REPEAT_STEP_MS = 35L;
+    private static final int STORAGE_RECENT_GAP = 6;
     private static final int CATEGORY_W = 124;
     private static final int CATEGORY_ROW_H = 11;
     private static final float CATEGORY_TEXT_SCALE = 0.84F;
@@ -96,7 +96,7 @@ public final class BuilderScreen extends Screen {
     private static final int LEFT_SIDEBAR_TAB_W = 14;
     private static final int LEFT_SIDEBAR_TAB_H = 36;
     private static final int LEFT_SIDEBAR_PANEL_W = 132;
-    private static final int LEFT_SIDEBAR_PANEL_H = 66;
+    private static final int LEFT_SIDEBAR_PANEL_H = 78;
     private static final int LEFT_SIDEBAR_BUTTON_W = 112;
     private static final int LEFT_SIDEBAR_BUTTON_H = 16;
     private static final int LEFT_SIDEBAR_Y = TOP_H + 8;
@@ -109,12 +109,15 @@ public final class BuilderScreen extends Screen {
 
     private EditBox searchBox;
     private EditBox craftSearchBox;
+    private String craftSearchDraft;
     private int hoveredEntry = -1;
+    private int hoveredRecentEntry = -1;
     private int hoveredFluidEntry = -1;
     private int hoveredCraftableEntry = -1;
     private int hoveredFunnelBufferEntry = -1;
     private int hoveredToolSlot = -1;
     private int hoveredPinIndex = -1;
+    private int hoveredGuiBindingSlot = -1;
     private boolean hoveredPinPageButton = false;
     private int categoryScroll = 0;
     private final Set<String> expandedCategoryMods = new HashSet<>();
@@ -127,9 +130,7 @@ public final class BuilderScreen extends Screen {
     private int pinPage = 0;
     private int craftScroll = 0;
     private int lastCraftablesStorageRevision = -1;
-    private String heldCraftRecipeId = "";
-    private long nextCraftRepeatMs;
-    private long craftRepeatDelayMs = CRAFT_REPEAT_START_MS;
+    private final RtsCraftQuantityDialog craftQuantityDialog = new RtsCraftQuantityDialog();
     private boolean interactionWheelOpen = false;
     private final List<InteractionOption> interactionWheelOptions = new ArrayList<>();
     private InteractionTarget interactionWheelTarget;
@@ -151,6 +152,7 @@ public final class BuilderScreen extends Screen {
     private boolean shapeWheelOpenedByAlt = false;
     private boolean altShapeMenuHeld = false;
     private boolean leftSidebarExpanded = false;
+    private int pendingGuiBindSlot = -1;
     private final List<ShapeHistoryBatch> shapeUndoStack = new ArrayList<>();
     private final List<ShapeHistoryBatch> shapeRedoStack = new ArrayList<>();
 
@@ -174,8 +176,11 @@ public final class BuilderScreen extends Screen {
         this.craftSearchBox.setCanLoseFocus(true);
         this.craftSearchBox.setTextColor(0xEAF2FF);
         this.craftSearchBox.setTextColorUneditable(0xAAB8C8);
-        this.craftSearchBox.setValue(this.controller.getCraftablesSearch());
-        this.craftSearchBox.setResponder(this.controller::setCraftablesSearch);
+        if (this.craftSearchDraft == null) {
+            this.craftSearchDraft = this.controller.getCraftablesSearch();
+        }
+        this.craftSearchBox.setValue(this.craftSearchDraft);
+        this.craftSearchBox.setResponder(value -> this.craftSearchDraft = value == null ? "" : value);
         this.controller.requestCraftables();
     }
 
@@ -194,6 +199,7 @@ public final class BuilderScreen extends Screen {
         closeInteractionWheel();
         closeShapeWheel();
         clearShapeBuildSession();
+        this.pendingGuiBindSlot = -1;
         this.altShapeMenuHeld = false;
         this.funnelHotkeyHeld = false;
         this.controller.abortMining(getSelectedToolSlot());
@@ -204,7 +210,7 @@ public final class BuilderScreen extends Screen {
         if (this.controller.isEnabled()) {
             PacketDistributor.sendToServer(new C2SRtsToggleCameraPayload());
         }
-        this.heldCraftRecipeId = "";
+        this.craftQuantityDialog.close();
         updateNativeCursorVisibility(false);
     }
 
@@ -225,7 +231,6 @@ public final class BuilderScreen extends Screen {
             }
         }
         syncCraftablesPanelState();
-        tickCraftRepeat();
         if (!this.leftMiningActive) {
             return;
         }
@@ -243,6 +248,12 @@ public final class BuilderScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (this.craftQuantityDialog.isOpen()) {
+            boolean handled = this.craftQuantityDialog.mouseClicked(mouseX, mouseY, button, this.width, this.height);
+            submitCraftQuantityDialogIfReady();
+            return handled;
+        }
+
         if (this.shapeWheelOpen) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 ClientRtsController.BuildShape picked = resolveShapeWheelOption(mouseX, mouseY);
@@ -287,6 +298,10 @@ public final class BuilderScreen extends Screen {
             return true;
         }
 
+        if (handleLeftSidebarClick(mouseX, mouseY, button)) {
+            return true;
+        }
+
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             if (handleShapeContextPanelClick(mouseX, mouseY)) {
                 return true;
@@ -298,6 +313,15 @@ public final class BuilderScreen extends Screen {
                 return true;
             }
             if (handleBottomPanelClick(mouseX, mouseY)) {
+                return true;
+            }
+
+            if (this.pendingGuiBindSlot >= 0 && isWorldArea(mouseY)) {
+                BlockHitResult hit = pickBlockHit();
+                if (hit != null) {
+                    this.controller.setGuiBinding(this.pendingGuiBindSlot, hit.getBlockPos());
+                    this.pendingGuiBindSlot = -1;
+                }
                 return true;
             }
 
@@ -326,8 +350,26 @@ public final class BuilderScreen extends Screen {
             if (isSearchFocused()) {
                 blurSearchFocus();
             }
+            if (this.pendingGuiBindSlot >= 0 && isWorldArea(mouseY)) {
+                return true;
+            }
+            if (isWorldArea(mouseY) && this.controller.getMode() == BuilderMode.LINK_STORAGE) {
+                BlockHitResult hit = pickBlockHit();
+                if (hit != null) {
+                    this.controller.linkStorage(hit.getBlockPos(), false);
+                }
+                return true;
+            }
             if (mouseY >= getBottomY()) {
                 return handleBottomPanelRightClick(mouseX, mouseY);
+            }
+            if (isWorldArea(mouseY) && this.controller.getMode() == BuilderMode.ROTATE) {
+                BlockHitResult hit = pickBlockHit();
+                if (hit != null) {
+                    clearShapeBuildSession();
+                    this.controller.rotateBlock(hit.getBlockPos());
+                }
+                return true;
             }
             if (isWorldArea(mouseY)) {
                 this.rightPressActive = true;
@@ -348,6 +390,10 @@ public final class BuilderScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (this.craftQuantityDialog.isOpen()) {
+            return true;
+        }
+
         if (this.shapeWheelOpen) {
             return true;
         }
@@ -369,7 +415,6 @@ public final class BuilderScreen extends Screen {
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            stopCraftHold();
             if (!this.rightPressActive) {
                 return true;
             }
@@ -387,6 +432,14 @@ public final class BuilderScreen extends Screen {
 
             if (this.controller.getMode() == BuilderMode.LINK_STORAGE || this.controller.getMode() == BuilderMode.FUNNEL) {
                 clearShapeBuildSession();
+                return true;
+            }
+            if (this.controller.getMode() == BuilderMode.ROTATE) {
+                InteractionTarget target = pickInteractionTarget(false);
+                if (target != null && target.blockHit() != null) {
+                    clearShapeBuildSession();
+                    this.controller.rotateBlock(target.blockHit().getBlockPos());
+                }
                 return true;
             }
 
@@ -483,6 +536,10 @@ public final class BuilderScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (this.craftQuantityDialog.isOpen()) {
+            return true;
+        }
+
         if (this.shapeWheelOpen) {
             return true;
         }
@@ -518,6 +575,10 @@ public final class BuilderScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.craftQuantityDialog.isOpen()) {
+            return this.craftQuantityDialog.mouseScrolled(scrollY);
+        }
+
         if (this.shapeWheelOpen) {
             if (scrollY > 0.0D) {
                 this.controller.cycleBuildShape(-1);
@@ -553,14 +614,20 @@ public final class BuilderScreen extends Screen {
             int storageX = categoryX + CATEGORY_W + 10;
             int storageW = Math.max(120, this.width - storageX - 8);
             int craftPanelX = storageX + Math.max(120, storageW - CRAFT_PANEL_W);
+            int toolY = bottomY + 21;
+            int gridY = toolY + TOOL_AREA_H + 4;
+            int gridH = Math.max(SLOT, bottomH - (gridY - bottomY) - 4);
             int craftPanelY = bottomY + 21 + TOOL_AREA_H + 4;
-            int craftPanelH = Math.max(SLOT, bottomH - (craftPanelY - bottomY) - 4);
+            int craftPanelH = computeCraftPanelHeight(Math.max(1, gridH / SLOT));
             if (inside(mouseX, mouseY, craftPanelX, craftPanelY, CRAFT_PANEL_W, craftPanelH)) {
-                int visibleRows = Math.max(1, (craftPanelH - (CRAFT_PANEL_SEARCH_H + 21)) / CRAFT_PANEL_PITCH);
+                int visibleRows = Math.max(1, gridH / SLOT);
                 int totalRows = Math.max(1, (int) Math.ceil(this.controller.getCraftableEntries().size() / (double) CRAFT_PANEL_COLS));
                 int maxScroll = Math.max(0, totalRows - visibleRows);
                 int delta = scrollY > 0.0D ? -1 : 1;
                 this.craftScroll = Mth.clamp(this.craftScroll + delta, 0, maxScroll);
+                if (delta > 0 && this.craftScroll >= maxScroll && this.controller.hasMoreCraftables()) {
+                    this.controller.requestMoreCraftables();
+                }
                 return true;
             }
             if (isInsideCategoryList(mouseX, mouseY)) {
@@ -582,6 +649,12 @@ public final class BuilderScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.craftQuantityDialog.isOpen()) {
+            boolean handled = this.craftQuantityDialog.keyPressed(keyCode, scanCode, modifiers);
+            submitCraftQuantityDialogIfReady();
+            return handled;
+        }
+
         if (this.shapeWheelOpen) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeShapeWheel();
@@ -656,6 +729,11 @@ public final class BuilderScreen extends Screen {
             return true;
         }
 
+        if (this.pendingGuiBindSlot >= 0 && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            this.pendingGuiBindSlot = -1;
+            return true;
+        }
+
         if (hasControlDown() && keyCode == GLFW.GLFW_KEY_Z) {
             return undoLastPlacementBatch();
         }
@@ -697,6 +775,7 @@ public final class BuilderScreen extends Screen {
                 return true;
             }
             if (this.craftSearchBox != null && this.craftSearchBox.isFocused()) {
+                this.craftSearchDraft = "";
                 this.craftSearchBox.setValue("");
                 this.controller.setCraftablesSearch("");
                 blurSearchFocus();
@@ -705,12 +784,19 @@ public final class BuilderScreen extends Screen {
             return true;
         }
 
-        if (this.searchBox != null && this.searchBox.isFocused() && this.searchBox.keyPressed(keyCode, scanCode, modifiers)) {
-            this.controller.setStorageSearch(this.searchBox.getValue());
+        if (this.searchBox != null && this.searchBox.isFocused()) {
+            if (this.searchBox.keyPressed(keyCode, scanCode, modifiers)) {
+                this.controller.setStorageSearch(this.searchBox.getValue());
+            }
             return true;
         }
-        if (this.craftSearchBox != null && this.craftSearchBox.isFocused() && this.craftSearchBox.keyPressed(keyCode, scanCode, modifiers)) {
-            this.controller.setCraftablesSearch(this.craftSearchBox.getValue());
+        if (this.craftSearchBox != null && this.craftSearchBox.isFocused()) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                applyCraftSearchDraft();
+                blurSearchFocus();
+                return true;
+            }
+            this.craftSearchBox.keyPressed(keyCode, scanCode, modifiers);
             return true;
         }
 
@@ -759,12 +845,18 @@ public final class BuilderScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
-        if (this.searchBox != null && this.searchBox.isFocused() && this.searchBox.charTyped(codePoint, modifiers)) {
-            this.controller.setStorageSearch(this.searchBox.getValue());
+        if (this.craftQuantityDialog.isOpen()) {
+            return this.craftQuantityDialog.charTyped(codePoint, modifiers);
+        }
+
+        if (this.searchBox != null && this.searchBox.isFocused()) {
+            if (this.searchBox.charTyped(codePoint, modifiers)) {
+                this.controller.setStorageSearch(this.searchBox.getValue());
+            }
             return true;
         }
-        if (this.craftSearchBox != null && this.craftSearchBox.isFocused() && this.craftSearchBox.charTyped(codePoint, modifiers)) {
-            this.controller.setCraftablesSearch(this.craftSearchBox.getValue());
+        if (this.craftSearchBox != null && this.craftSearchBox.isFocused()) {
+            this.craftSearchBox.charTyped(codePoint, modifiers);
             return true;
         }
         return super.charTyped(codePoint, modifiers);
@@ -773,11 +865,13 @@ public final class BuilderScreen extends Screen {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.hoveredEntry = -1;
+        this.hoveredRecentEntry = -1;
         this.hoveredFluidEntry = -1;
         this.hoveredCraftableEntry = -1;
         this.hoveredFunnelBufferEntry = -1;
         this.hoveredToolSlot = -1;
         this.hoveredPinIndex = -1;
+        this.hoveredGuiBindingSlot = -1;
         this.hoveredPinPageButton = false;
 
         guiGraphics.fill(0, 0, this.width, TOP_H, 0xC0101116);
@@ -785,60 +879,96 @@ public final class BuilderScreen extends Screen {
 
         renderTopBar(guiGraphics);
         renderBottomPanel(guiGraphics, mouseX, mouseY, partialTick);
+        renderLeftSidebar(guiGraphics, mouseX, mouseY);
         renderShapeContextPanel(guiGraphics, mouseX, mouseY);
         renderFunnelBufferPanel(guiGraphics, mouseX, mouseY);
 
-        if (this.hoveredEntry >= 0 && this.hoveredEntry < this.controller.getStorageEntries().size()) {
-            var entry = this.controller.getStorageEntries().get(this.hoveredEntry);
-            guiGraphics.renderTooltip(this.font, entry.stack(), mouseX, mouseY);
-            guiGraphics.drawString(this.font, "x" + entry.count(), mouseX + 10, mouseY + 18, 0xFFFFAA);
-        }
+        if (!this.craftQuantityDialog.isOpen()) {
+            if (this.hoveredEntry >= 0 && this.hoveredEntry < this.controller.getStorageEntries().size()) {
+                var entry = this.controller.getStorageEntries().get(this.hoveredEntry);
+                guiGraphics.renderTooltip(this.font, entry.stack(), mouseX, mouseY);
+                guiGraphics.drawString(this.font, "x" + entry.count(), mouseX + 10, mouseY + 18, 0xFFFFAA);
+            }
 
-        if (this.hoveredFluidEntry >= 0 && this.hoveredFluidEntry < this.controller.getFluidEntries().size()) {
-            var fluid = this.controller.getFluidEntries().get(this.hoveredFluidEntry);
-            if (!fluid.preview().isEmpty()) {
-                guiGraphics.renderTooltip(this.font, fluid.preview(), mouseX, mouseY);
+            if (this.hoveredRecentEntry >= 0 && this.hoveredRecentEntry < this.controller.getRecentEntries().size()) {
+                var entry = this.controller.getRecentEntries().get(this.hoveredRecentEntry);
+                if (!entry.preview().isEmpty()) {
+                    guiGraphics.renderTooltip(this.font, entry.preview(), mouseX, mouseY);
+                } else {
+                    guiGraphics.renderTooltip(this.font, Component.literal(entry.label()), mouseX, mouseY);
+                }
+                guiGraphics.drawString(
+                        this.font,
+                        describeRecentEntry(entry) + " " + formatRecentAmount(entry),
+                        mouseX + 10,
+                        mouseY + 18,
+                        entry.fluid() ? 0xFFBEE6FF : 0xFFE6F1B8);
+            }
+
+            if (this.hoveredFluidEntry >= 0 && this.hoveredFluidEntry < this.controller.getFluidEntries().size()) {
+                var fluid = this.controller.getFluidEntries().get(this.hoveredFluidEntry);
+                if (!fluid.preview().isEmpty()) {
+                    guiGraphics.renderTooltip(this.font, fluid.preview(), mouseX, mouseY);
+                } else {
+                    guiGraphics.renderTooltip(this.font, Component.literal(fluid.label()), mouseX, mouseY);
+                }
+                guiGraphics.drawString(
+                        this.font,
+                        compactFluidAmount(fluid.amount()) + " / " + compactFluidAmount(fluid.capacity()),
+                        mouseX + 10,
+                        mouseY + 18,
+                        0xFFDFAE);
+            }
+
+            if (this.hoveredCraftableEntry >= 0 && this.hoveredCraftableEntry < this.controller.getCraftableEntries().size()) {
+                var entry = this.controller.getCraftableEntries().get(this.hoveredCraftableEntry);
+                guiGraphics.renderTooltip(this.font, entry.stack(), mouseX, mouseY);
+                String detail = entry.craftable()
+                        ? "Right click: choose recipe/count"
+                        : entry.missingSummary();
+                if (detail != null && !detail.isBlank()) {
+                    guiGraphics.drawString(this.font, detail, mouseX + 10, mouseY + 18, entry.craftable() ? 0xFFAEE8AE : 0xFFFFB0B0);
+                }
+            }
+
+            if (this.hoveredFunnelBufferEntry >= 0 && this.hoveredFunnelBufferEntry < this.controller.getFunnelBufferEntries().size()) {
+                var entry = this.controller.getFunnelBufferEntries().get(this.hoveredFunnelBufferEntry);
+                guiGraphics.renderTooltip(this.font, entry.stack(), mouseX, mouseY);
+                guiGraphics.drawString(this.font, "Buffered x" + entry.count(), mouseX + 10, mouseY + 18, 0xFFD8B8);
+            }
+
+            if (this.hoveredGuiBindingSlot >= 0 && this.hoveredGuiBindingSlot < this.controller.getGuiBindingCount()) {
+                String detail = this.controller.hasGuiBinding(this.hoveredGuiBindingSlot)
+                        ? this.controller.getGuiBindingLabel(this.hoveredGuiBindingSlot)
+                        : "Empty GUI slot";
+                guiGraphics.renderTooltip(this.font, Component.literal(detail), mouseX, mouseY);
+                guiGraphics.drawString(
+                        this.font,
+                        this.pendingGuiBindSlot == this.hoveredGuiBindingSlot
+                                ? "Left click: cancel bind"
+                                : (this.controller.hasGuiBinding(this.hoveredGuiBindingSlot)
+                                        ? "Left: open  Right: rebind  Shift+Right: clear"
+                                        : "Right: bind next clicked GUI block"),
+                        mouseX + 10,
+                        mouseY + 18,
+                        0xFFCFE3F7);
+            }
+
+            boolean funnelCursor = shouldRenderFunnelCursor();
+            updateNativeCursorVisibility(funnelCursor);
+            if (funnelCursor) {
+                guiGraphics.renderItem(FUNNEL_CURSOR_STACK, mouseX + 8, mouseY + 8);
             } else {
-                guiGraphics.renderTooltip(this.font, Component.literal(fluid.label()), mouseX, mouseY);
+                ItemStack cursorPreview = resolveCursorPreview();
+                if (!cursorPreview.isEmpty() && !isSearchFocused() && !this.guideOpen && !this.interactionWheelOpen
+                        && !this.shapeWheelOpen) {
+                    guiGraphics.renderItem(cursorPreview, mouseX + 10, mouseY + 10);
+                }
             }
-            guiGraphics.drawString(
-                    this.font,
-                    compactFluidAmount(fluid.amount()) + " / " + compactFluidAmount(fluid.capacity()),
-                    mouseX + 10,
-                    mouseY + 18,
-                    0xFFDFAE);
-        }
 
-        if (this.hoveredCraftableEntry >= 0 && this.hoveredCraftableEntry < this.controller.getCraftableEntries().size()) {
-            var entry = this.controller.getCraftableEntries().get(this.hoveredCraftableEntry);
-            guiGraphics.renderTooltip(this.font, entry.stack(), mouseX, mouseY);
-            String detail = entry.craftable()
-                    ? "Right click: craft to linked storage"
-                    : entry.missingSummary();
-            if (detail != null && !detail.isBlank()) {
-                guiGraphics.drawString(this.font, detail, mouseX + 10, mouseY + 18, entry.craftable() ? 0xFFAEE8AE : 0xFFFFB0B0);
-            }
-        }
-
-        if (this.hoveredFunnelBufferEntry >= 0 && this.hoveredFunnelBufferEntry < this.controller.getFunnelBufferEntries().size()) {
-            var entry = this.controller.getFunnelBufferEntries().get(this.hoveredFunnelBufferEntry);
-            guiGraphics.renderTooltip(this.font, entry.stack(), mouseX, mouseY);
-            guiGraphics.drawString(this.font, "Buffered x" + entry.count(), mouseX + 10, mouseY + 18, 0xFFD8B8);
-        }
-
-        boolean funnelCursor = shouldRenderFunnelCursor();
-        updateNativeCursorVisibility(funnelCursor);
-        if (funnelCursor) {
-            guiGraphics.renderItem(FUNNEL_CURSOR_STACK, mouseX + 8, mouseY + 8);
         } else {
-            ItemStack cursorPreview = resolveCursorPreview();
-            if (!cursorPreview.isEmpty() && !isSearchFocused() && !this.guideOpen && !this.interactionWheelOpen
-                    && !this.shapeWheelOpen) {
-                guiGraphics.renderItem(cursorPreview, mouseX + 10, mouseY + 10);
-            }
+            updateNativeCursorVisibility(false);
         }
-
-        renderCraftFeedback(guiGraphics, mouseX, mouseY);
 
         if (this.interactionWheelOpen) {
             renderInteractionWheel(guiGraphics, mouseX, mouseY);
@@ -851,6 +981,11 @@ public final class BuilderScreen extends Screen {
         if (this.guideOpen) {
             renderGuidePanel(guiGraphics);
         }
+
+        if (this.craftQuantityDialog.isOpen()) {
+            this.craftQuantityDialog.render(guiGraphics, this.font, this.width, this.height, mouseX, mouseY);
+        }
+        renderCraftFeedback(guiGraphics);
     }
 
     private void renderTopBar(GuiGraphics g) {
@@ -888,13 +1023,113 @@ public final class BuilderScreen extends Screen {
                 + "    Fill: " + fillModeLabel(this.shapeFillMode)
                 + "    Rot: " + this.shapeRotateDegrees + "deg"
                 + "    Undo/Redo: " + this.shapeUndoStack.size() + "/" + this.shapeRedoStack.size()
-                + "    " + pendingShapeStatusText();
+                + "    " + pendingShapeStatusText()
+                + (this.pendingGuiBindSlot >= 0 ? "    GUI Bind: Slot " + (this.pendingGuiBindSlot + 1) + " armed" : "");
 
         int statusX = 8;
         int statusW = Math.max(40, this.width - 16);
         g.drawString(this.font, trimToWidth(row1, statusW), statusX, 29, 0xF0F0F0);
         g.drawString(this.font, trimToWidth(row2, statusW), statusX, 40,
                 this.controller.isStorageLinked() ? 0xB8FFB8 : 0xFFD8AE);
+    }
+
+    private void renderLeftSidebar(GuiGraphics g, int mouseX, int mouseY) {
+        int panelX = 0;
+        int panelY = LEFT_SIDEBAR_Y;
+        int tabX = this.leftSidebarExpanded ? LEFT_SIDEBAR_PANEL_W : 0;
+        int tabY = panelY + 14;
+
+        drawPanelFrame(g, tabX, tabY, LEFT_SIDEBAR_TAB_W, LEFT_SIDEBAR_TAB_H, 0xCC1A212B, 0xFF66798D, 0xFF0D1218);
+        g.drawCenteredString(this.font, this.leftSidebarExpanded ? "<" : ">", tabX + LEFT_SIDEBAR_TAB_W / 2, tabY + 6, 0xFFFFFF);
+        g.drawCenteredString(this.font, "G", tabX + LEFT_SIDEBAR_TAB_W / 2, tabY + 18, 0xCFE3F7);
+
+        if (!this.leftSidebarExpanded) {
+            return;
+        }
+
+        drawPanelFrame(g, panelX, panelY, LEFT_SIDEBAR_PANEL_W, LEFT_SIDEBAR_PANEL_H, 0xCC121920, 0xFF66798D, 0xFF0D1218);
+        g.drawString(this.font, "GUI Bind", panelX + 8, panelY + 6, 0xEAF5FF);
+
+        for (int i = 0; i < this.controller.getGuiBindingCount(); i++) {
+            int buttonX = panelX + 10;
+            int buttonY = panelY + 20 + i * (LEFT_SIDEBAR_BUTTON_H + 4);
+            boolean hovered = inside(mouseX, mouseY, buttonX, buttonY, LEFT_SIDEBAR_BUTTON_W, LEFT_SIDEBAR_BUTTON_H);
+            boolean pending = this.pendingGuiBindSlot == i;
+            boolean bound = this.controller.hasGuiBinding(i);
+            int fill = pending ? 0xCC2D6B47 : (bound ? 0xAA23384A : 0xAA202731);
+            if (hovered) {
+                fill = pending ? 0xDD377F53 : (bound ? 0xBB2C4760 : 0xBB29323D);
+                this.hoveredGuiBindingSlot = i;
+            }
+            drawPanelFrame(g, buttonX, buttonY, LEFT_SIDEBAR_BUTTON_W, LEFT_SIDEBAR_BUTTON_H, fill, 0xFF698097, 0xFF0F151C);
+            String label;
+            if (pending) {
+                label = "Slot " + (i + 1) + ": Click GUI";
+            } else if (bound) {
+                label = (i + 1) + ". " + this.controller.getGuiBindingLabel(i);
+            } else {
+                label = (i + 1) + ". [Empty]";
+            }
+            g.drawString(this.font, trimToWidth(label, LEFT_SIDEBAR_BUTTON_W - 8), buttonX + 4, buttonY + 4, 0xFFFFFF);
+        }
+    }
+
+    private boolean handleLeftSidebarClick(double mouseX, double mouseY, int button) {
+        int panelX = 0;
+        int panelY = LEFT_SIDEBAR_Y;
+        int tabX = this.leftSidebarExpanded ? LEFT_SIDEBAR_PANEL_W : 0;
+        int tabY = panelY + 14;
+
+        if (inside(mouseX, mouseY, tabX, tabY, LEFT_SIDEBAR_TAB_W, LEFT_SIDEBAR_TAB_H)) {
+            this.leftSidebarExpanded = !this.leftSidebarExpanded;
+            if (!this.leftSidebarExpanded) {
+                this.pendingGuiBindSlot = -1;
+            }
+            return true;
+        }
+        if (!this.leftSidebarExpanded || !inside(mouseX, mouseY, panelX, panelY, LEFT_SIDEBAR_PANEL_W, LEFT_SIDEBAR_PANEL_H)) {
+            return false;
+        }
+
+        int slot = resolveLeftSidebarSlotIndex(mouseX, mouseY);
+        if (slot < 0) {
+            return true;
+        }
+
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (this.controller.hasGuiBinding(slot)) {
+                this.pendingGuiBindSlot = -1;
+                this.controller.openGuiBinding(slot);
+            } else if (this.pendingGuiBindSlot == slot) {
+                this.pendingGuiBindSlot = -1;
+            }
+            return true;
+        }
+
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            if (hasShiftDown()) {
+                if (this.pendingGuiBindSlot == slot) {
+                    this.pendingGuiBindSlot = -1;
+                }
+                this.controller.clearGuiBinding(slot);
+                return true;
+            }
+            this.pendingGuiBindSlot = this.pendingGuiBindSlot == slot ? -1 : slot;
+            return true;
+        }
+
+        return true;
+    }
+
+    private int resolveLeftSidebarSlotIndex(double mouseX, double mouseY) {
+        for (int i = 0; i < this.controller.getGuiBindingCount(); i++) {
+            int buttonX = 10;
+            int buttonY = LEFT_SIDEBAR_Y + 20 + i * (LEFT_SIDEBAR_BUTTON_H + 4);
+            if (inside(mouseX, mouseY, buttonX, buttonY, LEFT_SIDEBAR_BUTTON_W, LEFT_SIDEBAR_BUTTON_H)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void renderFunnelBufferPanel(GuiGraphics g, int mouseX, int mouseY) {
@@ -1119,8 +1354,6 @@ public final class BuilderScreen extends Screen {
         int storageY = bottomY + 4;
         int storageW = Math.max(120, this.width - storageX - 8);
         int craftPanelX = storageX + Math.max(120, storageW - CRAFT_PANEL_W);
-        int craftPanelY = storageY + 17 + TOOL_AREA_H + 4;
-        int craftPanelH = Math.max(SLOT, bottomH - (craftPanelY - bottomY) - 4);
         int mainStorageW = Math.max(120, craftPanelX - storageX - CRAFT_PANEL_GAP);
         int searchW = Math.max(80, storageW - 102);
         int searchFieldW = computeSearchFieldWidth(searchW);
@@ -1142,6 +1375,9 @@ public final class BuilderScreen extends Screen {
 
         int gridY = toolY + TOOL_AREA_H + 4;
         int gridH = Math.max(SLOT, bottomH - (gridY - bottomY) - 4);
+        int storageRows = Math.max(1, gridH / SLOT);
+        int craftPanelY = storageY + 17 + TOOL_AREA_H + 4;
+        int craftPanelH = computeCraftPanelHeight(storageRows);
         int fluidW = getFluidStripWidth(mainStorageW);
         int itemGridX = storageX;
         int itemGridW = mainStorageW;
@@ -1150,8 +1386,12 @@ public final class BuilderScreen extends Screen {
             itemGridX = storageX + fluidW + 4;
             itemGridW = Math.max(SLOT, mainStorageW - fluidW - 4);
         }
-        drawStorageGrid(g, mouseX, mouseY, itemGridX, gridY, itemGridW, gridH);
-        renderCraftablesPanel(g, mouseX, mouseY, craftPanelX, craftPanelY, CRAFT_PANEL_W, craftPanelH, partialTick);
+        int storageGridW = Math.max(SLOT, (itemGridW - STORAGE_RECENT_GAP) / 2);
+        int recentGridX = itemGridX + storageGridW + STORAGE_RECENT_GAP;
+        int recentGridW = Math.max(SLOT, itemGridW - storageGridW - STORAGE_RECENT_GAP);
+        drawStorageGrid(g, mouseX, mouseY, itemGridX, gridY, storageGridW, gridH);
+        drawRecentGrid(g, mouseX, mouseY, recentGridX, gridY, recentGridW, gridH);
+        renderCraftablesPanel(g, mouseX, mouseY, craftPanelX, craftPanelY, CRAFT_PANEL_W, craftPanelH, partialTick, storageRows);
     }
 
     private void renderToolArea(GuiGraphics g, int mouseX, int mouseY, int storageX, int rowY, int storageW) {
@@ -1389,7 +1629,58 @@ public final class BuilderScreen extends Screen {
         }
     }
 
-    private void renderCraftablesPanel(GuiGraphics g, int mouseX, int mouseY, int x, int y, int width, int height, float partialTick) {
+    private void drawRecentGrid(GuiGraphics g, int mouseX, int mouseY, int x, int y, int width, int height) {
+        int cols = Math.max(1, width / SLOT);
+        int rows = Math.max(1, height / SLOT);
+        int maxSlots = cols * rows;
+        List<ClientRtsController.RecentEntry> entries = this.controller.getRecentEntries();
+
+        for (int i = 0; i < maxSlots; i++) {
+            int cx = x + (i % cols) * SLOT;
+            int cy = y + (i / cols) * SLOT;
+            int box = SLOT - 2;
+            g.fill(cx, cy, cx + box, cy + box, 0xAA161C24);
+            g.hLine(cx, cx + box, cy, 0xFF526171);
+            g.hLine(cx, cx + box, cy + box, 0xFF10151B);
+            g.vLine(cx, cy, cy + box, 0xFF526171);
+            g.vLine(cx + box, cy, cy + box, 0xFF10151B);
+
+            if (i >= entries.size()) {
+                continue;
+            }
+
+            ClientRtsController.RecentEntry entry = entries.get(i);
+            if (!entry.preview().isEmpty()) {
+                g.renderItem(entry.preview(), cx + 2, cy + 2);
+            }
+            drawSlotCountOverlay(
+                    g,
+                    cx,
+                    cy,
+                    box,
+                    formatRecentAmount(entry),
+                    entry.fluid() ? 0xFFBEE6FF : 0xFFE8F4C0);
+            drawRecentKindBadge(g, cx, cy, box, entry);
+
+            if (mouseX >= cx && mouseX <= cx + box && mouseY >= cy && mouseY <= cy + box) {
+                g.fill(cx + 1, cy + 1, cx + box - 1, cy + box - 1, 0x22FFFFFF);
+                this.hoveredRecentEntry = i;
+            }
+        }
+    }
+
+    private void drawRecentKindBadge(GuiGraphics g, int slotX, int slotY, int box, ClientRtsController.RecentEntry entry) {
+        String badge = switch (entry.kind()) {
+            case S2CRtsStoragePagePayload.RECENT_ITEM_PLACED, S2CRtsStoragePagePayload.RECENT_FLUID_PLACED -> "P";
+            case S2CRtsStoragePagePayload.RECENT_ITEM_USED, S2CRtsStoragePagePayload.RECENT_FLUID_USED -> "U";
+            case S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, S2CRtsStoragePagePayload.RECENT_FLUID_CRAFTED -> "C";
+            default -> "?";
+        };
+        g.fill(slotX + box - 8, slotY + 1, slotX + box - 1, slotY + 8, 0xCC202A35);
+        g.drawCenteredString(this.font, badge, slotX + box - 4, slotY + 1, 0xFFEAF2FF);
+    }
+
+    private void renderCraftablesPanel(GuiGraphics g, int mouseX, int mouseY, int x, int y, int width, int height, float partialTick, int visibleRows) {
         syncCraftSearchValueFromController();
 
         drawPanelFrame(g, x, y, width, height, 0xAA141922, 0xFF637993, 0xFF0D1218);
@@ -1397,9 +1688,12 @@ public final class BuilderScreen extends Screen {
 
         int searchX = x + 4;
         int searchY = y + 15;
-        int searchW = Math.max(34, width - CRAFT_PANEL_TOGGLE_W - 12);
-        int toggleX = searchX + searchW + 4;
+        int searchW = Math.max(24, width - CRAFT_PANEL_APPLY_W - CRAFT_PANEL_TOGGLE_W - 16);
+        int applyX = searchX + searchW + 4;
+        int toggleX = applyX + CRAFT_PANEL_APPLY_W + 4;
         int toggleY = searchY;
+        boolean craftSearchDirty = hasPendingCraftSearchDraft();
+        int applyBg = craftSearchDirty ? 0xAA4C6E39 : 0xAA24303A;
         int toggleBg = this.controller.isCraftablesShowUnavailable() ? 0xAA5A3D2A : 0xAA2C5A41;
 
         drawPanelFrame(g, searchX, searchY, searchW, CRAFT_PANEL_SEARCH_H, 0xAA1E2731, 0xFF5E738A, 0xFF111921);
@@ -1411,6 +1705,13 @@ public final class BuilderScreen extends Screen {
             this.craftSearchBox.render(g, mouseX, mouseY, partialTick);
         }
 
+        drawPanelFrame(g, applyX, toggleY, CRAFT_PANEL_APPLY_W, CRAFT_PANEL_SEARCH_H, applyBg, 0xFF6E8799, 0xFF111821);
+        g.drawCenteredString(this.font,
+                "OK",
+                applyX + CRAFT_PANEL_APPLY_W / 2,
+                toggleY + 2,
+                craftSearchDirty ? 0xFFFFFF : 0xFFB8C7D6);
+
         drawPanelFrame(g, toggleX, toggleY, CRAFT_PANEL_TOGGLE_W, CRAFT_PANEL_SEARCH_H, toggleBg, 0xFF667D95, 0xFF111821);
         g.drawCenteredString(this.font,
                 this.controller.isCraftablesShowUnavailable() ? "ALL" : "MAKE",
@@ -1419,14 +1720,14 @@ public final class BuilderScreen extends Screen {
                 0xFFFFFF);
 
         int gridY = searchY + CRAFT_PANEL_SEARCH_H + 6;
-        int visibleRows = Math.max(1, (height - (gridY - y) - 6) / CRAFT_PANEL_PITCH);
+        int clampedRows = Math.max(1, visibleRows);
         List<ClientRtsController.CraftableEntry> entries = this.controller.getCraftableEntries();
         int totalRows = Math.max(1, (int) Math.ceil(entries.size() / (double) CRAFT_PANEL_COLS));
-        int maxScroll = Math.max(0, totalRows - visibleRows);
+        int maxScroll = Math.max(0, totalRows - clampedRows);
         this.craftScroll = Mth.clamp(this.craftScroll, 0, maxScroll);
         int startIndex = this.craftScroll * CRAFT_PANEL_COLS;
 
-        for (int row = 0; row < visibleRows; row++) {
+        for (int row = 0; row < clampedRows; row++) {
             for (int col = 0; col < CRAFT_PANEL_COLS; col++) {
                 int index = startIndex + row * CRAFT_PANEL_COLS + col;
                 int slotX = x + 4 + col * CRAFT_PANEL_PITCH;
@@ -1469,7 +1770,7 @@ public final class BuilderScreen extends Screen {
         if (this.craftSearchBox == null || this.craftSearchBox.isFocused()) {
             return;
         }
-        String expected = this.controller.getCraftablesSearch();
+        String expected = this.craftSearchDraft == null ? "" : this.craftSearchDraft;
         if (expected == null) {
             expected = "";
         }
@@ -1478,45 +1779,28 @@ public final class BuilderScreen extends Screen {
         }
     }
 
-    private void tickCraftRepeat() {
-        if (this.heldCraftRecipeId.isBlank() || this.minecraft == null) {
+    private void openCraftQuantityDialog(ClientRtsController.CraftableEntry entry) {
+        if (entry == null || !entry.craftable()) {
             return;
         }
-        long window = this.minecraft.getWindow().getWindow();
-        if (GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) != GLFW.GLFW_PRESS) {
-            stopCraftHold();
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now < this.nextCraftRepeatMs) {
-            return;
-        }
-        this.controller.craftRecipeToLinked(this.heldCraftRecipeId);
-        this.craftRepeatDelayMs = Math.max(CRAFT_REPEAT_MIN_MS, this.craftRepeatDelayMs - CRAFT_REPEAT_STEP_MS);
-        this.nextCraftRepeatMs = now + this.craftRepeatDelayMs;
+        blurSearchFocus();
+        this.craftQuantityDialog.open(
+                entry.stack().getHoverName().getString(),
+                entry.stack(),
+                entry.recipeOptions(),
+                1);
     }
 
-    private void beginCraftHold(String recipeId) {
-        this.heldCraftRecipeId = recipeId == null ? "" : recipeId;
-        this.craftRepeatDelayMs = CRAFT_REPEAT_START_MS;
-        this.nextCraftRepeatMs = System.currentTimeMillis() + this.craftRepeatDelayMs;
-    }
-
-    private void stopCraftHold() {
-        this.heldCraftRecipeId = "";
-        this.craftRepeatDelayMs = CRAFT_REPEAT_START_MS;
-        this.nextCraftRepeatMs = 0L;
-    }
-
-    private void renderCraftFeedback(GuiGraphics g, int mouseX, int mouseY) {
-        long now = System.currentTimeMillis();
-        if (now >= this.controller.getCraftFeedbackExpiryMs() || this.controller.getCraftFeedbackCount() <= 0) {
+    private void submitCraftQuantityDialogIfReady() {
+        RtsCraftQuantityDialog.Request request = this.craftQuantityDialog.consumePendingRequest();
+        if (request == null) {
             return;
         }
-        float progress = (this.controller.getCraftFeedbackExpiryMs() - now) / 900.0F;
-        int alpha = Mth.clamp((int) (255.0F * progress), 48, 255);
-        int color = (alpha << 24) | 0xAEE8AE;
-        g.drawString(this.font, "+" + this.controller.getCraftFeedbackCount(), mouseX + 18, mouseY - 12, color, true);
+        this.controller.craftRecipeToLinked(request.recipeId(), request.craftCount());
+    }
+
+    private void renderCraftFeedback(GuiGraphics g) {
+        RtsCraftFeedbackPopup.render(g, this.font, this.width, this.controller);
     }
 
     private void drawFluidGrid(GuiGraphics g, int mouseX, int mouseY, int x, int y, int width, int height) {
@@ -1692,12 +1976,15 @@ public final class BuilderScreen extends Screen {
         int storageX = categoryX + CATEGORY_W + 10;
         int storageW = Math.max(120, this.width - storageX - 8);
         int craftPanelX = storageX + Math.max(120, storageW - CRAFT_PANEL_W);
-        int craftPanelY = bottomY + 21 + TOOL_AREA_H + 4;
-        int craftPanelH = Math.max(SLOT, bottomH - (craftPanelY - bottomY) - 4);
         int mainStorageW = Math.max(120, craftPanelX - storageX - CRAFT_PANEL_GAP);
         int searchW = Math.max(80, storageW - 102);
         int pagerX = storageX + searchW + 4;
         int toolY = bottomY + 21;
+        int gridY = toolY + TOOL_AREA_H + 4;
+        int gridH = Math.max(SLOT, bottomH - (gridY - bottomY) - 4);
+        int storageRows = Math.max(1, gridH / SLOT);
+        int craftPanelY = bottomY + 21 + TOOL_AREA_H + 4;
+        int craftPanelH = computeCraftPanelHeight(storageRows);
 
         if (handleSearchClearClick(mouseX, mouseY, storageX, bottomY + 4, searchW)) {
             return true;
@@ -1776,8 +2063,6 @@ public final class BuilderScreen extends Screen {
             return true;
         }
 
-        int gridY = toolY + TOOL_AREA_H + 4;
-        int gridH = Math.max(SLOT, bottomH - (gridY - bottomY) - 4);
         int fluidW = getFluidStripWidth(mainStorageW);
         if (fluidW > 0) {
             int fluidIndex = resolveClickedFluid(mouseX, mouseY, storageX, gridY, fluidW, gridH);
@@ -1789,9 +2074,17 @@ public final class BuilderScreen extends Screen {
 
         int itemGridX = fluidW > 0 ? storageX + fluidW + 4 : storageX;
         int itemGridW = fluidW > 0 ? Math.max(SLOT, mainStorageW - fluidW - 4) : mainStorageW;
-        int entryIndex = resolveClickedEntry(mouseX, mouseY, itemGridX, gridY, itemGridW, gridH);
+        int storageGridW = Math.max(SLOT, (itemGridW - STORAGE_RECENT_GAP) / 2);
+        int recentGridX = itemGridX + storageGridW + STORAGE_RECENT_GAP;
+        int recentGridW = Math.max(SLOT, itemGridW - storageGridW - STORAGE_RECENT_GAP);
+        int entryIndex = resolveClickedEntry(mouseX, mouseY, itemGridX, gridY, storageGridW, gridH);
         if (entryIndex >= 0) {
             this.controller.selectStorageEntry(entryIndex);
+            return true;
+        }
+        int recentIndex = resolveClickedRecentEntry(mouseX, mouseY, recentGridX, gridY, recentGridW, gridH);
+        if (recentIndex >= 0) {
+            this.controller.selectRecentEntry(recentIndex);
             return true;
         }
         return true;
@@ -1809,13 +2102,15 @@ public final class BuilderScreen extends Screen {
         int storageX = categoryX + CATEGORY_W + 10;
         int storageW = Math.max(120, this.width - storageX - 8);
         int craftPanelX = storageX + Math.max(120, storageW - CRAFT_PANEL_W);
-        int craftPanelY = bottomY + 21 + TOOL_AREA_H + 4;
-        int craftPanelH = Math.max(SLOT, bottomH - (craftPanelY - bottomY) - 4);
         int mainStorageW = Math.max(120, craftPanelX - storageX - CRAFT_PANEL_GAP);
         int toolY = bottomY + 21;
+        int gridY = toolY + TOOL_AREA_H + 4;
+        int gridH = Math.max(SLOT, bottomH - (gridY - bottomY) - 4);
+        int storageRows = Math.max(1, gridH / SLOT);
+        int craftPanelY = bottomY + 21 + TOOL_AREA_H + 4;
+        int craftPanelH = computeCraftPanelHeight(storageRows);
 
         if (handleToolRowRightClick(mouseX, mouseY, storageX, toolY, mainStorageW)) {
-            stopCraftHold();
             return true;
         }
 
@@ -1823,13 +2118,12 @@ public final class BuilderScreen extends Screen {
             return true;
         }
 
-        int gridY = toolY + TOOL_AREA_H + 4;
-        int gridH = Math.max(SLOT, bottomH - (gridY - bottomY) - 4);
         int fluidW = getFluidStripWidth(mainStorageW);
         int itemGridX = fluidW > 0 ? storageX + fluidW + 4 : storageX;
         int itemGridW = fluidW > 0 ? Math.max(SLOT, mainStorageW - fluidW - 4) : mainStorageW;
+        int storageGridW = Math.max(SLOT, (itemGridW - STORAGE_RECENT_GAP) / 2);
 
-        int entryIndex = resolveClickedEntry(mouseX, mouseY, itemGridX, gridY, itemGridW, gridH);
+        int entryIndex = resolveClickedEntry(mouseX, mouseY, itemGridX, gridY, storageGridW, gridH);
         if (entryIndex >= 0 && entryIndex < this.controller.getStorageEntries().size()) {
             this.controller.storeFluidFromStorageItem(this.controller.getStorageEntries().get(entryIndex).itemId());
             return true;
@@ -1902,6 +2196,11 @@ public final class BuilderScreen extends Screen {
             if (index >= 0 && index < 9) {
                 int slotX = hotbarX + index * HOTBAR_PITCH;
                 if (mouseX <= slotX + HOTBAR_SLOT) {
+                    ItemStack stack = this.minecraft.player.getInventory().getItem(index);
+                    if (hasShiftDown() && !stack.isEmpty()) {
+                        this.controller.storeHotbarSlotToLinked(index);
+                        return true;
+                    }
                     setSelectedToolSlot(index);
                     this.controller.clearPlacementSelectionPreserveMode();
                     return true;
@@ -2018,11 +2317,17 @@ public final class BuilderScreen extends Screen {
 
         int searchX = x + 4;
         int searchY = y + 15;
-        int searchW = Math.max(34, width - CRAFT_PANEL_TOGGLE_W - 12);
-        int toggleX = searchX + searchW + 4;
+        int searchW = Math.max(24, width - CRAFT_PANEL_APPLY_W - CRAFT_PANEL_TOGGLE_W - 16);
+        int applyX = searchX + searchW + 4;
+        int toggleX = applyX + CRAFT_PANEL_APPLY_W + 4;
 
         if (this.craftSearchBox != null && this.craftSearchBox.mouseClicked(mouseX, mouseY, GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
             focusCraftSearchBox();
+            return true;
+        }
+        if (inside(mouseX, mouseY, applyX, searchY, CRAFT_PANEL_APPLY_W, CRAFT_PANEL_SEARCH_H)) {
+            applyCraftSearchDraft();
+            blurSearchFocus();
             return true;
         }
         if (inside(mouseX, mouseY, toggleX, searchY, CRAFT_PANEL_TOGGLE_W, CRAFT_PANEL_SEARCH_H)) {
@@ -2030,6 +2335,24 @@ public final class BuilderScreen extends Screen {
             return true;
         }
         return resolveCraftableEntryIndex(mouseX, mouseY, x, y, width, height) >= 0;
+    }
+
+    private void applyCraftSearchDraft() {
+        String next = normalizeCraftSearchDraft(this.craftSearchBox == null ? this.craftSearchDraft : this.craftSearchBox.getValue());
+        this.craftSearchDraft = next;
+        if (this.craftSearchBox != null && !next.equals(this.craftSearchBox.getValue())) {
+            this.craftSearchBox.setValue(next);
+        }
+        this.craftScroll = 0;
+        this.controller.setCraftablesSearch(next);
+    }
+
+    private boolean hasPendingCraftSearchDraft() {
+        return !normalizeCraftSearchDraft(this.craftSearchDraft).equals(normalizeCraftSearchDraft(this.controller.getCraftablesSearch()));
+    }
+
+    private static String normalizeCraftSearchDraft(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private boolean handleCraftablesPanelRightClick(double mouseX, double mouseY, int x, int y, int width, int height) {
@@ -2041,8 +2364,7 @@ public final class BuilderScreen extends Screen {
         if (!entry.craftable()) {
             return true;
         }
-        this.controller.craftRecipeToLinked(entry.recipeId());
-        beginCraftHold(entry.recipeId());
+        openCraftQuantityDialog(entry);
         return true;
     }
 
@@ -2075,15 +2397,7 @@ public final class BuilderScreen extends Screen {
     }
 
     private long resolvePinnedItemCount(String itemId) {
-        if (itemId == null || itemId.isBlank()) {
-            return 0L;
-        }
-        for (var entry : this.controller.getStorageEntries()) {
-            if (itemId.equals(entry.itemId())) {
-                return entry.count();
-            }
-        }
-        return 0L;
+        return this.controller.getStorageTotalCount(itemId);
     }
 
     private CategoryClick resolveClickedCategoryAction(double mouseX, double mouseY) {
@@ -2251,6 +2565,18 @@ public final class BuilderScreen extends Screen {
         return index < this.controller.getStorageEntries().size() ? index : -1;
     }
 
+    private int resolveClickedRecentEntry(double mouseX, double mouseY, int x, int y, int width, int height) {
+        int cols = Math.max(1, width / SLOT);
+        int rows = Math.max(1, height / SLOT);
+        if (!inside(mouseX, mouseY, x, y, cols * SLOT, rows * SLOT)) {
+            return -1;
+        }
+        int col = (int) ((mouseX - x) / SLOT);
+        int row = (int) ((mouseY - y) / SLOT);
+        int index = row * cols + col;
+        return index < this.controller.getRecentEntries().size() ? index : -1;
+    }
+
     private int resolveClickedFluid(double mouseX, double mouseY, int x, int y, int width, int height) {
         int cols = 2;
         int rows = Math.max(1, height / SLOT);
@@ -2370,6 +2696,10 @@ public final class BuilderScreen extends Screen {
         return wanted;
     }
 
+    private int computeCraftPanelHeight(int storageRows) {
+        return 39 + Math.max(1, storageRows) * CRAFT_PANEL_PITCH;
+    }
+
     private int computeVisiblePinCells(int pinStartX, int rightBoundExclusive) {
         int visible = 0;
         for (int i = 0; i < this.controller.getQuickSlotCount(); i++) {
@@ -2419,6 +2749,7 @@ public final class BuilderScreen extends Screen {
             this.shapeBuildSession = new ShapeBuildSession(
                     shape,
                     resolveShapeBuildFace(shape, hit.getDirection(), rayDir),
+                    resolveShapePlacementFace(shape, hit.getDirection(), rayDir),
                     hit.getBlockPos(),
                     null,
                     ShapeBuildPhase.NEED_SECOND_POINT,
@@ -2433,7 +2764,8 @@ public final class BuilderScreen extends Screen {
             if (requiresThirdPoint(shape)) {
                 this.shapeBuildSession = new ShapeBuildSession(
                         shape,
-                        session.face(),
+                        session.planeFace(),
+                        session.placementFace(),
                         session.pointA(),
                         pointB,
                         ShapeBuildPhase.NEED_THIRD_POINT,
@@ -2442,7 +2774,8 @@ public final class BuilderScreen extends Screen {
             } else {
                 this.shapeBuildSession = new ShapeBuildSession(
                         shape,
-                        session.face(),
+                        session.planeFace(),
+                        session.placementFace(),
                         session.pointA(),
                         pointB,
                         ShapeBuildPhase.READY_CONFIRM,
@@ -2455,7 +2788,8 @@ public final class BuilderScreen extends Screen {
         if (session.phase() == ShapeBuildPhase.NEED_THIRD_POINT) {
             this.shapeBuildSession = new ShapeBuildSession(
                     shape,
-                    session.face(),
+                    session.planeFace(),
+                    session.placementFace(),
                     session.pointA(),
                     session.pointB(),
                     ShapeBuildPhase.READY_CONFIRM,
@@ -2491,7 +2825,7 @@ public final class BuilderScreen extends Screen {
                 usePinnedItem ? PlacementReplayKind.PIN_ITEM : PlacementReplayKind.TOOL_SLOT,
                 usePinnedItem ? this.controller.getSelectedItemId() : "",
                 usePinnedItem ? -1 : getSelectedToolSlot(),
-                input.face(),
+                input.placementFace(),
                 positions);
         return true;
     }
@@ -2547,8 +2881,8 @@ public final class BuilderScreen extends Screen {
                 return null;
             }
             BlockPos pointB = resolveShapePlanePoint(session, cursorHit);
-            pointB = applyShapeFootprintNudges(session.shape(), session.face(), pointA, pointB);
-            return new ShapeBuildInput(session.shape(), session.face(), pointA, pointB, 0);
+            pointB = applyShapeFootprintNudges(session.shape(), session.planeFace(), pointA, pointB);
+            return new ShapeBuildInput(session.shape(), session.planeFace(), session.placementFace(), pointA, pointB, 0);
         }
 
         BlockPos pointB = session.pointB();
@@ -2560,12 +2894,12 @@ public final class BuilderScreen extends Screen {
             if (requireReady) {
                 return null;
             }
-            pointB = applyShapeFootprintNudges(session.shape(), session.face(), pointA, pointB);
-            return new ShapeBuildInput(session.shape(), session.face(), pointA, pointB, session.boxHeightOffset());
+            pointB = applyShapeFootprintNudges(session.shape(), session.planeFace(), pointA, pointB);
+            return new ShapeBuildInput(session.shape(), session.planeFace(), session.placementFace(), pointA, pointB, session.boxHeightOffset());
         }
 
-        pointB = applyShapeFootprintNudges(session.shape(), session.face(), pointA, pointB);
-        return new ShapeBuildInput(session.shape(), session.face(), pointA, pointB, session.boxHeightOffset());
+        pointB = applyShapeFootprintNudges(session.shape(), session.planeFace(), pointA, pointB);
+        return new ShapeBuildInput(session.shape(), session.planeFace(), session.placementFace(), pointA, pointB, session.boxHeightOffset());
     }
 
     private BlockPos resolveShapePlanePoint(ShapeBuildSession session, BlockHitResult cursorHit) {
@@ -2579,13 +2913,14 @@ public final class BuilderScreen extends Screen {
 
         ClientRtsController.BuildShape shape = session.shape();
         if (shape == null
-                || shape == ClientRtsController.BuildShape.BLOCK
-                || shape == ClientRtsController.BuildShape.LINE) {
+                || shape == ClientRtsController.BuildShape.BLOCK) {
             return cursorHit != null ? cursorHit.getBlockPos() : pointA;
         }
 
-        Direction planeFace = session.face();
-        if (shape == ClientRtsController.BuildShape.SQUARE || shape == ClientRtsController.BuildShape.BOX) {
+        Direction planeFace = session.planeFace();
+        if (shape == ClientRtsController.BuildShape.LINE
+                || shape == ClientRtsController.BuildShape.SQUARE
+                || shape == ClientRtsController.BuildShape.BOX) {
             planeFace = Direction.UP;
         } else if (shape == ClientRtsController.BuildShape.WALL && planeFace == null) {
             planeFace = resolveWallFace(cursorHit == null ? null : cursorHit.getDirection(), computeCursorRayDirection());
@@ -2689,7 +3024,7 @@ public final class BuilderScreen extends Screen {
         List<BlockPos> positions = filterOccupiedReadyShapeTargets(input, buildShapePositions(input, fillMode));
         List<BlockHitResult> hits = new ArrayList<>(positions.size());
         for (BlockPos pos : positions) {
-            hits.add(createShapePlacementHit(pos, input.face()));
+            hits.add(createShapePlacementHit(pos, input.placementFace()));
         }
         return hits;
     }
@@ -2700,9 +3035,9 @@ public final class BuilderScreen extends Screen {
         BlockPos end = input.pointB();
         switch (input.shape()) {
             case LINE -> addLineTargets(targets, start, end);
-            case SQUARE -> addSquareTargets(targets, start, end, input.face(), fillMode);
-            case WALL -> addWallTargets(targets, start, end, input.face(), fillMode);
-            case CIRCLE -> addCircleTargets(targets, start, end, input.face(), fillMode);
+            case SQUARE -> addSquareTargets(targets, start, end, input.planeFace(), fillMode);
+            case WALL -> addWallTargets(targets, start, end, input.planeFace(), fillMode);
+            case CIRCLE -> addCircleTargets(targets, start, end, input.planeFace(), fillMode);
             case BOX -> addBoxTargets(targets, start, end, input.boxHeightOffset(), fillMode);
             default -> targets.add(start);
         }
@@ -2713,18 +3048,21 @@ public final class BuilderScreen extends Screen {
         if (targets == null || targets.isEmpty()) {
             return List.of();
         }
-        if (input == null || input.face() == null) {
+        if (input == null || input.placementFace() == null) {
             return targets;
         }
 
         boolean strictEmptyLock = shouldSkipOccupiedReadyShapeTargets(input);
+        boolean uniformPlacement = shouldUseUniformShapePlanePlacement(input);
         LinkedHashSet<BlockPos> resolved = new LinkedHashSet<>(targets.size());
         if (this.minecraft == null || this.minecraft.level == null) {
             for (BlockPos clickedPos : targets) {
                 if (clickedPos == null) {
                     continue;
                 }
-                BlockPos placePos = resolvePlacementTargetPos(clickedPos, input.face());
+                BlockPos placePos = uniformPlacement
+                        ? resolveUniformShapePlacementTargetPos(input, clickedPos)
+                        : resolvePlacementTargetPos(clickedPos, input.placementFace());
                 if (placePos != null) {
                     resolved.add(placePos.immutable());
                 }
@@ -2736,7 +3074,9 @@ public final class BuilderScreen extends Screen {
             if (clickedPos == null) {
                 continue;
             }
-            BlockPos placePos = resolvePlacementTargetPos(clickedPos, input.face());
+            BlockPos placePos = uniformPlacement
+                    ? resolveUniformShapePlacementTargetPos(input, clickedPos)
+                    : resolvePlacementTargetPos(clickedPos, input.placementFace());
             if (placePos == null) {
                 continue;
             }
@@ -2751,6 +3091,16 @@ public final class BuilderScreen extends Screen {
         return new ArrayList<>(resolved);
     }
 
+    private boolean shouldUseUniformShapePlanePlacement(ShapeBuildInput input) {
+        if (input == null || input.placementFace() == null) {
+            return false;
+        }
+        return switch (input.shape()) {
+            case LINE, SQUARE, BOX -> true;
+            default -> false;
+        };
+    }
+
     private BlockPos resolvePlacementTargetPos(BlockPos clickedPos, Direction face) {
         if (clickedPos == null || face == null || this.minecraft == null || this.minecraft.level == null) {
             return null;
@@ -2759,6 +3109,25 @@ public final class BuilderScreen extends Screen {
             return clickedPos;
         }
         return this.minecraft.level.getBlockState(clickedPos).canBeReplaced() ? clickedPos : clickedPos.relative(face);
+    }
+
+    private BlockPos resolveUniformShapePlacementTargetPos(ShapeBuildInput input, BlockPos clickedPos) {
+        if (input == null || clickedPos == null) {
+            return null;
+        }
+        BlockPos anchor = input.pointA();
+        Direction face = input.placementFace();
+        if (anchor == null || face == null) {
+            return clickedPos;
+        }
+        BlockPos anchorPlaced = resolvePlacementTargetPos(anchor, face);
+        if (anchorPlaced == null) {
+            return clickedPos;
+        }
+        return clickedPos.offset(
+                anchorPlaced.getX() - anchor.getX(),
+                anchorPlaced.getY() - anchor.getY(),
+                anchorPlaced.getZ() - anchor.getZ());
     }
 
     private boolean shouldSkipOccupiedReadyShapeTargets(ShapeBuildInput input) {
@@ -3136,10 +3505,17 @@ public final class BuilderScreen extends Screen {
             return clickedFace == null ? Direction.UP : clickedFace;
         }
         return switch (shape) {
-            case SQUARE, BOX -> Direction.UP;
+            case LINE, SQUARE, BOX -> Direction.UP;
             case WALL -> resolveWallFace(clickedFace, rayDir);
             default -> clickedFace == null ? Direction.UP : clickedFace;
         };
+    }
+
+    private Direction resolveShapePlacementFace(ClientRtsController.BuildShape shape, Direction clickedFace, Vec3 rayDir) {
+        if (clickedFace != null) {
+            return clickedFace;
+        }
+        return resolveShapeBuildFace(shape, clickedFace, rayDir);
     }
 
     private Direction resolveWallFace(Direction clickedFace, Vec3 rayDir) {
@@ -3262,7 +3638,8 @@ public final class BuilderScreen extends Screen {
         int nextOffset = clampShapeOffset(this.shapeBuildSession.boxHeightOffset() + delta);
         this.shapeBuildSession = new ShapeBuildSession(
                 this.shapeBuildSession.shape(),
-                this.shapeBuildSession.face(),
+                this.shapeBuildSession.planeFace(),
+                this.shapeBuildSession.placementFace(),
                 this.shapeBuildSession.pointA(),
                 this.shapeBuildSession.pointB(),
                 this.shapeBuildSession.phase(),
@@ -3988,11 +4365,13 @@ public final class BuilderScreen extends Screen {
     }
 
     private Direction resolveAirShapeFace(Vec3 dir) {
-        if (this.shapeBuildSession != null && this.shapeBuildSession.face() != null) {
-            return this.shapeBuildSession.face();
+        if (this.shapeBuildSession != null && this.shapeBuildSession.planeFace() != null) {
+            return this.shapeBuildSession.planeFace();
         }
         ClientRtsController.BuildShape shape = this.controller.getBuildShape();
-        if (shape == ClientRtsController.BuildShape.SQUARE || shape == ClientRtsController.BuildShape.BOX) {
+        if (shape == ClientRtsController.BuildShape.LINE
+                || shape == ClientRtsController.BuildShape.SQUARE
+                || shape == ClientRtsController.BuildShape.BOX) {
             return Direction.UP;
         }
         if (shape == ClientRtsController.BuildShape.WALL) {
@@ -4264,6 +4643,23 @@ public final class BuilderScreen extends Screen {
         return buckets + " B";
     }
 
+    private static String describeRecentEntry(ClientRtsController.RecentEntry entry) {
+        return switch (entry.kind()) {
+            case S2CRtsStoragePagePayload.RECENT_ITEM_PLACED, S2CRtsStoragePagePayload.RECENT_FLUID_PLACED -> "Placed";
+            case S2CRtsStoragePagePayload.RECENT_ITEM_USED, S2CRtsStoragePagePayload.RECENT_FLUID_USED -> "Used";
+            case S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, S2CRtsStoragePagePayload.RECENT_FLUID_CRAFTED -> "Crafted";
+            default -> "Recent";
+        };
+    }
+
+    private String formatRecentAmount(ClientRtsController.RecentEntry entry) {
+        if (entry == null) {
+            return "";
+        }
+        long amount = this.controller.getRecentDisplayAmount(entry);
+        return entry.fluid() ? compactFluidAmount(amount) : compactCount(amount);
+    }
+
     private void drawSlotCountOverlay(GuiGraphics g, int slotX, int slotY, int box, String countText, int color) {
         g.pose().pushPose();
         g.pose().translate(0.0F, 0.0F, 300.0F);
@@ -4343,7 +4739,8 @@ public final class BuilderScreen extends Screen {
 
     private record ShapeBuildSession(
             ClientRtsController.BuildShape shape,
-            Direction face,
+            Direction planeFace,
+            Direction placementFace,
             BlockPos pointA,
             BlockPos pointB,
             ShapeBuildPhase phase,
@@ -4353,7 +4750,8 @@ public final class BuilderScreen extends Screen {
 
     private record ShapeBuildInput(
             ClientRtsController.BuildShape shape,
-            Direction face,
+            Direction planeFace,
+            Direction placementFace,
             BlockPos pointA,
             BlockPos pointB,
             int boxHeightOffset) {

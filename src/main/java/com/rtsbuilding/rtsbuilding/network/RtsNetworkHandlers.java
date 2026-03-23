@@ -70,7 +70,47 @@ public final class RtsNetworkHandlers {
     public static void handleLinkStorage(C2SRtsLinkStoragePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.linkStorage(serverPlayer, payload.pos());
+                RtsStorageManager.linkStorage(serverPlayer, payload.pos(), payload.linkMode());
+            }
+        });
+    }
+
+    public static void handleRotateBlock(C2SRtsRotateBlockPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.rotateBlock(serverPlayer, payload.pos());
+            }
+        });
+    }
+
+    public static void handleStoreHotbarSlot(C2SRtsStoreHotbarSlotPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.storeHotbarSlotToLinked(serverPlayer, payload.slot());
+            }
+        });
+    }
+
+    public static void handleSetQuickSlot(C2SRtsSetQuickSlotPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.setQuickSlot(serverPlayer, payload.slot(), payload.itemId());
+            }
+        });
+    }
+
+    public static void handleSetGuiBinding(C2SRtsSetGuiBindingPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.setGuiBinding(serverPlayer, payload.slot(), payload.clear(), payload.pos());
+            }
+        });
+    }
+
+    public static void handleOpenGuiBinding(C2SRtsOpenGuiBindingPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.openGuiBinding(serverPlayer, payload.slot());
             }
         });
     }
@@ -92,7 +132,12 @@ public final class RtsNetworkHandlers {
     public static void handleRequestCraftables(C2SRtsRequestCraftablesPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.requestCraftables(serverPlayer, payload.search(), payload.showUnavailable());
+                RtsStorageManager.requestCraftables(
+                        serverPlayer,
+                        payload.search(),
+                        payload.showUnavailable(),
+                        payload.offset(),
+                        payload.limit());
             }
         });
     }
@@ -230,6 +275,14 @@ public final class RtsNetworkHandlers {
         });
     }
 
+    public static void handleLinkedQuickMove(C2SRtsLinkedQuickMovePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.quickMoveLinkedItem(serverPlayer, payload.itemId());
+            }
+        });
+    }
+
     public static void handleReturnCarried(C2SRtsReturnCarriedPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
@@ -257,7 +310,11 @@ public final class RtsNetworkHandlers {
     public static void handleCraftRefill(C2SRtsCraftRefillPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.refillCurrentCraftGridFromBlueprintIds(serverPlayer, payload.blueprintItemIds());
+                RtsStorageManager.refillCurrentCraftGridFromBlueprintIds(
+                        serverPlayer,
+                        payload.blueprintItemIds(),
+                        payload.craftedItemId(),
+                        payload.craftedCount());
             }
         });
     }
@@ -265,7 +322,7 @@ public final class RtsNetworkHandlers {
     public static void handleCraftRecipe(C2SRtsCraftRecipePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.craftRecipeToLinked(serverPlayer, payload.recipeId());
+                RtsStorageManager.craftRecipeToLinked(serverPlayer, payload.recipeId(), payload.craftCount());
             }
         });
     }

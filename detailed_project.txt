@@ -1,0 +1,417 @@
+RTSBUILDING DETAILED PROJECT RECORD
+Last Rewrite: 2026-03-22
+Project Root: E:\RTSbuilding
+Runtime Target: Minecraft 1.21.1 + NeoForge 21.1.219 + Java 21
+
+================================================================
+0. Purpose
+================================================================
+This file is the current project map for future coding sessions.
+It is intentionally practical:
+- what the mod does
+- where the important code lives
+- how the major systems talk to each other
+- which behavior is currently implemented
+- which risks or constraints matter during changes
+
+================================================================
+1. Product Summary
+================================================================
+RTSBuilding is a Minecraft mod that turns the player into a top-down
+RTS-style builder/operator while keeping the server authoritative.
+
+Main product goals:
+- remote camera with bounded action radius
+- storage-network style item access without full AE-style automation
+- remote placement, interaction, mining, and crafting support
+- keep vanilla/modded item behavior as intact as possible
+
+Current implemented gameplay surface:
+- RTS camera toggle and movement
+- bottom RTS builder UI with storage, hotbar/pins, categories, craft panel
+- left collapsible GUI binding sidebar for direct remote GUI shortcuts
+- linked storage browsing with search, category filtering, paging, and sort
+- linked storage modes:
+  - left-click link: extract + store
+  - right-click link: extract only
+- storage recent panel:
+  - recent placed / used / crafted entries
+  - includes fluid actions
+  - recent history now persists across logout/rejoin as player session data
+- remote block placement from linked storage or current hotbar slot
+- remote fluid placement from linked/internal fluid storage
+- remote interaction with blocks/entities using hotbar or linked items
+- remote mining with tool slot selection and progress sync
+- craft terminal + workbench-linked refill/import flows
+- craftables search panel with paging
+- funnel mode and funnel buffer panel
+- FTB quests detect bridge for non-consume item tasks
+
+================================================================
+2. Tech Stack
+================================================================
+Build/runtime:
+- Gradle
+- NeoForge ModDevGradle `2.0.140`
+- Java toolchain 21
+- NeoForge `21.1.219`
+- Parchment mappings for MC 1.21.1
+
+Optional compat:
+- JEI API/runtime integration
+- FTB Quests / FTB Teams via reflection-based optional compat
+
+Important project files:
+- `build.gradle`
+- `gradle.properties`
+- `src/main/templates/META-INF/neoforge.mods.toml`
+
+================================================================
+3. Top-Level Code Map
+================================================================
+Main mod/bootstrap:
+- `src/main/java/com/rtsbuilding/rtsbuilding/RtsbuildingMod.java`
+- `src/main/java/com/rtsbuilding/rtsbuilding/Config.java`
+
+Client:
+- `client/ClientRtsController.java`
+  - client-side RTS state hub
+  - storage page state, craftables state, selected item/fluid, quick pins
+  - quick pins and GUI binding labels are server-backed and synced through the
+    storage page payload
+  - packet send helpers
+  - menu handoff guard so delayed container GUI opens do not get preempted by
+    `BuilderScreen`
+- `client/BuilderScreen.java`
+  - main RTS full-screen UI
+  - top bar modes
+  - bottom storage/craft UI
+  - left collapsible GUI sidebar with bind/open/clear flow
+  - shape placement flow
+- `client/RtsClientInputGate.java`
+  - overlay UI for container/crafting screens
+  - intercepts input for linked pickup/import/crafting shortcuts
+- `client/RtsCraftTerminalScreen.java`
+  - custom crafting screen with linked-storage side panel
+- `client/ClientInputHandler.java`
+  - event entry point for key/input behavior
+- `client/RtsBoundaryRenderer.java`
+  - bounds + cursor/raycast helpers
+
+Server:
+- `server/RtsCameraManager.java`
+  - camera activation and authoritative movement
+- `server/RtsStorageManager.java`
+  - largest behavior hub
+  - linked storage session state
+  - persistent quick pins, recent history, and GUI bindings in player NBT
+  - browsing/search/paging
+  - placement / interaction / mining / crafting / fluid handling
+  - recent-entry tracking
+  - quest detect trigger path
+- `server/RtsCraftTerminalMenu.java`
+  - custom crafting menu with refill + craft-output tracking
+- `server/data/PlacedBlockTrackerData.java`
+  - tracks RTS-placed blocks
+
+Network:
+- `network/RtsPayloadRegistrar.java`
+- `network/RtsNetworkHandlers.java`
+- `network/*Payload.java`
+
+Compat:
+- `compat/jei/*`
+- `compat/ftb/RtsFtbCompat.java`
+- `compat/ftb/RtsFtbCompatImpl.java`
+
+================================================================
+4. Core Runtime Model
+================================================================
+4.1 Client authority vs server authority
+- Client predicts camera feel and drives UI state.
+- Server owns actual placement, extraction, storage mutation, crafting,
+  fluid transfer, and mining completion.
+- Most visible UI refreshes come from server `requestPage(...)` or
+  craftables payload refreshes.
+
+4.2 Session model
+`RtsStorageManager.Session` is the persistent per-player RTS state:
+- linked positions
+- linked names
+- linked modes (bidirectional vs extract-only)
+- linked dimension
+- current page/search/category/sort
+- craftables search/toggles
+- internal fluid buffer
+- funnel state
+- recent entry deque
+- RTS quick pin item ids
+- GUI binding slots (target position + dimension + display label)
+
+Persistence behavior:
+- session data is loaded from player persistent NBT on first RTS access
+- session data is saved on logout / RTS disable and on selected mutation paths
+- recent history, quick pins, and GUI bindings now survive logout/rejoin
+- active mining state
+- quest detect cooldown
+- recent entry deque
+
+Persisted to player persistent NBT:
+- linked positions
+- linked link modes
+- linked dimension
+- internal fluids
+
+4.3 Linked storage behavior
+Linked item handlers are wrapped so extract-only links still expose:
+- slot reads
+- extraction
+but reject:
+- insertion
+
+Linked fluid handlers are wrapped the same way:
+- drain allowed
+- fill blocked for extract-only links
+
+This means most existing extraction logic can still read from all links
+without special-case branching, while store paths naturally stop writing
+into protected production outputs.
+
+4.4 RTS camera vertical bounds
+- camera Y is clamped relative to the player anchor position
+- current lower bound allows camera movement down to `anchorY - 5`
+- current upper bound remains `anchorY + 80`
+- client local prediction and server authoritative camera movement use the
+  same vertical bounds so camera motion does not snap on reconciliation
+- the vertical clamp is applied again after distance normalization so the
+  minimum-distance rule cannot push camera Y below the configured floor
+
+================================================================
+5. Major Feature Chains
+================================================================
+5.1 Storage page refresh
+Entry point:
+- client sends `C2SRtsRequestStoragePagePayload`
+- server `RtsStorageManager.requestPage(...)`
+
+Server page build includes:
+- linked item counts
+- optional player main inventory contribution for browse/craft availability
+- linked/internal fluid summaries
+- category list generation from namespace + creative tabs
+- filtered page item list
+- total item counts map
+- recent action list
+- funnel buffer summary
+
+Client `applyStoragePage(...)` stores:
+- current page entries
+- total item counts cache
+- fluid entries
+- recent entries
+- linked summary and positions
+
+5.2 Bottom RTS UI
+Main builder bottom area now contains:
+- category list
+- search + paging
+- hotbar row
+- pin row
+- fluid strip if present
+- left storage grid
+- right recent grid
+- craft panel
+
+Craft panel row count is intentionally clamped to the same number of
+visible storage rows to avoid the old extra-row mismatch.
+
+5.3 Hotbar + pin behavior
+Hotbar row:
+- normal left click selects the clicked hotbar slot
+- clicking an empty hotbar slot still switches to empty hand
+- shift + left click on a non-empty hotbar slot stores that stack into
+  writable linked storage
+- right click on a hotbar slot tries fluid-store from the held container
+
+Pin row:
+- pins are client-side quick references to linked items
+- pin count overlays use the server-sent total item counts cache
+  so search/filter no longer blanks the count display
+
+5.4 Recent entries
+Recent panel shows the latest:
+- placed items
+- used items
+- crafted items
+- placed fluids
+- used fluids
+- crafted fluids (protocol supported even if not commonly produced)
+
+Recent entries are tracked server-side and sent with each storage page.
+Entries are de-duplicated by `(kind, id)` and moved to the front.
+The client recent panel and recent-click selection both use this same
+unified recent list instead of a crafted-only subset.
+Recent entries are also serialized into the player RTS session NBT so they
+persist after reconnect.
+
+Current server-side record points include:
+- placement from linked storage
+- tool-slot placement/use
+- linked-item interaction/use
+- craft-to-linked success
+- crafting result import paths
+- craft terminal result pickup tracking
+- fluid store from container/tool slot
+- fluid placement
+
+5.5 Link mode UX
+Builder screen, LINK mode:
+- left click block: toggle/update bidirectional link
+- right click block: toggle/update extract-only link
+
+Summary string marks extract-only links in aggregate and for single-link
+cases.
+
+5.6 Rotate mode
+Builder screen, ROTATE mode:
+- right mouse press on a target block sends explicit rotate-block packet
+- this bypasses the previous interaction path
+- this also bypasses the old press/release drag split for this mode
+- goal: rotation always wins over normal block interaction
+
+5.6.2 GUI binding sidebar
+Builder screen:
+- left edge has a collapsible GUI sidebar
+- each slot is server-backed persistent state, not client-only transient UI
+- left click on a bound slot opens the saved GUI target directly
+- right click arms a slot for rebinding
+- next left click on a world GUI block stores that target into the armed slot
+- shift + right click clears the slot
+- open path is server authoritative and uses the saved world target
+
+5.6.1 Remote menu-open handoff
+- RTS right-click paths that may open a container/menu now start a short
+  client-side grace window before `BuilderScreen` is allowed to restore itself
+- if `player.containerMenu` changes to a non-player menu while RTS is active,
+  `ClientRtsController.tick()` clears `BuilderScreen` and lets the incoming
+  menu screen take foreground ownership
+- this specifically protects first-open / slow-loading GUI cases where the
+  client can spend a few frames with `screen == null` before the real
+  container screen is constructed
+- server-side interaction itself already uses a temporary remote-POV context;
+  this pass stabilizes the client menu takeover side of the flow
+
+5.7 Crafting support
+Crafting-related paths currently in project:
+- craft terminal GUI (`RtsCraftTerminalMenu` + `RtsCraftTerminalScreen`)
+- overlay import/refill support on crafting screens
+- JEI recipe transfer bridge
+- craftables panel on RTS UI
+
+Important behavior:
+- craftables panel is search-driven and server-backed
+- craftables paging now supports append/hasMore flow
+- craftables are grouped by result item in the panel, but each entry now
+  carries multiple selectable recipe options for the pre-craft dialog
+- right click craft opens a high-layer dialog that lets the user choose
+  recipe first, then choose craft count
+- craft terminal result slot keeps refill behavior
+- imported crafting results can be stored into linked storage
+- craft output can feed recent history
+- successful craft feedback now includes actual consumed item counts and is
+  rendered as a high-layer popup so it is not hidden by other UI
+
+================================================================
+6. Networking Map
+================================================================
+Main packet groups:
+- camera:
+  - `C2SRtsToggleCameraPayload`
+  - `C2SRtsCameraMovePayload`
+  - `S2CRtsCameraStatePayload`
+- storage:
+  - `C2SRtsLinkStoragePayload`
+  - `C2SRtsRequestStoragePagePayload`
+  - `S2CRtsStoragePagePayload`
+    - now also carries quick pin item ids and GUI binding labels
+  - `S2CRtsCraftablesPayload`
+    - now includes per-entry recipe-option lists for the pre-craft selector
+  - `S2CRtsCraftFeedbackPayload`
+    - now includes crafted result plus actual consumed material counts
+- interaction/placement:
+  - `C2SRtsPlacePayload`
+  - `C2SRtsPlaceFluidPayload`
+  - `C2SRtsInteractPayload`
+  - `C2SRtsRotateBlockPayload`
+- craft/import:
+  - `C2SRtsOpenCraftTerminalPayload`
+  - `C2SRtsImportMenuSlotPayload`
+  - `C2SRtsCraftRefillPayload`
+  - `C2SRtsCraftRecipePayload`
+  - `C2SRtsRequestCraftablesPayload`
+  - `S2CRtsCraftablesPayload`
+  - `S2CRtsCraftFeedbackPayload`
+- storage transfer helpers:
+  - `C2SRtsLinkedPickupPayload`
+  - `C2SRtsReturnCarriedPayload`
+  - `C2SRtsQuickDropPayload`
+  - `C2SRtsStoreFluidPayload`
+  - `C2SRtsStoreHotbarSlotPayload`
+  - `C2SRtsSetQuickSlotPayload`
+  - `C2SRtsSetGuiBindingPayload`
+  - `C2SRtsOpenGuiBindingPayload`
+- mining:
+  - `C2SRtsMinePayload`
+  - `S2CRtsMineProgressPayload`
+- utility:
+  - `C2SRtsQuestDetectPayload`
+  - funnel/mode/autostore payloads
+
+================================================================
+7. FTB Quest Detect Status
+================================================================
+Compat is reflection-based on purpose because the project does not hard
+depend on FTB jars in `build.gradle`.
+
+Current compat strategy:
+- detect FTB Teams API and team manager
+- resolve player team lookup with fallback names:
+  - `getTeamForPlayerID(UUID)`
+  - `getTeamForPlayer(UUID)`
+- resolve quest tasks via:
+  - `collect(ItemTask.class)` if available
+  - fallback `submitTasks` field
+- skip consume-only and only-from-crafting item tasks
+- compute progress from:
+  - full player inventory scan
+  - linked storage scan
+
+Important bug fixed in current rewrite:
+- linked item counting no longer double-counts player main inventory
+
+================================================================
+8. Build / Validation
+================================================================
+Known working validation command:
+- `powershell.exe -Command .\\gradlew.bat build`
+
+Current status at rewrite time:
+- build succeeds
+- there are existing deprecation warnings around `EventBusSubscriber.Bus`
+- no test sources currently exist
+
+================================================================
+9. Change Notes From This Rewrite
+================================================================
+This rewrite reflects the repo state after the following functional pass:
+- rescan project structure
+- refreshed `detailed_project.txt`
+- added recent item/fluid panel data flow
+- added extract-only linked storage mode
+- made rotate mode use explicit block rotation on right click
+- made manual quest detect path more robust
+- decoupled pin count display from current search/filter results
+- added shift-store from RTS hotbar into linked storage
+- aligned craft panel visible rows with storage rows
+
+End of file.

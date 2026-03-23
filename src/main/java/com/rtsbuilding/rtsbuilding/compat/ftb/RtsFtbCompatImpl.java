@@ -19,6 +19,7 @@ final class RtsFtbCompatImpl {
     private final Method getTeamForPlayerMethod;
     private final Object serverQuestFileInstance;
     private final Method getOrCreateTeamDataMethod;
+    private final Method collectTasksMethod;
     private final Field submitTasksField;
     private final Class<?> itemTaskClass;
     private final Method itemTaskConsumesResourcesMethod;
@@ -34,12 +35,13 @@ final class RtsFtbCompatImpl {
 
         this.teamsApiMethod = ftbTeamsApiClass.getMethod("api");
         this.getTeamManagerMethod = this.teamsApiMethod.getReturnType().getMethod("getManager");
-        this.getTeamForPlayerMethod = this.getTeamManagerMethod.getReturnType().getMethod("getTeamForPlayer", UUID.class);
+        this.getTeamForPlayerMethod = resolveTeamLookupMethod(this.getTeamManagerMethod.getReturnType());
 
         Field serverQuestFileInstanceField = serverQuestFileClass.getField("INSTANCE");
         this.serverQuestFileInstance = serverQuestFileInstanceField.get(null);
         this.getOrCreateTeamDataMethod = findMethodByNameAndArity(serverQuestFileClass, "getOrCreateTeamData", 1);
-        this.submitTasksField = findFieldByName(serverQuestFileClass, "submitTasks");
+        this.collectTasksMethod = findOptionalMethod(serverQuestFileClass, "collect", Class.class);
+        this.submitTasksField = findOptionalField(serverQuestFileClass, "submitTasks");
 
         this.itemTaskConsumesResourcesMethod = this.itemTaskClass.getMethod("consumesResources");
         this.itemTaskOnlyFromCraftingMethod = this.itemTaskClass.getMethod("onlyFromCrafting");
@@ -106,6 +108,15 @@ final class RtsFtbCompatImpl {
     }
 
     private Collection<?> readSubmitTasks() throws ReflectiveOperationException {
+        if (this.collectTasksMethod != null) {
+            Object collected = this.collectTasksMethod.invoke(this.serverQuestFileInstance, this.itemTaskClass);
+            if (collected instanceof Collection<?> collection) {
+                return collection;
+            }
+        }
+        if (this.submitTasksField == null) {
+            return java.util.List.of();
+        }
         Object raw = this.submitTasksField.get(this.serverQuestFileInstance);
         if (raw instanceof Collection<?> collection) {
             return collection;
@@ -169,6 +180,20 @@ final class RtsFtbCompatImpl {
         throw new IllegalStateException("Missing method: " + type.getName() + "#" + name + "/" + arity);
     }
 
+    private static Method findOptionalMethod(Class<?> type, String name, Class<?>... parameterTypes) {
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            try {
+                Method method = current.getDeclaredMethod(name, parameterTypes);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
     private static Field findFieldByName(Class<?> type, String name) {
         Class<?> current = type;
         while (current != null && current != Object.class) {
@@ -181,6 +206,31 @@ final class RtsFtbCompatImpl {
             }
         }
         throw new IllegalStateException("Missing field: " + type.getName() + "#" + name);
+    }
+
+    private static Field findOptionalField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            try {
+                Field field = current.getDeclaredField(name);
+                field.setAccessible(true);
+                return field;
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private static Method resolveTeamLookupMethod(Class<?> managerClass) throws NoSuchMethodException {
+        for (String name : new String[] { "getTeamForPlayerID", "getTeamForPlayer" }) {
+            try {
+                return managerClass.getMethod(name, UUID.class);
+            } catch (NoSuchMethodException ignored) {
+                // Try next candidate.
+            }
+        }
+        throw new NoSuchMethodException("Missing team lookup method on " + managerClass.getName());
     }
 
     private static boolean asBoolean(Object value) {

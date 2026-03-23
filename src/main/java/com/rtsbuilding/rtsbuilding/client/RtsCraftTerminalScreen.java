@@ -9,6 +9,7 @@ import com.rtsbuilding.rtsbuilding.network.RtsStorageSort;
 
 import org.lwjgl.glfw.GLFW;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -22,6 +23,9 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class RtsCraftTerminalScreen extends AbstractContainerScreen<CraftingMenu> {
@@ -158,6 +162,7 @@ public final class RtsCraftTerminalScreen extends AbstractContainerScreen<Crafti
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
+    @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (this.searchBox != null && this.searchBox.isFocused()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -171,8 +176,19 @@ public final class RtsCraftTerminalScreen extends AbstractContainerScreen<Crafti
                 this.setFocused(null);
                 return true;
             }
+            this.searchBox.keyPressed(keyCode, scanCode, modifiers);
+            return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (this.searchBox != null && this.searchBox.isFocused()) {
+            this.searchBox.charTyped(codePoint, modifiers);
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
     }
 
     private void renderLinkedPanel(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -464,14 +480,56 @@ public final class RtsCraftTerminalScreen extends AbstractContainerScreen<Crafti
             return;
         }
         Slot resultSlot = this.menu.getSlot(0);
-        if (resultSlot == null || !resultSlot.hasItem()) {
+        if (resultSlot == null) {
             return;
         }
         int slotX = this.leftPos + resultSlot.x;
         int slotY = this.topPos + resultSlot.y;
         ItemStack result = resultSlot.getItem();
+        if (result.isEmpty()) {
+            result = resolveLocalCraftPreview();
+        }
+        if (result.isEmpty()) {
+            return;
+        }
         guiGraphics.renderItem(result, slotX, slotY);
         guiGraphics.renderItemDecorations(this.font, result, slotX, slotY);
+    }
+
+    private ItemStack resolveLocalCraftPreview() {
+        Minecraft minecraft = this.minecraft;
+        if (minecraft == null || minecraft.level == null || this.menu == null) {
+            return ItemStack.EMPTY;
+        }
+
+        java.util.List<ItemStack> inputs = new java.util.ArrayList<>(9);
+        boolean anyNonEmpty = false;
+        for (int i = 0; i < 9; i++) {
+            Slot slot = this.menu.getSlot(1 + i);
+            ItemStack stack = slot == null ? ItemStack.EMPTY : slot.getItem();
+            if (stack.isEmpty()) {
+                inputs.add(ItemStack.EMPTY);
+                continue;
+            }
+            inputs.add(stack.copyWithCount(1));
+            anyNonEmpty = true;
+        }
+        if (!anyNonEmpty) {
+            return ItemStack.EMPTY;
+        }
+
+        CraftingInput input = CraftingInput.of(3, 3, inputs);
+        java.util.Optional<net.minecraft.world.item.crafting.RecipeHolder<CraftingRecipe>> recipe =
+                minecraft.level.getRecipeManager().getRecipeFor(RecipeType.CRAFTING, input, minecraft.level);
+        if (recipe.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+
+        ItemStack result = recipe.get().value().assemble(input, minecraft.level.registryAccess());
+        if (result.isEmpty()) {
+            result = recipe.get().value().getResultItem(minecraft.level.registryAccess());
+        }
+        return result.isEmpty() ? ItemStack.EMPTY : result.copy();
     }
 
     private void drawCountOverlay(GuiGraphics guiGraphics, int slotX, int slotY, String countText) {

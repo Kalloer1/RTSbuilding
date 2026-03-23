@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsCraftRefillPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsLinkedQuickMovePayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsLinkedPickupPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsImportMenuSlotPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsReturnCarriedPayload;
@@ -15,6 +16,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.CraftingScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.Slot;
@@ -47,6 +49,7 @@ public final class RtsClientInputGate {
     private static final int CRAFT_SLOT = 18;
     private static final int CRAFT_PITCH = 20;
     private static final int CRAFT_SEARCH_H = 12;
+    private static final int CRAFT_APPLY_W = 16;
     private static final int CRAFT_TOGGLE_W = 30;
     private static final int RETURN_SLOTS = 5;
     private static final int QUICKBAR_Y_OFF = 17;
@@ -62,9 +65,6 @@ public final class RtsClientInputGate {
     private static final int OVERLAY_SEARCH_CLEAR_W = 10;
     private static final int OVERLAY_SEARCH_MAX = 64;
     private static final long RETURN_PREVIEW_MS = 2000L;
-    private static final long CRAFT_REPEAT_START_MS = 320L;
-    private static final long CRAFT_REPEAT_MIN_MS = 75L;
-    private static final long CRAFT_REPEAT_STEP_MS = 35L;
 
     private static String pendingOverlayCarriedItemId = "";
     private static boolean captureLeftRelease;
@@ -75,13 +75,13 @@ public final class RtsClientInputGate {
     private static String overlayCraftSearchDraft = "";
     private static int overlayCraftScroll;
     private static int overlayLastCraftablesStorageRevision = -1;
-    private static String overlayHeldCraftRecipeId = "";
-    private static long overlayNextCraftRepeatMs;
-    private static long overlayCraftRepeatDelayMs = CRAFT_REPEAT_START_MS;
+    private static final RtsCraftQuantityDialog OVERLAY_CRAFT_DIALOG = new RtsCraftQuantityDialog();
     private static Screen activeOverlayScreen;
     private static Screen pendingCraftRefillScreen;
     private static int pendingCraftRefillButton = -1;
     private static List<String> pendingCraftRefillBlueprint = List.of();
+    private static String pendingCraftResultItemId = "";
+    private static int pendingCraftResultCount;
     private static final ItemStack[] RETURN_QUEUE = new ItemStack[RETURN_SLOTS];
     private static final long[] RETURN_QUEUE_EXPIRY = new long[RETURN_SLOTS];
 
@@ -137,8 +137,6 @@ public final class RtsClientInputGate {
         if (!controller.canUseStorageOverlay()) {
             return;
         }
-
-        tickOverlayCraftRepeat();
 
         Minecraft minecraft = Minecraft.getInstance();
         GuiGraphics g = event.getGuiGraphics();
@@ -215,30 +213,45 @@ public final class RtsClientInputGate {
             }
         }
 
-        int hoveredStorage = resolveOverlaySlotIndex(event.getMouseX(), event.getMouseY(), layout.gridX(), layout.gridY());
-        if (hoveredStorage >= 0 && hoveredStorage < maxSlots) {
-            var entry = entries.get(hoveredStorage);
-            g.renderTooltip(minecraft.font, entry.stack(), (int) event.getMouseX(), (int) event.getMouseY());
-            g.drawString(minecraft.font, "x" + entry.count(), (int) event.getMouseX() + 10, (int) event.getMouseY() + 18, 0xFFFFAA);
-        }
+        if (!OVERLAY_CRAFT_DIALOG.isOpen()) {
+            int hoveredStorage = resolveOverlaySlotIndex(event.getMouseX(), event.getMouseY(), layout.gridX(), layout.gridY());
+            if (hoveredStorage >= 0 && hoveredStorage < maxSlots) {
+                var entry = entries.get(hoveredStorage);
+                g.renderTooltip(minecraft.font, entry.stack(), (int) event.getMouseX(), (int) event.getMouseY());
+                g.drawString(minecraft.font, "x" + entry.count(), (int) event.getMouseX() + 10, (int) event.getMouseY() + 18, 0xFFFFAA);
+            }
 
-        int hoveredCraft = resolveOverlayCraftableEntryIndex(event.getMouseX(), event.getMouseY(), layout);
-        if (hoveredCraft >= 0 && hoveredCraft < controller.getCraftableEntries().size()) {
-            ClientRtsController.CraftableEntry entry = controller.getCraftableEntries().get(hoveredCraft);
-            g.renderTooltip(minecraft.font, entry.stack(), (int) event.getMouseX(), (int) event.getMouseY());
-            String detail = entry.craftable()
-                    ? "Right click: craft to linked storage"
-                    : entry.missingSummary();
-            if (detail != null && !detail.isBlank()) {
-                g.drawString(minecraft.font,
-                        detail,
-                        (int) event.getMouseX() + 10,
-                        (int) event.getMouseY() + 18,
-                        entry.craftable() ? 0xFFAEE8AE : 0xFFFFB0B0);
+            int hoveredCraft = resolveOverlayCraftableEntryIndex(event.getMouseX(), event.getMouseY(), layout);
+            if (hoveredCraft >= 0 && hoveredCraft < controller.getCraftableEntries().size()) {
+                ClientRtsController.CraftableEntry entry = controller.getCraftableEntries().get(hoveredCraft);
+                g.renderTooltip(minecraft.font, entry.stack(), (int) event.getMouseX(), (int) event.getMouseY());
+                String detail = entry.craftable()
+                        ? "Right click: choose recipe/count"
+                        : entry.missingSummary();
+                if (detail != null && !detail.isBlank()) {
+                    g.drawString(minecraft.font,
+                            detail,
+                            (int) event.getMouseX() + 10,
+                            (int) event.getMouseY() + 18,
+                            entry.craftable() ? 0xFFAEE8AE : 0xFFFFB0B0);
+                }
             }
         }
 
-        renderOverlayCraftFeedback(g, minecraft.font, event.getMouseX(), event.getMouseY());
+        if (OVERLAY_CRAFT_DIALOG.isOpen()) {
+            OVERLAY_CRAFT_DIALOG.render(
+                    g,
+                    minecraft.font,
+                    minecraft.getWindow().getGuiScaledWidth(),
+                    minecraft.getWindow().getGuiScaledHeight(),
+                    (int) event.getMouseX(),
+                    (int) event.getMouseY());
+        }
+        RtsCraftFeedbackPopup.render(
+                g,
+                minecraft.font,
+                minecraft.getWindow().getGuiScaledWidth(),
+                controller);
 
     }
 
@@ -257,6 +270,20 @@ public final class RtsClientInputGate {
             return;
         }
 
+        if (OVERLAY_CRAFT_DIALOG.isOpen()) {
+            captureLeftRelease = false;
+            captureRightRelease = false;
+            OVERLAY_CRAFT_DIALOG.mouseClicked(
+                    event.getMouseX(),
+                    event.getMouseY(),
+                    event.getButton(),
+                    Minecraft.getInstance().getWindow().getGuiScaledWidth(),
+                    Minecraft.getInstance().getWindow().getGuiScaledHeight());
+            submitOverlayCraftDialogIfReady();
+            event.setCanceled(true);
+            return;
+        }
+
         Minecraft minecraft = Minecraft.getInstance();
         OverlayLayout layout = resolveOverlayLayout(event.getScreen());
         double mx = event.getMouseX();
@@ -265,6 +292,11 @@ public final class RtsClientInputGate {
         if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             if (Screen.hasShiftDown()) {
                 if (tryImportHoveredMenuSlot((AbstractContainerScreen<?>) event.getScreen(), mx, my, event.getButton())) {
+                    captureLeftRelease = true;
+                    event.setCanceled(true);
+                    return;
+                }
+                if (tryQuickMoveOverlayEntry((AbstractContainerScreen<?>) event.getScreen(), mx, my)) {
                     captureLeftRelease = true;
                     event.setCanceled(true);
                     return;
@@ -357,6 +389,11 @@ public final class RtsClientInputGate {
                     event.setCanceled(true);
                     return;
                 }
+                if (tryQuickMoveOverlayEntry((AbstractContainerScreen<?>) event.getScreen(), mx, my)) {
+                    captureRightRelease = true;
+                    event.setCanceled(true);
+                    return;
+                }
             }
 
             if (handleOverlayCraftRightClick(mx, my, layout)) {
@@ -364,7 +401,6 @@ public final class RtsClientInputGate {
                 event.setCanceled(true);
                 return;
             }
-            stopOverlayCraftHold();
 
             int returnIdx = resolveReturnSlotIndex(mx, my, layout.returnX(), layout.returnY());
             if (returnIdx >= 0) {
@@ -397,12 +433,14 @@ public final class RtsClientInputGate {
                 || !(event.getScreen() instanceof AbstractContainerScreen<?>)) {
             captureLeftRelease = false;
             captureRightRelease = false;
-            stopOverlayCraftHold();
             return;
         }
 
-        if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            stopOverlayCraftHold();
+        if (OVERLAY_CRAFT_DIALOG.isOpen()) {
+            captureLeftRelease = false;
+            captureRightRelease = false;
+            event.setCanceled(true);
+            return;
         }
 
         if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT && captureLeftRelease) {
@@ -441,6 +479,12 @@ public final class RtsClientInputGate {
             return;
         }
 
+        if (OVERLAY_CRAFT_DIALOG.isOpen()) {
+            OVERLAY_CRAFT_DIALOG.mouseScrolled(event.getScrollDeltaY());
+            event.setCanceled(true);
+            return;
+        }
+
         OverlayLayout layout = resolveOverlayLayout(event.getScreen());
         if (!inside(event.getMouseX(), event.getMouseY(), layout.panelX(), layout.panelY(), OVERLAY_W, OVERLAY_H)) {
             return;
@@ -452,6 +496,9 @@ public final class RtsClientInputGate {
                 overlayCraftScroll = Math.max(0, overlayCraftScroll - 1);
             } else if (event.getScrollDeltaY() < 0.0D) {
                 overlayCraftScroll = Math.min(maxScroll, overlayCraftScroll + 1);
+                if (overlayCraftScroll >= maxScroll && ClientRtsController.get().hasMoreCraftables()) {
+                    ClientRtsController.get().requestMoreCraftables();
+                }
             }
         } else if (event.getScrollDeltaY() > 0.0D) {
             ClientRtsController.get().prevPage();
@@ -466,8 +513,18 @@ public final class RtsClientInputGate {
         if (!ClientRtsController.get().canUseStorageOverlay()
                 || event.getScreen() instanceof BuilderScreen
                 || event.getScreen() instanceof RtsCraftTerminalScreen
-                || !(event.getScreen() instanceof AbstractContainerScreen<?>)
-                || (!overlaySearchFocused && !overlayCraftSearchFocused)) {
+                || !(event.getScreen() instanceof AbstractContainerScreen<?>)) {
+            return;
+        }
+
+        if (OVERLAY_CRAFT_DIALOG.isOpen()) {
+            OVERLAY_CRAFT_DIALOG.keyPressed(event.getKeyCode(), event.getScanCode(), event.getModifiers());
+            submitOverlayCraftDialogIfReady();
+            event.setCanceled(true);
+            return;
+        }
+
+        if (!overlaySearchFocused && !overlayCraftSearchFocused) {
             return;
         }
 
@@ -479,7 +536,7 @@ public final class RtsClientInputGate {
             if (craftSearch) {
                 overlayCraftSearchDraft = "";
                 overlayCraftSearchFocused = false;
-                ClientRtsController.get().setCraftablesSearch("");
+                applyOverlayCraftSearch();
             } else {
                 overlaySearchDraft = "";
                 overlaySearchFocused = false;
@@ -491,6 +548,7 @@ public final class RtsClientInputGate {
         if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             if (craftSearch) {
                 overlayCraftSearchFocused = false;
+                applyOverlayCraftSearch();
             } else {
                 overlaySearchFocused = false;
             }
@@ -501,7 +559,6 @@ public final class RtsClientInputGate {
             if (craftSearch) {
                 if (!overlayCraftSearchDraft.isEmpty()) {
                     overlayCraftSearchDraft = overlayCraftSearchDraft.substring(0, overlayCraftSearchDraft.length() - 1);
-                    ClientRtsController.get().setCraftablesSearch(overlayCraftSearchDraft);
                 }
             } else if (!overlaySearchDraft.isEmpty()) {
                 overlaySearchDraft = overlaySearchDraft.substring(0, overlaySearchDraft.length() - 1);
@@ -513,7 +570,6 @@ public final class RtsClientInputGate {
         if (keyCode == GLFW.GLFW_KEY_DELETE) {
             if (craftSearch) {
                 overlayCraftSearchDraft = "";
-                ClientRtsController.get().setCraftablesSearch("");
             } else {
                 overlaySearchDraft = "";
                 ClientRtsController.get().setStorageSearch("");
@@ -539,8 +595,16 @@ public final class RtsClientInputGate {
         if (!ClientRtsController.get().canUseStorageOverlay()
                 || event.getScreen() instanceof BuilderScreen
                 || event.getScreen() instanceof RtsCraftTerminalScreen
-                || !(event.getScreen() instanceof AbstractContainerScreen<?>)
-                || (!overlaySearchFocused && !overlayCraftSearchFocused)) {
+                || !(event.getScreen() instanceof AbstractContainerScreen<?>)) {
+            return;
+        }
+        if (OVERLAY_CRAFT_DIALOG.isOpen()) {
+            OVERLAY_CRAFT_DIALOG.charTyped((char) event.getCodePoint(), 0);
+            submitOverlayCraftDialogIfReady();
+            event.setCanceled(true);
+            return;
+        }
+        if (!overlaySearchFocused && !overlayCraftSearchFocused) {
             return;
         }
         int codePoint = event.getCodePoint();
@@ -563,7 +627,7 @@ public final class RtsClientInputGate {
         overlayCraftScroll = 0;
         overlayLastCraftablesStorageRevision = -1;
         activeOverlayScreen = null;
-        stopOverlayCraftHold();
+        OVERLAY_CRAFT_DIALOG.close();
         clearPendingCraftRefill();
         if (!ClientRtsController.get().canUseStorageOverlay()) {
             pendingOverlayCarriedItemId = "";
@@ -630,8 +694,9 @@ public final class RtsClientInputGate {
         int clearX = searchX + searchW - OVERLAY_SEARCH_CLEAR_W;
         int craftSearchX = craftPanelX + 4;
         int craftSearchY = panelY + 15;
-        int craftSearchW = Math.max(34, CRAFT_PANEL_W - CRAFT_TOGGLE_W - 12);
-        int craftToggleX = craftSearchX + craftSearchW + 4;
+        int craftSearchW = Math.max(24, CRAFT_PANEL_W - CRAFT_APPLY_W - CRAFT_TOGGLE_W - 16);
+        int craftApplyX = craftSearchX + craftSearchW + 4;
+        int craftToggleX = craftApplyX + CRAFT_APPLY_W + 4;
         int craftGridY = craftSearchY + CRAFT_SEARCH_H + 6;
         int craftVisibleRows = Math.max(1, (OVERLAY_H - (craftGridY - panelY) - 6) / CRAFT_PITCH);
         return new OverlayLayout(
@@ -647,6 +712,7 @@ public final class RtsClientInputGate {
                 craftSearchX,
                 craftSearchY,
                 craftSearchW,
+                craftApplyX,
                 craftToggleX,
                 craftGridY,
                 craftVisibleRows);
@@ -713,9 +779,6 @@ public final class RtsClientInputGate {
         if (!overlaySearchFocused) {
             overlaySearchDraft = controller.getStorageSearch();
         }
-        if (!overlayCraftSearchFocused) {
-            overlayCraftSearchDraft = controller.getCraftablesSearch();
-        }
     }
 
     private static void syncOverlayCraftables(ClientRtsController controller) {
@@ -743,7 +806,6 @@ public final class RtsClientInputGate {
         if (craftSearch) {
             if (!next.equals(overlayCraftSearchDraft)) {
                 overlayCraftSearchDraft = next;
-                ClientRtsController.get().setCraftablesSearch(overlayCraftSearchDraft);
             }
         } else if (!next.equals(overlaySearchDraft)) {
             overlaySearchDraft = next;
@@ -761,7 +823,7 @@ public final class RtsClientInputGate {
         overlayCraftSearchDraft = "";
         overlayCraftScroll = 0;
         overlayLastCraftablesStorageRevision = -1;
-        stopOverlayCraftHold();
+        OVERLAY_CRAFT_DIALOG.close();
 
         ClientRtsController controller = ClientRtsController.get();
         if (!controller.getStorageSearch().isEmpty()) {
@@ -803,9 +865,15 @@ public final class RtsClientInputGate {
             blueprint.add(itemId == null ? "" : itemId.toString());
         }
 
+        Slot resultSlot = menu.getSlot(0);
+        ItemStack result = resultSlot == null ? ItemStack.EMPTY : resultSlot.getItem();
+        var resultId = result.isEmpty() ? null : BuiltInRegistries.ITEM.getKey(result.getItem());
+
         pendingCraftRefillScreen = screen;
         pendingCraftRefillButton = button;
         pendingCraftRefillBlueprint = blueprint;
+        pendingCraftResultItemId = resultId == null ? "" : resultId.toString();
+        pendingCraftResultCount = result.isEmpty() ? 0 : result.getCount();
     }
 
     private static void trySendPendingCraftRefill(Screen screen, int button) {
@@ -815,7 +883,10 @@ public final class RtsClientInputGate {
             clearPendingCraftRefill();
             return;
         }
-        PacketDistributor.sendToServer(new C2SRtsCraftRefillPayload(new ArrayList<>(pendingCraftRefillBlueprint)));
+        PacketDistributor.sendToServer(new C2SRtsCraftRefillPayload(
+                new ArrayList<>(pendingCraftRefillBlueprint),
+                pendingCraftResultItemId,
+                pendingCraftResultCount));
         clearPendingCraftRefill();
     }
 
@@ -823,6 +894,8 @@ public final class RtsClientInputGate {
         pendingCraftRefillScreen = null;
         pendingCraftRefillButton = -1;
         pendingCraftRefillBlueprint = List.of();
+        pendingCraftResultItemId = "";
+        pendingCraftResultCount = 0;
     }
 
     private static void renderOverlayCraftablesPanel(
@@ -843,6 +916,15 @@ public final class RtsClientInputGate {
             int caretX = layout.craftSearchX() + 2 + font.width(display) + 1;
             g.fill(caretX, layout.craftSearchY() + 2, caretX + 1, layout.craftSearchY() + CRAFT_SEARCH_H - 2, 0xFFEAF2FF);
         }
+
+        boolean craftSearchDirty = hasPendingOverlayCraftSearch();
+        int applyBg = craftSearchDirty ? 0xAA4C6E39 : 0xAA24303A;
+        drawPanelFrame(g, layout.craftApplyX(), layout.craftSearchY(), CRAFT_APPLY_W, CRAFT_SEARCH_H, applyBg, 0xFF6E8799, 0xFF111821);
+        g.drawCenteredString(font,
+                "OK",
+                layout.craftApplyX() + CRAFT_APPLY_W / 2,
+                layout.craftSearchY() + 2,
+                craftSearchDirty ? 0xFFFFFF : 0xFFB8C7D6);
 
         int toggleBg = controller.isCraftablesShowUnavailable() ? 0xAA5A3D2A : 0xAA2C5A41;
         drawPanelFrame(g, layout.craftToggleX(), layout.craftSearchY(), CRAFT_TOGGLE_W, CRAFT_SEARCH_H, toggleBg, 0xFF667D95, 0xFF111821);
@@ -920,7 +1002,11 @@ public final class RtsClientInputGate {
         setOverlaySearchFocused(false);
         if (inside(mouseX, mouseY, layout.craftSearchX(), layout.craftSearchY(), layout.craftSearchW(), CRAFT_SEARCH_H)) {
             setOverlayCraftSearchFocused(true);
-            overlayCraftSearchDraft = ClientRtsController.get().getCraftablesSearch();
+            return true;
+        }
+        if (inside(mouseX, mouseY, layout.craftApplyX(), layout.craftSearchY(), CRAFT_APPLY_W, CRAFT_SEARCH_H)) {
+            applyOverlayCraftSearch();
+            clearOverlaySearchFocus();
             return true;
         }
         if (inside(mouseX, mouseY, layout.craftToggleX(), layout.craftSearchY(), CRAFT_TOGGLE_W, CRAFT_SEARCH_H)) {
@@ -944,55 +1030,36 @@ public final class RtsClientInputGate {
         if (!entry.craftable()) {
             return true;
         }
-        ClientRtsController.get().craftRecipeToLinked(entry.recipeId());
-        beginOverlayCraftHold(entry.recipeId());
+        clearOverlaySearchFocus();
+        OVERLAY_CRAFT_DIALOG.open(
+                entry.stack().getHoverName().getString(),
+                entry.stack(),
+                entry.recipeOptions(),
+                1);
         return true;
     }
 
-    private static void beginOverlayCraftHold(String recipeId) {
-        overlayHeldCraftRecipeId = recipeId == null ? "" : recipeId;
-        overlayCraftRepeatDelayMs = CRAFT_REPEAT_START_MS;
-        overlayNextCraftRepeatMs = System.currentTimeMillis() + overlayCraftRepeatDelayMs;
+    private static void submitOverlayCraftDialogIfReady() {
+        RtsCraftQuantityDialog.Request request = OVERLAY_CRAFT_DIALOG.consumePendingRequest();
+        if (request == null) {
+            return;
+        }
+        ClientRtsController.get().craftRecipeToLinked(request.recipeId(), request.craftCount());
     }
 
-    private static void stopOverlayCraftHold() {
-        overlayHeldCraftRecipeId = "";
-        overlayCraftRepeatDelayMs = CRAFT_REPEAT_START_MS;
-        overlayNextCraftRepeatMs = 0L;
+    private static void applyOverlayCraftSearch() {
+        overlayCraftSearchDraft = normalizeOverlayCraftSearchDraft(overlayCraftSearchDraft);
+        overlayCraftScroll = 0;
+        ClientRtsController.get().setCraftablesSearch(overlayCraftSearchDraft);
     }
 
-    private static void tickOverlayCraftRepeat() {
-        if (overlayHeldCraftRecipeId.isBlank()) {
-            return;
-        }
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null) {
-            return;
-        }
-        long window = minecraft.getWindow().getWindow();
-        if (GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) != GLFW.GLFW_PRESS) {
-            stopOverlayCraftHold();
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now < overlayNextCraftRepeatMs) {
-            return;
-        }
-        ClientRtsController.get().craftRecipeToLinked(overlayHeldCraftRecipeId);
-        overlayCraftRepeatDelayMs = Math.max(CRAFT_REPEAT_MIN_MS, overlayCraftRepeatDelayMs - CRAFT_REPEAT_STEP_MS);
-        overlayNextCraftRepeatMs = now + overlayCraftRepeatDelayMs;
+    private static boolean hasPendingOverlayCraftSearch() {
+        return !normalizeOverlayCraftSearchDraft(overlayCraftSearchDraft)
+                .equals(normalizeOverlayCraftSearchDraft(ClientRtsController.get().getCraftablesSearch()));
     }
 
-    private static void renderOverlayCraftFeedback(GuiGraphics g, Font font, double mouseX, double mouseY) {
-        long now = System.currentTimeMillis();
-        ClientRtsController controller = ClientRtsController.get();
-        if (now >= controller.getCraftFeedbackExpiryMs() || controller.getCraftFeedbackCount() <= 0) {
-            return;
-        }
-        float progress = (controller.getCraftFeedbackExpiryMs() - now) / 900.0F;
-        int alpha = Mth.clamp((int) (255.0F * progress), 48, 255);
-        int color = (alpha << 24) | 0xAEE8AE;
-        g.drawString(font, "+" + controller.getCraftFeedbackCount(), (int) mouseX + 18, (int) mouseY - 12, color, true);
+    private static String normalizeOverlayCraftSearchDraft(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static int resolveOverlaySlotIndex(double mouseX, double mouseY, int gridX, int gridY) {
@@ -1038,8 +1105,33 @@ public final class RtsClientInputGate {
         if (slot == null || !slot.hasItem() || !slot.mayPickup(minecraft.player)) {
             return false;
         }
+        if (isPlayerInventorySlot(slot, minecraft.player) && !isInventoryOrCraftingScreen(screen)) {
+            return false;
+        }
 
         PacketDistributor.sendToServer(new C2SRtsImportMenuSlotPayload(menuSlot));
+        return true;
+    }
+
+    private static boolean tryQuickMoveOverlayEntry(AbstractContainerScreen<?> screen, double mouseX, double mouseY) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || !minecraft.player.containerMenu.getCarried().isEmpty()) {
+            return false;
+        }
+        OverlayLayout layout = resolveOverlayLayout(screen);
+        int idx = resolveOverlaySlotIndex(mouseX, mouseY, layout.gridX(), layout.gridY());
+        if (idx < 0 || idx >= ClientRtsController.get().getStorageEntries().size()) {
+            return false;
+        }
+
+        var entry = ClientRtsController.get().getStorageEntries().get(idx);
+        if (entry == null || entry.stack().isEmpty()) {
+            return false;
+        }
+
+        PacketDistributor.sendToServer(new C2SRtsLinkedQuickMovePayload(entry.itemId()));
+        ClientRtsController.get().selectStorageEntry(idx);
+        pendingOverlayCarriedItemId = "";
         return true;
     }
 
@@ -1072,6 +1164,14 @@ public final class RtsClientInputGate {
         }
         int cx = x + col * SLOT_PITCH;
         return mouseX <= cx + SLOT_SIZE ? col : -1;
+    }
+
+    private static boolean isPlayerInventorySlot(Slot slot, net.minecraft.world.entity.player.Player player) {
+        return slot != null && player != null && slot.container == player.getInventory();
+    }
+
+    private static boolean isInventoryOrCraftingScreen(Screen screen) {
+        return screen instanceof InventoryScreen || screen instanceof CraftingScreen;
     }
 
     private static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
@@ -1151,15 +1251,7 @@ public final class RtsClientInputGate {
     }
 
     private static long resolvePinnedItemCount(String itemId) {
-        if (itemId == null || itemId.isBlank()) {
-            return 0L;
-        }
-        for (ClientRtsController.StorageEntry entry : ClientRtsController.get().getStorageEntries()) {
-            if (itemId.equals(entry.itemId())) {
-                return entry.count();
-            }
-        }
-        return 0L;
+        return ClientRtsController.get().getStorageTotalCount(itemId);
     }
 
     private static void selectOverlayQuickbarSlot(int index) {
@@ -1292,6 +1384,7 @@ public final class RtsClientInputGate {
             int craftSearchX,
             int craftSearchY,
             int craftSearchW,
+            int craftApplyX,
             int craftToggleX,
             int craftGridY,
             int craftVisibleRows) {

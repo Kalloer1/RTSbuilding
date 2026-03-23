@@ -1,0 +1,107 @@
+RTSBUILDING 1.0.6 UPDATE REPORT
+Release Date: 2026-03-23
+Reference Source: detailed_project.txt and the current repo changes since 1.0.3
+
+================================================================
+1. Release Summary
+================================================================
+Version 1.0.6 promotes the current 1.0.6-alpha work to a release build.
+This update focuses on three areas:
+- RTS storage usability and persistence
+- Crafting workflow clarity and performance
+- RTS interaction stability, camera bounds, and shape placement consistency
+
+================================================================
+2. Storage, Recent, and Persistence
+================================================================
+- Added a split bottom layout with a dedicated recent panel for placed, used,
+  crafted, and fluid actions without adding extra builder rows.
+- Added total-count caching so RTS hotbar and quick-pin overlays keep correct
+  counts even when the current storage page is filtered by search or category.
+- Added shift-click hotbar store so a non-empty RTS hotbar slot can be pushed
+  back into writable linked storage directly.
+- Added extract-only linked storage mode:
+  - left click link keeps extract + store behavior
+  - right click link creates or updates an extract-only link
+  - extract-only links still allow reads and draining but block inserts/fills
+- Added persistent recent history, persistent quick pins, and persistent GUI
+  binding slots in player RTS session data so they survive logout/rejoin.
+- Storage page sync now includes quick pin item ids and GUI binding labels.
+
+================================================================
+3. Crafting and Craftables
+================================================================
+- Craftables search no longer scans recipes when the search box is empty.
+- Craftables loading is now paged:
+  - first request loads a small batch
+  - scrolling to the bottom requests more results
+  - stale or duplicate in-flight requests are ignored
+- Craft dialog now supports grouped result entries with multiple recipe options
+  instead of forcing a single collapsed recipe choice.
+- Added a higher-layer craft dialog that lets the player:
+  - choose a recipe option first
+  - set craft quantity second
+  - confirm against the selected recipe id
+- Added a higher-layer craft feedback popup showing:
+  - crafted output count
+  - actual consumed material counts
+- Craft terminal output pickup is now recorded into recent history.
+
+================================================================
+4. RTS Interaction, Camera, and Building
+================================================================
+- Added a collapsible GUI binding sidebar on the left side of the RTS screen:
+  - left click opens a saved GUI target
+  - right click arms rebind mode
+  - shift + right click clears a slot
+- Added a remote menu-open grace window so first-open GUI handoff does not get
+  preempted by BuilderScreen during client-side menu construction.
+- Rotate mode now sends an explicit block-rotate action on right mouse press so
+  rotation wins over generic right-click interaction.
+- Lowered RTS camera minimum height to anchorY - 5 and matched client
+  prediction to the same bounds to avoid drift or snap-back.
+- Refined LINE, SQUARE, and BOX shape placement:
+  - shared horizontal projection plane for first-stage targeting
+  - same-plane second-point selection for stable footprints
+  - separate plane face vs placement face so side-face builds stay on the
+    intended outer layer
+
+================================================================
+5. Network and Server Model
+================================================================
+New or extended payload coverage in this release includes:
+- C2SRtsRotateBlockPayload
+- C2SRtsStoreHotbarSlotPayload
+- C2SRtsSetQuickSlotPayload
+- C2SRtsSetGuiBindingPayload
+- C2SRtsOpenGuiBindingPayload
+- C2SRtsLinkedQuickMovePayload
+- C2SRtsLinkStoragePayload with link-mode support
+- C2SRtsRequestCraftablesPayload with offset/limit support
+- S2CRtsStoragePagePayload with total counts, recent entries, quick pins, and
+  GUI binding labels
+- S2CRtsCraftablesPayload with append/hasMore pagination and per-entry recipe
+  option lists
+- S2CRtsCraftFeedbackPayload with consumed material details
+
+Server-side RTS session handling was expanded so the authoritative storage
+model now persists recent entries, quick pins, GUI bindings, and link modes.
+
+================================================================
+6. Compat and Fixes
+================================================================
+- FTB quest detect reflection paths were refreshed for newer naming/layout
+  variants.
+- Quest progress counting no longer double-counts player main inventory items
+  during linked-storage scans.
+- Recent panel now uses the unified server-backed recent list instead of a
+  crafted-only subset.
+
+================================================================
+7. Validation
+================================================================
+- Historical worklog entries for these changes recorded successful compile/build
+  checks during development.
+- Fresh release validation was run for this release update:
+  - powershell.exe -Command .\gradlew.bat build
+  - Result: SUCCESS

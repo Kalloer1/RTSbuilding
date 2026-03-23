@@ -18,7 +18,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class RtsCameraManager {
     private static final double MAX_RADIUS = 48.0D; // 3 chunks
-    private static final double MIN_HEIGHT = 4.0D;
+    private static final double MIN_HEIGHT = -5.0D;
     private static final double MAX_HEIGHT = 80.0D;
     private static final double MIN_DIST = 8.0D;
     private static final double MAX_DIST = 72.0D;
@@ -192,6 +192,8 @@ public final class RtsCameraManager {
                 targetZ = session.anchor().z + n.z;
             }
         }
+
+        targetY = Mth.clamp(targetY, session.anchor().y + MIN_HEIGHT, session.anchor().y + MAX_HEIGHT);
 
         camera.snapTo(targetX, targetY, targetZ, yaw, pitch);
 

@@ -2,8 +2,13 @@ package com.rtsbuilding.rtsbuilding.client;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
@@ -18,8 +23,13 @@ import com.rtsbuilding.rtsbuilding.network.C2SRtsPlacePayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsPlaceFluidPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsQuestDetectPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsQuickDropPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsRotateBlockPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsOpenGuiBindingPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsRequestCraftablesPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreFluidPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreHotbarSlotPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsSetGuiBindingPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsSetQuickSlotPayload;
 import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsCameraMovePayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsRequestStoragePagePayload;
@@ -68,6 +78,8 @@ public final class ClientRtsController {
     private static final float[] INPUT_SENS_PRESETS = new float[] { 0.50F, 0.75F, 1.00F, 1.25F, 1.50F, 2.00F };
     private static final int INPUT_SENS_DEFAULT_INDEX = 2;
     private static final int QUICK_SLOT_COUNT = 27;
+    private static final int GUI_BINDING_SLOT_COUNT = 3;
+    private static final int CRAFTABLE_BATCH_SIZE = 12;
     private static final String CATEGORY_ALL = "all";
     private static final String CATEGORY_MOD_PREFIX = "mod|";
     private static final String CATEGORY_TAB_PREFIX = "tab|";
@@ -75,6 +87,9 @@ public final class ClientRtsController {
     private static final float ROT_EMA_ALPHA = 0.28F;
     private static final float ROT_EMA_DECAY = 0.78F;
     private static final int RTS_MINE_RENDER_ID = 0x525453;
+    private static final int REMOTE_MENU_OPEN_GRACE_TICKS = 20;
+    private static final double MIN_CAMERA_HEIGHT_OFFSET = -5.0D;
+    private static final double MAX_CAMERA_HEIGHT_OFFSET = 80.0D;
 
     private boolean enabled;
     private int serverCameraEntityId = -1;
@@ -129,14 +144,19 @@ public final class ClientRtsController {
     private boolean storageSortAscending;
     private final List<String> storageCategories = new ArrayList<>();
     private final List<StorageEntry> storageEntries = new ArrayList<>();
+    private final Map<String, Long> storageTotalCounts = new HashMap<>();
     private final List<FluidEntry> fluidEntries = new ArrayList<>();
+    private final List<RecentEntry> recentEntries = new ArrayList<>();
     private String craftablesSearch = "";
     private boolean craftablesShowUnavailable;
     private final List<CraftableEntry> craftableEntries = new ArrayList<>();
     private int craftablesRevision;
+    private boolean craftablesHasMore;
+    private final Set<Integer> pendingCraftableOffsets = new HashSet<>();
     private String craftFeedbackItemId = "";
     private int craftFeedbackCount;
     private long craftFeedbackExpiryMs;
+    private final List<CraftFeedbackIngredient> craftFeedbackIngredients = new ArrayList<>();
     private String selectedItemId = "";
     private String selectedItemLabel = "";
     private ItemStack selectedItemPreview = ItemStack.EMPTY;
@@ -151,10 +171,12 @@ public final class ClientRtsController {
     private BuildShape buildShape = BuildShape.BLOCK;
     private boolean pendingCraftTerminalOpen;
     private int pendingCraftTerminalOpenTicks;
+    private int pendingRemoteMenuOpenTicks;
     private boolean autoStoreMinedDrops = true;
     private final String[] quickSlotItemIds = new String[QUICK_SLOT_COUNT];
     private final String[] quickSlotLabels = new String[QUICK_SLOT_COUNT];
     private final ItemStack[] quickSlotPreviews = new ItemStack[QUICK_SLOT_COUNT];
+    private final String[] guiBindingLabels = new String[GUI_BINDING_SLOT_COUNT];
     private boolean funnelEnabled;
     private BlockPos lastFunnelTarget;
     private int funnelTargetCooldownTicks;
@@ -169,6 +191,9 @@ public final class ClientRtsController {
             this.quickSlotItemIds[i] = "";
             this.quickSlotLabels[i] = "";
             this.quickSlotPreviews[i] = ItemStack.EMPTY;
+        }
+        for (int i = 0; i < GUI_BINDING_SLOT_COUNT; i++) {
+            this.guiBindingLabels[i] = "";
         }
     }
 
@@ -333,8 +358,29 @@ public final class ClientRtsController {
         return Collections.unmodifiableList(this.storageEntries);
     }
 
+    public long getStorageTotalCount(String itemId) {
+        if (itemId == null || itemId.isBlank()) {
+            return 0L;
+        }
+        return Math.max(0L, this.storageTotalCounts.getOrDefault(itemId, 0L));
+    }
+
     public List<FluidEntry> getFluidEntries() {
         return Collections.unmodifiableList(this.fluidEntries);
+    }
+
+    public List<RecentEntry> getRecentEntries() {
+        return Collections.unmodifiableList(this.recentEntries);
+    }
+
+    public long getRecentDisplayAmount(RecentEntry entry) {
+        if (entry == null) {
+            return 0L;
+        }
+        if (entry.fluid()) {
+            return getStorageFluidAmount(entry.id());
+        }
+        return getStorageTotalCount(entry.id());
     }
 
     public String getCraftablesSearch() {
@@ -353,6 +399,10 @@ public final class ClientRtsController {
         return this.craftablesRevision;
     }
 
+    public boolean hasMoreCraftables() {
+        return this.craftablesHasMore;
+    }
+
     public String getCraftFeedbackItemId() {
         return this.craftFeedbackItemId;
     }
@@ -363,6 +413,10 @@ public final class ClientRtsController {
 
     public long getCraftFeedbackExpiryMs() {
         return this.craftFeedbackExpiryMs;
+    }
+
+    public List<CraftFeedbackIngredient> getCraftFeedbackIngredients() {
+        return Collections.unmodifiableList(this.craftFeedbackIngredients);
     }
 
     public List<FunnelBufferEntry> getFunnelBufferEntries() {
@@ -415,6 +469,21 @@ public final class ClientRtsController {
 
     public float getRotateSensitivity() {
         return this.rotateSensitivity;
+    }
+
+    public int getGuiBindingCount() {
+        return GUI_BINDING_SLOT_COUNT;
+    }
+
+    public String getGuiBindingLabel(int index) {
+        if (index < 0 || index >= GUI_BINDING_SLOT_COUNT) {
+            return "";
+        }
+        return this.guiBindingLabels[index];
+    }
+
+    public boolean hasGuiBinding(int index) {
+        return !getGuiBindingLabel(index).isBlank();
     }
 
     public String getInputSensitivityLabel() {
@@ -539,6 +608,9 @@ public final class ClientRtsController {
             this.funnelBufferEntries.clear();
             this.pendingCraftTerminalOpen = false;
             this.pendingCraftTerminalOpenTicks = 0;
+            this.pendingRemoteMenuOpenTicks = 0;
+            clearQuickSlotsLocal();
+            clearGuiBindingsLocal();
 
             this.ensureLocalMirrorCamera(minecraft);
             this.syncVisualCameraFrame();
@@ -555,6 +627,7 @@ public final class ClientRtsController {
         this.funnelBufferEntries.clear();
         this.pendingCraftTerminalOpen = false;
         this.pendingCraftTerminalOpenTicks = 0;
+        this.pendingRemoteMenuOpenTicks = 0;
 
         if (this.rotateCaptured) {
             this.endRotateCapture(0.0D, 0.0D);
@@ -579,6 +652,8 @@ public final class ClientRtsController {
         this.activeMinePos = null;
         this.activeMineFace = -1;
         this.buildShape = BuildShape.BLOCK;
+        clearQuickSlotsLocal();
+        clearGuiBindingsLocal();
         if (minecraft.level != null && this.mineRenderPos != null) {
             minecraft.level.destroyBlockProgress(RTS_MINE_RENDER_ID, this.mineRenderPos, -1);
         }
@@ -612,6 +687,9 @@ public final class ClientRtsController {
             this.funnelTargetCooldownTicks--;
         }
 
+        boolean hasRemoteMenuOpen = minecraft.player.containerMenu != null
+                && minecraft.player.containerMenu.containerId != 0;
+
         if (this.pendingCraftTerminalOpen
                 && minecraft.player.containerMenu instanceof CraftingMenu pendingMenu
                 && minecraft.player.containerMenu.containerId != 0
@@ -638,7 +716,18 @@ public final class ClientRtsController {
             }
         }
 
-        if (minecraft.screen == null) {
+        if (hasRemoteMenuOpen) {
+            this.pendingRemoteMenuOpenTicks = 0;
+            if (minecraft.screen instanceof BuilderScreen) {
+                // First-open GUI construction can leave a brief null-screen handoff. Once a real
+                // container menu exists, let it take over instead of keeping BuilderScreen active.
+                minecraft.setScreen(null);
+            }
+        } else if (this.pendingRemoteMenuOpenTicks > 0) {
+            this.pendingRemoteMenuOpenTicks--;
+        }
+
+        if (minecraft.screen == null && !hasRemoteMenuOpen && this.pendingRemoteMenuOpenTicks <= 0) {
             minecraft.setScreen(new BuilderScreen(this));
         }
 
@@ -749,7 +838,16 @@ public final class ClientRtsController {
     }
 
     public void linkStorage(BlockPos pos) {
-        PacketDistributor.sendToServer(new C2SRtsLinkStoragePayload(pos));
+        linkStorage(pos, true);
+    }
+
+    public void linkStorage(BlockPos pos, boolean allowStore) {
+        if (pos == null) {
+            return;
+        }
+        PacketDistributor.sendToServer(new C2SRtsLinkStoragePayload(
+                pos,
+                allowStore ? C2SRtsLinkStoragePayload.MODE_BIDIRECTIONAL : C2SRtsLinkStoragePayload.MODE_EXTRACT_ONLY));
     }
 
     public void requestStoragePage(int page) {
@@ -762,9 +860,19 @@ public final class ClientRtsController {
     }
 
     public void requestCraftables() {
-        PacketDistributor.sendToServer(new C2SRtsRequestCraftablesPayload(
-                this.craftablesSearch,
-                this.craftablesShowUnavailable));
+        this.craftablesSearch = normalizeCraftablesSearch(this.craftablesSearch);
+        clearCraftablesState();
+        if (this.craftablesSearch.isBlank()) {
+            return;
+        }
+        requestCraftablesPage(0, CRAFTABLE_BATCH_SIZE);
+    }
+
+    public void requestMoreCraftables() {
+        if (this.craftablesSearch.isBlank() || !this.craftablesHasMore) {
+            return;
+        }
+        requestCraftablesPage(this.craftableEntries.size(), CRAFTABLE_BATCH_SIZE);
     }
 
     public void setAutoStoreMinedDrops(boolean enabled) {
@@ -810,11 +918,18 @@ public final class ClientRtsController {
     }
 
     public void setCraftablesSearch(String search) {
-        this.craftablesSearch = search == null ? "" : search;
+        String normalized = normalizeCraftablesSearch(search);
+        if (this.craftablesSearch.equals(normalized)) {
+            return;
+        }
+        this.craftablesSearch = normalized;
         requestCraftables();
     }
 
     public void setCraftablesShowUnavailable(boolean showUnavailable) {
+        if (this.craftablesShowUnavailable == showUnavailable) {
+            return;
+        }
         this.craftablesShowUnavailable = showUnavailable;
         requestCraftables();
     }
@@ -824,21 +939,37 @@ public final class ClientRtsController {
     }
 
     public void craftRecipeToLinked(String recipeId) {
+        craftRecipeToLinked(recipeId, 1);
+    }
+
+    public void craftRecipeToLinked(String recipeId, int craftCount) {
         if (recipeId == null || recipeId.isBlank()) {
             return;
         }
-        PacketDistributor.sendToServer(new C2SRtsCraftRecipePayload(recipeId));
+        PacketDistributor.sendToServer(new C2SRtsCraftRecipePayload(recipeId, Math.max(1, craftCount)));
     }
 
     public void openCraftTerminal() {
         setStorageSearch("");
         this.pendingCraftTerminalOpen = true;
         this.pendingCraftTerminalOpenTicks = 120;
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsOpenCraftTerminalPayload());
     }
 
     public void detectQuestsNow() {
         PacketDistributor.sendToServer(new C2SRtsQuestDetectPayload(C2SRtsQuestDetectPayload.MODE_MANUAL));
+    }
+
+    public void rotateBlock(BlockPos pos) {
+        if (pos == null) {
+            return;
+        }
+        PacketDistributor.sendToServer(new C2SRtsRotateBlockPayload(pos));
+    }
+
+    public void storeHotbarSlotToLinked(int slot) {
+        PacketDistributor.sendToServer(new C2SRtsStoreHotbarSlotPayload((byte) Mth.clamp(slot, 0, 8)));
     }
 
     private boolean shouldUseRtsCraftTerminalScreen(CraftingScreen craftingScreen) {
@@ -891,7 +1022,9 @@ public final class ClientRtsController {
             this.storageCategory = "all";
         }
         this.storageEntries.clear();
+        this.storageTotalCounts.clear();
         this.fluidEntries.clear();
+        this.recentEntries.clear();
 
         int size = Math.min(payload.itemIds().size(), payload.counts().size());
         for (int i = 0; i < size; i++) {
@@ -901,6 +1034,16 @@ public final class ClientRtsController {
             }
             ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
             this.storageEntries.add(new StorageEntry(stack, payload.itemIds().get(i), payload.counts().get(i), id.getNamespace(), id.getPath()));
+        }
+
+        int totalItemSize = Math.min(payload.totalItemIds().size(), payload.totalItemCounts().size());
+        for (int i = 0; i < totalItemSize; i++) {
+            String itemId = payload.totalItemIds().get(i);
+            ResourceLocation id = ResourceLocation.tryParse(itemId);
+            if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
+                continue;
+            }
+            this.storageTotalCounts.put(itemId, Math.max(0L, payload.totalItemCounts().get(i)));
         }
 
         int fluidSize = Math.min(payload.fluidIds().size(),
@@ -925,6 +1068,25 @@ public final class ClientRtsController {
                     preview));
         }
 
+        int recentSize = Math.min(
+                payload.recentIds().size(),
+                Math.min(
+                        payload.recentAmounts().size(),
+                        Math.min(payload.recentCapacities().size(), payload.recentKinds().size())));
+        for (int i = 0; i < recentSize; i++) {
+            RecentEntry entry = decodeRecentEntry(
+                    payload.recentIds().get(i),
+                    payload.recentAmounts().get(i),
+                    payload.recentCapacities().get(i),
+                    payload.recentKinds().get(i));
+            if (entry != null) {
+                this.recentEntries.add(entry);
+            }
+        }
+
+        applyQuickSlotPayload(payload.quickSlotItemIds());
+        applyGuiBindingPayload(payload.guiBindingLabels());
+
         this.funnelEnabled = payload.funnelEnabled();
         this.funnelBufferEntries.clear();
         int funnelBufferSize = Math.min(payload.funnelBufferItemIds().size(), payload.funnelBufferCounts().size());
@@ -943,15 +1105,24 @@ public final class ClientRtsController {
         }
         this.storageRevision++;
         if (!this.storageLinked && this.linkedStoragePositions.isEmpty()) {
-            this.craftableEntries.clear();
-            this.craftablesRevision++;
+            clearCraftablesState();
         }
     }
 
     public void applyCraftables(S2CRtsCraftablesPayload payload) {
-        this.craftablesSearch = payload.search() == null ? "" : payload.search();
-        this.craftablesShowUnavailable = payload.showUnavailable();
-        this.craftableEntries.clear();
+        String payloadSearch = normalizeCraftablesSearch(payload.search());
+        if (!this.craftablesSearch.equals(payloadSearch)
+                || this.craftablesShowUnavailable != payload.showUnavailable()) {
+            return;
+        }
+
+        int offset = Math.max(0, payload.offset());
+        this.pendingCraftableOffsets.remove(offset);
+        if (!payload.append() || offset == 0) {
+            this.craftableEntries.clear();
+        } else if (offset != this.craftableEntries.size()) {
+            return;
+        }
 
         int size = Math.min(
                 payload.recipeIds().size(),
@@ -960,14 +1131,42 @@ public final class ClientRtsController {
                         Math.min(
                                 payload.resultCounts().size(),
                                 Math.min(payload.craftable().size(), payload.missingSummaries().size()))));
+        int optionFlatIndex = 0;
         for (int i = 0; i < size; i++) {
             ResourceLocation id = ResourceLocation.tryParse(payload.resultItemIds().get(i));
             if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
+                optionFlatIndex += i < payload.recipeOptionCounts().size() ? Math.max(0, payload.recipeOptionCounts().get(i)) : 0;
                 continue;
             }
             ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
             int resultCount = Math.max(1, payload.resultCounts().get(i));
             stack.setCount(Math.min(resultCount, stack.getMaxStackSize()));
+            int optionCount = i < payload.recipeOptionCounts().size() ? Math.max(0, payload.recipeOptionCounts().get(i)) : 0;
+            List<CraftRecipeOption> recipeOptions = new ArrayList<>(optionCount);
+            for (int optionIndex = 0; optionIndex < optionCount; optionIndex++) {
+                if (optionFlatIndex >= payload.optionRecipeIds().size()
+                        || optionFlatIndex >= payload.optionResultCounts().size()
+                        || optionFlatIndex >= payload.optionCraftable().size()
+                        || optionFlatIndex >= payload.optionSummaries().size()
+                        || optionFlatIndex >= payload.optionMissingSummaries().size()) {
+                    break;
+                }
+                recipeOptions.add(new CraftRecipeOption(
+                        payload.optionRecipeIds().get(optionFlatIndex),
+                        Math.max(1, payload.optionResultCounts().get(optionFlatIndex)),
+                        payload.optionCraftable().get(optionFlatIndex),
+                        payload.optionSummaries().get(optionFlatIndex),
+                        payload.optionMissingSummaries().get(optionFlatIndex)));
+                optionFlatIndex++;
+            }
+            if (recipeOptions.isEmpty()) {
+                recipeOptions.add(new CraftRecipeOption(
+                        payload.recipeIds().get(i),
+                        resultCount,
+                        payload.craftable().get(i),
+                        stack.getHoverName().getString(),
+                        payload.missingSummaries().get(i)));
+            }
             this.craftableEntries.add(new CraftableEntry(
                     stack,
                     payload.recipeIds().get(i),
@@ -976,9 +1175,54 @@ public final class ClientRtsController {
                     payload.craftable().get(i),
                     payload.missingSummaries().get(i),
                     id.getNamespace(),
-                    id.getPath()));
+                    id.getPath(),
+                    List.copyOf(recipeOptions)));
         }
+        this.craftablesSearch = payloadSearch;
+        this.craftablesShowUnavailable = payload.showUnavailable();
+        this.craftablesHasMore = payload.hasMore();
         this.craftablesRevision++;
+    }
+
+    private void requestCraftablesPage(int offset, int limit) {
+        int normalizedOffset = Math.max(0, offset);
+        int normalizedLimit = Math.max(1, limit);
+        if (!this.pendingCraftableOffsets.add(normalizedOffset)) {
+            return;
+        }
+        PacketDistributor.sendToServer(new C2SRtsRequestCraftablesPayload(
+                this.craftablesSearch,
+                this.craftablesShowUnavailable,
+                normalizedOffset,
+                normalizedLimit));
+    }
+
+    private void clearCraftablesState() {
+        boolean changed = !this.craftableEntries.isEmpty()
+                || this.craftablesHasMore
+                || !this.pendingCraftableOffsets.isEmpty();
+        this.craftableEntries.clear();
+        this.craftablesHasMore = false;
+        this.pendingCraftableOffsets.clear();
+        if (changed) {
+            this.craftablesRevision++;
+        }
+    }
+
+    private static String normalizeCraftablesSearch(String search) {
+        return search == null ? "" : search.trim();
+    }
+
+    private long getStorageFluidAmount(String fluidId) {
+        if (fluidId == null || fluidId.isBlank()) {
+            return 0L;
+        }
+        for (FluidEntry entry : this.fluidEntries) {
+            if (fluidId.equals(entry.fluidId())) {
+                return Math.max(0L, entry.amount());
+            }
+        }
+        return 0L;
     }
 
     public void applyCraftFeedback(S2CRtsCraftFeedbackPayload payload) {
@@ -987,14 +1231,68 @@ public final class ClientRtsController {
         if (itemId.isBlank() || craftedCount <= 0) {
             return;
         }
+        List<CraftFeedbackIngredient> decodedIngredients = new ArrayList<>();
+        int ingredientSize = Math.min(payload.consumedItemIds().size(), payload.consumedCounts().size());
+        for (int i = 0; i < ingredientSize; i++) {
+            String consumedItemId = payload.consumedItemIds().get(i);
+            ResourceLocation consumedKey = ResourceLocation.tryParse(consumedItemId);
+            if (consumedKey == null || !BuiltInRegistries.ITEM.containsKey(consumedKey)) {
+                continue;
+            }
+            ItemStack preview = new ItemStack(BuiltInRegistries.ITEM.get(consumedKey));
+            decodedIngredients.add(new CraftFeedbackIngredient(
+                    consumedItemId,
+                    preview.getHoverName().getString(),
+                    preview,
+                    Math.max(0, payload.consumedCounts().get(i))));
+        }
         long now = System.currentTimeMillis();
-        if (itemId.equals(this.craftFeedbackItemId) && now <= this.craftFeedbackExpiryMs) {
+        boolean mergeWithActive = itemId.equals(this.craftFeedbackItemId) && now <= this.craftFeedbackExpiryMs;
+        if (mergeWithActive) {
             this.craftFeedbackCount += craftedCount;
         } else {
             this.craftFeedbackItemId = itemId;
             this.craftFeedbackCount = craftedCount;
         }
-        this.craftFeedbackExpiryMs = now + 900L;
+        if (mergeWithActive) {
+            mergeCraftFeedbackIngredients(decodedIngredients);
+        } else {
+            this.craftFeedbackIngredients.clear();
+            this.craftFeedbackIngredients.addAll(decodedIngredients);
+        }
+        this.craftFeedbackExpiryMs = now + 2200L;
+    }
+
+    private void mergeCraftFeedbackIngredients(List<CraftFeedbackIngredient> added) {
+        if (added == null || added.isEmpty()) {
+            return;
+        }
+        Map<String, CraftFeedbackIngredient> merged = new LinkedHashMap<>();
+        for (CraftFeedbackIngredient ingredient : this.craftFeedbackIngredients) {
+            if (ingredient == null || ingredient.itemId() == null || ingredient.itemId().isBlank()) {
+                continue;
+            }
+            merged.put(ingredient.itemId(), ingredient);
+        }
+        for (CraftFeedbackIngredient ingredient : added) {
+            if (ingredient == null || ingredient.itemId() == null || ingredient.itemId().isBlank()) {
+                continue;
+            }
+            CraftFeedbackIngredient existing = merged.get(ingredient.itemId());
+            if (existing == null) {
+                merged.put(ingredient.itemId(), ingredient);
+                continue;
+            }
+            merged.put(
+                    ingredient.itemId(),
+                    new CraftFeedbackIngredient(
+                            ingredient.itemId(),
+                            ingredient.label(),
+                            ingredient.preview().copy(),
+                            existing.count() + ingredient.count()));
+        }
+        this.craftFeedbackIngredients.clear();
+        this.craftFeedbackIngredients.addAll(merged.values());
     }
 
     public void applyMineProgress(S2CRtsMineProgressPayload payload) {
@@ -1053,6 +1351,21 @@ public final class ClientRtsController {
         this.placeRotateSteps = 0;
     }
 
+    public void selectRecentEntry(int index) {
+        if (index < 0 || index >= this.recentEntries.size()) {
+            return;
+        }
+        RecentEntry entry = this.recentEntries.get(index);
+        if (entry.fluid()) {
+            setSelectedFluid(entry.id(), entry.label(), entry.preview().copy());
+            clearSelectedItemOnly();
+        } else {
+            setSelectedItem(entry.id(), entry.label(), entry.preview().copy());
+            clearSelectedFluid();
+        }
+        setMode(BuilderMode.INTERACT);
+    }
+
     public void assignQuickSlotFromSelected(int index) {
         if (index < 0 || index >= QUICK_SLOT_COUNT) {
             return;
@@ -1061,9 +1374,8 @@ public final class ClientRtsController {
             clearQuickSlot(index);
             return;
         }
-        this.quickSlotItemIds[index] = this.selectedItemId;
-        this.quickSlotLabels[index] = this.selectedItemLabel;
-        this.quickSlotPreviews[index] = this.selectedItemPreview.copy();
+        setQuickSlotLocal(index, this.selectedItemId, this.selectedItemPreview.copy());
+        PacketDistributor.sendToServer(new C2SRtsSetQuickSlotPayload((byte) index, this.selectedItemId));
     }
 
     public void assignQuickSlotFromToolItem(int index, ItemStack stack) {
@@ -1074,18 +1386,17 @@ public final class ClientRtsController {
         if (id == null) {
             return;
         }
-        this.quickSlotItemIds[index] = id.toString();
-        this.quickSlotLabels[index] = stack.getHoverName().getString();
-        this.quickSlotPreviews[index] = stack.copy();
+        String itemId = id.toString();
+        setQuickSlotLocal(index, itemId, stack.copy());
+        PacketDistributor.sendToServer(new C2SRtsSetQuickSlotPayload((byte) index, itemId));
     }
 
     public void clearQuickSlot(int index) {
         if (index < 0 || index >= QUICK_SLOT_COUNT) {
             return;
         }
-        this.quickSlotItemIds[index] = "";
-        this.quickSlotLabels[index] = "";
-        this.quickSlotPreviews[index] = ItemStack.EMPTY;
+        setQuickSlotLocal(index, "", ItemStack.EMPTY);
+        PacketDistributor.sendToServer(new C2SRtsSetQuickSlotPayload((byte) index, ""));
     }
 
     public void selectQuickSlot(int index) {
@@ -1113,11 +1424,35 @@ public final class ClientRtsController {
         setMode(BuilderMode.INTERACT);
     }
 
+    public void setGuiBinding(int index, BlockPos pos) {
+        if (index < 0 || index >= GUI_BINDING_SLOT_COUNT || pos == null) {
+            return;
+        }
+        PacketDistributor.sendToServer(new C2SRtsSetGuiBindingPayload((byte) index, false, pos));
+    }
+
+    public void clearGuiBinding(int index) {
+        if (index < 0 || index >= GUI_BINDING_SLOT_COUNT) {
+            return;
+        }
+        this.guiBindingLabels[index] = "";
+        PacketDistributor.sendToServer(new C2SRtsSetGuiBindingPayload((byte) index, true, BlockPos.ZERO));
+    }
+
+    public void openGuiBinding(int index) {
+        if (index < 0 || index >= GUI_BINDING_SLOT_COUNT || !hasGuiBinding(index)) {
+            return;
+        }
+        beginRemoteMenuOpenGrace();
+        PacketDistributor.sendToServer(new C2SRtsOpenGuiBindingPayload((byte) index));
+    }
+
     public void placeSelected(BlockHitResult hit, boolean forcePlace, Vec3 rayOrigin, Vec3 rayDir) {
         placeSelected(hit, forcePlace, rayOrigin, rayDir, false);
     }
 
     public void placeSelected(BlockHitResult hit, boolean forcePlace, Vec3 rayOrigin, Vec3 rayDir, boolean skipIfOccupied) {
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsPlacePayload(
                 hit.getBlockPos(),
                 (byte) hit.getDirection().get3DDataValue(),
@@ -1183,7 +1518,64 @@ public final class ClientRtsController {
                 ""));
     }
 
+    private void clearQuickSlotsLocal() {
+        for (int i = 0; i < QUICK_SLOT_COUNT; i++) {
+            this.quickSlotItemIds[i] = "";
+            this.quickSlotLabels[i] = "";
+            this.quickSlotPreviews[i] = ItemStack.EMPTY;
+        }
+    }
+
+    private void clearGuiBindingsLocal() {
+        for (int i = 0; i < GUI_BINDING_SLOT_COUNT; i++) {
+            this.guiBindingLabels[i] = "";
+        }
+    }
+
+    private void applyQuickSlotPayload(List<String> payloadQuickSlots) {
+        clearQuickSlotsLocal();
+        int size = Math.min(QUICK_SLOT_COUNT, payloadQuickSlots == null ? 0 : payloadQuickSlots.size());
+        for (int i = 0; i < size; i++) {
+            String itemId = payloadQuickSlots.get(i);
+            if (itemId == null || itemId.isBlank()) {
+                continue;
+            }
+            ResourceLocation key = ResourceLocation.tryParse(itemId);
+            if (key == null || !BuiltInRegistries.ITEM.containsKey(key)) {
+                continue;
+            }
+            ItemStack preview = new ItemStack(BuiltInRegistries.ITEM.get(key));
+            setQuickSlotLocal(i, itemId, preview);
+        }
+    }
+
+    private void applyGuiBindingPayload(List<String> payloadGuiBindings) {
+        clearGuiBindingsLocal();
+        int size = Math.min(GUI_BINDING_SLOT_COUNT, payloadGuiBindings == null ? 0 : payloadGuiBindings.size());
+        for (int i = 0; i < size; i++) {
+            String label = payloadGuiBindings.get(i);
+            this.guiBindingLabels[i] = label == null ? "" : label;
+        }
+    }
+
+    private void setQuickSlotLocal(int index, String itemId, ItemStack preview) {
+        if (index < 0 || index >= QUICK_SLOT_COUNT) {
+            return;
+        }
+        String normalizedItemId = itemId == null ? "" : itemId;
+        ItemStack normalizedPreview = preview == null ? ItemStack.EMPTY : preview.copy();
+        this.quickSlotItemIds[index] = normalizedItemId;
+        if (normalizedItemId.isBlank() || normalizedPreview.isEmpty()) {
+            this.quickSlotLabels[index] = "";
+            this.quickSlotPreviews[index] = ItemStack.EMPTY;
+            return;
+        }
+        this.quickSlotLabels[index] = normalizedPreview.getHoverName().getString();
+        this.quickSlotPreviews[index] = normalizedPreview;
+    }
+
     public void interactEmpty(BlockHitResult hit, Vec3 rayOrigin, Vec3 rayDir) {
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsPlacePayload(
                 hit.getBlockPos(),
                 (byte) hit.getDirection().get3DDataValue(),
@@ -1206,6 +1598,7 @@ public final class ClientRtsController {
         if (hit == null) {
             return;
         }
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsInteractPayload(
                 C2SRtsInteractPayload.NO_ENTITY,
                 hit.getBlockPos(),
@@ -1228,6 +1621,7 @@ public final class ClientRtsController {
         if (hit == null || itemId == null || itemId.isBlank()) {
             return;
         }
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsInteractPayload(
                 C2SRtsInteractPayload.NO_ENTITY,
                 hit.getBlockPos(),
@@ -1250,6 +1644,7 @@ public final class ClientRtsController {
         if (entityId < 0 || hitLocation == null) {
             return;
         }
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsInteractPayload(
                 entityId,
                 BlockPos.containing(hitLocation),
@@ -1272,6 +1667,7 @@ public final class ClientRtsController {
         if (entityId < 0 || hitLocation == null || itemId == null || itemId.isBlank()) {
             return;
         }
+        beginRemoteMenuOpenGrace();
         PacketDistributor.sendToServer(new C2SRtsInteractPayload(
                 entityId,
                 BlockPos.containing(hitLocation),
@@ -1330,6 +1726,10 @@ public final class ClientRtsController {
                 (byte) toolSlot));
         this.activeMinePos = null;
         this.activeMineFace = -1;
+    }
+
+    private void beginRemoteMenuOpenGrace() {
+        this.pendingRemoteMenuOpenTicks = Math.max(this.pendingRemoteMenuOpenTicks, REMOTE_MENU_OPEN_GRACE_TICKS);
     }
 
     private void clearSelectedItemOnly() {
@@ -1454,7 +1854,7 @@ public final class ClientRtsController {
             targetZ = this.anchorZ + (adz * scale);
         }
 
-        targetY = Mth.clamp(targetY, this.anchorY + 4.0D, this.anchorY + 80.0D);
+        targetY = Mth.clamp(targetY, this.anchorY + MIN_CAMERA_HEIGHT_OFFSET, this.anchorY + MAX_CAMERA_HEIGHT_OFFSET);
 
         Vec3 toCam = new Vec3(targetX - this.anchorX, targetY - this.anchorY, targetZ - this.anchorZ);
         double dist = toCam.length();
@@ -1467,6 +1867,8 @@ public final class ClientRtsController {
                 targetZ = this.anchorZ + n.z;
             }
         }
+
+        targetY = Mth.clamp(targetY, this.anchorY + MIN_CAMERA_HEIGHT_OFFSET, this.anchorY + MAX_CAMERA_HEIGHT_OFFSET);
 
         this.localX = targetX;
         this.localY = targetY;
@@ -1516,6 +1918,31 @@ public final class ClientRtsController {
     public record FunnelBufferEntry(ItemStack stack, String itemId, long count) {
     }
 
+    public record RecentEntry(
+            boolean fluid,
+            String id,
+            String label,
+            long amount,
+            long capacity,
+            byte kind,
+            ItemStack preview) {
+    }
+
+    public record CraftRecipeOption(
+            String recipeId,
+            int resultCount,
+            boolean craftable,
+            String summary,
+            String missingSummary) {
+    }
+
+    public record CraftFeedbackIngredient(
+            String itemId,
+            String label,
+            ItemStack preview,
+            int count) {
+    }
+
     public record CraftableEntry(
             ItemStack stack,
             String recipeId,
@@ -1524,7 +1951,8 @@ public final class ClientRtsController {
             boolean craftable,
             String missingSummary,
             String mod,
-            String name) {
+            String name,
+            List<CraftRecipeOption> recipeOptions) {
     }
 
     public enum BuildShape {
@@ -1534,6 +1962,34 @@ public final class ClientRtsController {
         WALL,
         CIRCLE,
         BOX
+    }
+
+    private static RecentEntry decodeRecentEntry(String idText, long amount, long capacity, byte kind) {
+        if (idText == null || idText.isBlank()) {
+            return null;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(idText);
+        if (id == null) {
+            return null;
+        }
+        boolean fluidKind = kind == S2CRtsStoragePagePayload.RECENT_FLUID_PLACED
+                || kind == S2CRtsStoragePagePayload.RECENT_FLUID_USED
+                || kind == S2CRtsStoragePagePayload.RECENT_FLUID_CRAFTED;
+        if (fluidKind) {
+            if (!BuiltInRegistries.FLUID.containsKey(id)) {
+                return null;
+            }
+            Fluid fluid = BuiltInRegistries.FLUID.get(id);
+            FluidStack fluidStack = new FluidStack(fluid, FluidType.BUCKET_VOLUME);
+            ItemStack preview = FluidUtil.getFilledBucket(fluidStack);
+            String label = fluid.getFluidType().getDescription(fluidStack).getString();
+            return new RecentEntry(true, idText, label, Math.max(0L, amount), Math.max(0L, capacity), kind, preview);
+        }
+        if (!BuiltInRegistries.ITEM.containsKey(id)) {
+            return null;
+        }
+        ItemStack preview = new ItemStack(BuiltInRegistries.ITEM.get(id));
+        return new RecentEntry(false, idText, preview.getHoverName().getString(), Math.max(0L, amount), 0L, kind, preview);
     }
 }
 

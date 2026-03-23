@@ -47,6 +47,31 @@ public final class RtsPayloadRegistrar {
                 RtsNetworkHandlers::handleLinkStorage);
 
         registrar.playToServer(
+                C2SRtsRotateBlockPayload.TYPE,
+                C2SRtsRotateBlockPayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleRotateBlock);
+
+        registrar.playToServer(
+                C2SRtsStoreHotbarSlotPayload.TYPE,
+                C2SRtsStoreHotbarSlotPayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleStoreHotbarSlot);
+
+        registrar.playToServer(
+                C2SRtsSetQuickSlotPayload.TYPE,
+                C2SRtsSetQuickSlotPayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleSetQuickSlot);
+
+        registrar.playToServer(
+                C2SRtsSetGuiBindingPayload.TYPE,
+                C2SRtsSetGuiBindingPayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleSetGuiBinding);
+
+        registrar.playToServer(
+                C2SRtsOpenGuiBindingPayload.TYPE,
+                C2SRtsOpenGuiBindingPayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleOpenGuiBinding);
+
+        registrar.playToServer(
                 C2SRtsRequestStoragePagePayload.TYPE,
                 C2SRtsRequestStoragePagePayload.STREAM_CODEC,
                 RtsNetworkHandlers::handleRequestStoragePage);
@@ -100,6 +125,11 @@ public final class RtsPayloadRegistrar {
                 C2SRtsLinkedPickupPayload.TYPE,
                 C2SRtsLinkedPickupPayload.STREAM_CODEC,
                 RtsNetworkHandlers::handleLinkedPickup);
+
+        registrar.playToServer(
+                C2SRtsLinkedQuickMovePayload.TYPE,
+                C2SRtsLinkedQuickMovePayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleLinkedQuickMove);
 
         registrar.playToServer(
                 C2SRtsReturnCarriedPayload.TYPE,

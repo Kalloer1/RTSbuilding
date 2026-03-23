@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ContainerLevelAccess;
@@ -19,6 +20,12 @@ public final class RtsCraftTerminalMenu extends CraftingMenu {
     }
 
     @Override
+    public void slotsChanged(Container inventory) {
+        super.slotsChanged(inventory);
+        this.broadcastChanges();
+    }
+
+    @Override
     public void clicked(int slotId, int button, ClickType clickType, Player player) {
         ItemStack[] blueprint = null;
         if (slotId == 0 && player instanceof ServerPlayer) {
@@ -28,6 +35,10 @@ public final class RtsCraftTerminalMenu extends CraftingMenu {
         super.clicked(slotId, button, clickType, player);
 
         if (slotId == 0 && player instanceof ServerPlayer serverPlayer && blueprint != null) {
+            ItemStack carried = serverPlayer.containerMenu.getCarried();
+            if (!carried.isEmpty()) {
+                RtsStorageManager.recordCraftedOutput(serverPlayer, carried.copy());
+            }
             RtsStorageManager.refillCraftGridFromLinked(serverPlayer, this, blueprint);
         }
     }

@@ -25,12 +25,27 @@ public record S2CRtsStoragePagePayload(
         List<String> categories,
         List<String> itemIds,
         List<Long> counts,
+        List<String> totalItemIds,
+        List<Long> totalItemCounts,
         List<String> fluidIds,
         List<Long> fluidAmounts,
         List<Long> fluidCapacities,
+        List<String> recentIds,
+        List<Long> recentAmounts,
+        List<Long> recentCapacities,
+        List<Byte> recentKinds,
+        List<String> quickSlotItemIds,
+        List<String> guiBindingLabels,
         boolean funnelEnabled,
         List<String> funnelBufferItemIds,
         List<Long> funnelBufferCounts) implements CustomPacketPayload {
+    public static final byte RECENT_ITEM_PLACED = 0;
+    public static final byte RECENT_ITEM_USED = 1;
+    public static final byte RECENT_ITEM_CRAFTED = 2;
+    public static final byte RECENT_FLUID_PLACED = 3;
+    public static final byte RECENT_FLUID_USED = 4;
+    public static final byte RECENT_FLUID_CRAFTED = 5;
+
     public static final Type<S2CRtsStoragePagePayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(RtsbuildingMod.MODID, "s2c_rts_storage_page"));
 
@@ -63,6 +78,13 @@ public record S2CRtsStoragePagePayload(
                     buf.writeVarLong(payload.counts().get(i));
                 }
 
+                int totalItemSize = Math.min(payload.totalItemIds().size(), payload.totalItemCounts().size());
+                buf.writeVarInt(totalItemSize);
+                for (int i = 0; i < totalItemSize; i++) {
+                    buf.writeUtf(payload.totalItemIds().get(i), 128);
+                    buf.writeVarLong(payload.totalItemCounts().get(i));
+                }
+
                 int fluidSize = Math.min(payload.fluidIds().size(),
                         Math.min(payload.fluidAmounts().size(), payload.fluidCapacities().size()));
                 buf.writeVarInt(fluidSize);
@@ -70,6 +92,29 @@ public record S2CRtsStoragePagePayload(
                     buf.writeUtf(payload.fluidIds().get(i), 128);
                     buf.writeVarLong(payload.fluidAmounts().get(i));
                     buf.writeVarLong(payload.fluidCapacities().get(i));
+                }
+
+                int recentSize = Math.min(
+                        payload.recentIds().size(),
+                        Math.min(
+                                payload.recentAmounts().size(),
+                                Math.min(payload.recentCapacities().size(), payload.recentKinds().size())));
+                buf.writeVarInt(recentSize);
+                for (int i = 0; i < recentSize; i++) {
+                    buf.writeUtf(payload.recentIds().get(i), 128);
+                    buf.writeVarLong(payload.recentAmounts().get(i));
+                    buf.writeVarLong(payload.recentCapacities().get(i));
+                    buf.writeByte(payload.recentKinds().get(i));
+                }
+
+                buf.writeVarInt(payload.quickSlotItemIds().size());
+                for (String quickSlotItemId : payload.quickSlotItemIds()) {
+                    buf.writeUtf(quickSlotItemId == null ? "" : quickSlotItemId, 128);
+                }
+
+                buf.writeVarInt(payload.guiBindingLabels().size());
+                for (String guiBindingLabel : payload.guiBindingLabels()) {
+                    buf.writeUtf(guiBindingLabel == null ? "" : guiBindingLabel, 128);
                 }
 
                 buf.writeBoolean(payload.funnelEnabled());
@@ -108,6 +153,13 @@ public record S2CRtsStoragePagePayload(
                     itemIds.add(buf.readUtf(128));
                     counts.add(buf.readVarLong());
                 }
+                int totalItemSize = buf.readVarInt();
+                List<String> totalItemIds = new ArrayList<>(totalItemSize);
+                List<Long> totalItemCounts = new ArrayList<>(totalItemSize);
+                for (int i = 0; i < totalItemSize; i++) {
+                    totalItemIds.add(buf.readUtf(128));
+                    totalItemCounts.add(buf.readVarLong());
+                }
                 int fluidSize = buf.readVarInt();
                 List<String> fluidIds = new ArrayList<>(fluidSize);
                 List<Long> fluidAmounts = new ArrayList<>(fluidSize);
@@ -116,6 +168,27 @@ public record S2CRtsStoragePagePayload(
                     fluidIds.add(buf.readUtf(128));
                     fluidAmounts.add(buf.readVarLong());
                     fluidCapacities.add(buf.readVarLong());
+                }
+                int recentSize = buf.readVarInt();
+                List<String> recentIds = new ArrayList<>(recentSize);
+                List<Long> recentAmounts = new ArrayList<>(recentSize);
+                List<Long> recentCapacities = new ArrayList<>(recentSize);
+                List<Byte> recentKinds = new ArrayList<>(recentSize);
+                for (int i = 0; i < recentSize; i++) {
+                    recentIds.add(buf.readUtf(128));
+                    recentAmounts.add(buf.readVarLong());
+                    recentCapacities.add(buf.readVarLong());
+                    recentKinds.add(buf.readByte());
+                }
+                int quickSlotSize = buf.readVarInt();
+                List<String> quickSlotItemIds = new ArrayList<>(quickSlotSize);
+                for (int i = 0; i < quickSlotSize; i++) {
+                    quickSlotItemIds.add(buf.readUtf(128));
+                }
+                int guiBindingSize = buf.readVarInt();
+                List<String> guiBindingLabels = new ArrayList<>(guiBindingSize);
+                for (int i = 0; i < guiBindingSize; i++) {
+                    guiBindingLabels.add(buf.readUtf(128));
                 }
                 boolean funnelEnabled = buf.readBoolean();
                 int funnelBufferSize = buf.readVarInt();
@@ -140,9 +213,17 @@ public record S2CRtsStoragePagePayload(
                         categories,
                         itemIds,
                         counts,
+                        totalItemIds,
+                        totalItemCounts,
                         fluidIds,
                         fluidAmounts,
                         fluidCapacities,
+                        recentIds,
+                        recentAmounts,
+                        recentCapacities,
+                        recentKinds,
+                        quickSlotItemIds,
+                        guiBindingLabels,
                         funnelEnabled,
                         funnelBufferItemIds,
                         funnelBufferCounts);
