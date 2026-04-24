@@ -1182,7 +1182,9 @@ public final class RtsClientInputGate {
             return false;
         }
 
-        PacketDistributor.sendToServer(new C2SRtsLinkedQuickMovePayload(entry.itemId()));
+        ItemStack request = entry.stack().copy();
+        request.setCount(1);
+        PacketDistributor.sendToServer(new C2SRtsLinkedQuickMovePayload(request));
         ClientRtsController.get().selectStorageEntry(idx);
         pendingOverlayCarriedItemId = "";
         return true;
@@ -1237,11 +1239,7 @@ public final class RtsClientInputGate {
 
     private static void drawSlotCountOverlay(GuiGraphics g, net.minecraft.client.gui.Font font, int slotX, int slotY,
             int slotSize, String countText, int color) {
-        g.pose().pushPose();
-        g.pose().translate(0.0F, 0.0F, 300.0F);
-        g.fill(slotX + 1, slotY + slotSize - 8, slotX + slotSize - 1, slotY + slotSize - 1, 0xB0000000);
-        g.drawString(font, countText, slotX + 2, slotY + slotSize - 7, color, true);
-        g.pose().popPose();
+        RtsClientUiUtil.drawSlotCountOverlay(g, font, slotX, slotY, slotSize, countText, color);
     }
 
     private static void applyLocalCarriedPreview(ItemStack pickedPrototype, int requested) {
@@ -1325,7 +1323,9 @@ public final class RtsClientInputGate {
         }
 
         applyLocalCarriedPreview(entry.stack(), wanted);
-        PacketDistributor.sendToServer(new C2SRtsLinkedPickupPayload(entry.itemId(), wanted));
+        ItemStack request = entry.stack().copy();
+        request.setCount(1);
+        PacketDistributor.sendToServer(new C2SRtsLinkedPickupPayload(request, wanted));
         ClientRtsController.get().selectStorageEntry(index);
         pendingOverlayCarriedItemId = entry.itemId();
         return true;

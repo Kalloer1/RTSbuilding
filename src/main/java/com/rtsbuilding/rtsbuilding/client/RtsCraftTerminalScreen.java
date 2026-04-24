@@ -347,7 +347,9 @@ public final class RtsCraftTerminalScreen extends AbstractContainerScreen<Crafti
         }
 
         applyLocalCarriedPreview(entry.stack(), wanted);
-        PacketDistributor.sendToServer(new C2SRtsLinkedPickupPayload(entry.itemId(), wanted));
+        ItemStack request = entry.stack().copy();
+        request.setCount(1);
+        PacketDistributor.sendToServer(new C2SRtsLinkedPickupPayload(request, wanted));
         return true;
     }
 
@@ -533,11 +535,7 @@ public final class RtsCraftTerminalScreen extends AbstractContainerScreen<Crafti
     }
 
     private void drawCountOverlay(GuiGraphics guiGraphics, int slotX, int slotY, String countText) {
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(0.0F, 0.0F, 300.0F);
-        guiGraphics.fill(slotX + 1, slotY + LINK_SLOT_SIZE - 8, slotX + LINK_SLOT_SIZE - 1, slotY + LINK_SLOT_SIZE - 1, 0xB0000000);
-        guiGraphics.drawString(this.font, countText, slotX + 2, slotY + LINK_SLOT_SIZE - 7, 0xFFE8F4FF, true);
-        guiGraphics.pose().popPose();
+        RtsClientUiUtil.drawSlotCountOverlay(guiGraphics, this.font, slotX, slotY, LINK_SLOT_SIZE, countText, 0xFFE8F4FF);
     }
 
     private void drawMiniButton(GuiGraphics guiGraphics, int x, int y, String label) {

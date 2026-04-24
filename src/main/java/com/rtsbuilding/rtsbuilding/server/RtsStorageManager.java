@@ -32,7 +32,6 @@ import com.rtsbuilding.rtsbuilding.network.RtsStorageSort;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsCraftablesPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsCraftFeedbackPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsMineProgressPayload;
-import com.rtsbuilding.rtsbuilding.network.S2CRtsRemoteMenuHintPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsStoragePagePayload;
 
 import net.minecraft.core.BlockPos;
@@ -111,6 +110,7 @@ public final class RtsStorageManager {
     private static final int FUNNEL_TICK_INTERVAL = 2;
     private static final int SHIFT_IMPORT_MAX_CRAFT_ITERATIONS = 64;
     private static final int CRAFTABLE_BATCH_SIZE = 12;
+    private static final int ULTIMINE_MAX_BLOCKS = 256;
     private static final int RECENT_ENTRY_LIMIT = 24;
     private static final long QUEST_DETECT_COOLDOWN_TICKS = 60L;
     private static final int PLAYER_HOTBAR_SLOT_COUNT = 9;
@@ -163,7 +163,7 @@ public final class RtsStorageManager {
         Session session = getOrCreateSession(player);
         stopActiveMining(player, session);
         disableFunnelAndFlushBuffer(player, session);
-        clearRemoteMenuValidation(session);
+        clearRemoteMenuValidation(player, session);
         saveSessionToPlayerNbt(player, session);
     }
 
@@ -171,18 +171,24 @@ public final class RtsStorageManager {
         Session session = SESSIONS.get(player.getUUID());
         if (session != null) {
             disableFunnelAndFlushBuffer(player, session);
-            clearRemoteMenuValidation(session);
+            clearRemoteMenuValidation(player, session);
             saveSessionToPlayerNbt(player, session);
         }
         SESSIONS.remove(player.getUUID());
     }
 
     public static void onPlayerTickPre(ServerPlayer player) {
-        // 1.0.6 baseline: remote GUI opens do not spoof the player position.
+        // RTS no longer spoofs player position for Sophisticated Storage menu validation.
     }
 
     public static void onPlayerTickPost(ServerPlayer player) {
-        // 1.0.6 baseline: remote GUI opens do not spoof the player position.
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) {
+            return;
+        }
+        if (!RtsSophisticatedStorageCompat.isSupportedRemoteMenu(player.containerMenu)) {
+            clearRemoteMenuValidation(player, session);
+        }
     }
 
     private static Session getOrCreateSession(ServerPlayer player) {
@@ -624,7 +630,7 @@ public final class RtsStorageManager {
         if (label.isBlank()) {
             label = resolveDisplayName(player, pos);
         }
-        String iconItemId = resolveGuiBindingIconItemId(level, pos, itemIdHint);
+        String iconItemId = resolveGuiBindingIconItemId(level, pos, face, itemIdHint, label);
 
         session.guiBindings[slot] = new GuiBinding(
                 pos.immutable(),
@@ -765,6 +771,7 @@ public final class RtsStorageManager {
     public static void requestPage(ServerPlayer player, int page, String search, String category, RtsStorageSort sort,
             boolean ascending) {
         Session session = getOrCreateSession(player);
+        refreshMissingGuiBindingIcons(player, session);
         session.search = search == null ? "" : search;
         session.category = normalizeCategory(category);
         session.sort = sort;
@@ -777,6 +784,7 @@ public final class RtsStorageManager {
         List<Long> linkedPackedPositions = toPackedPositions(session.linkedPositions);
 
         Map<String, Long> counts = new HashMap<>();
+        List<Entry> exactEntries = new ArrayList<>();
         Map<String, Long> namespaceTotals = new HashMap<>();
         for (LinkedHandler linked : activeHandlers) {
             IItemHandler handler = linked.handler();
@@ -791,6 +799,7 @@ public final class RtsStorageManager {
                 }
                 long reportedCount = getHandlerReportedCount(handler, i, stack);
                 counts.merge(id.toString(), reportedCount, Long::sum);
+                mergeExactEntry(exactEntries, stack, reportedCount);
                 namespaceTotals.merge(id.getNamespace(), reportedCount, Long::sum);
             }
         }
@@ -798,6 +807,7 @@ public final class RtsStorageManager {
                 && !(player.containerMenu instanceof RtsCraftTerminalMenu);
         if (includePlayerMainInventory) {
             accumulatePlayerMainInventoryCounts(player, counts, namespaceTotals);
+            accumulatePlayerMainInventoryEntries(player, exactEntries);
         }
 
         Map<String, Long> fluidAmounts = new HashMap<>();
@@ -881,26 +891,24 @@ public final class RtsStorageManager {
 
         String query = session.search.toLowerCase(Locale.ROOT).trim();
         List<Entry> entries = new ArrayList<>();
-        for (var e : counts.entrySet()) {
-            String id = e.getKey();
+        for (Entry exactEntry : exactEntries) {
+            String id = exactEntry.itemId();
             ResourceLocation rl = ResourceLocation.tryParse(id);
-            if (!matchesSearchQuery(rl, id, query)) {
+            if (!matchesSearchQuery(rl, id, exactEntry.label(), query)) {
                 continue;
             }
-            String namespace = rl == null ? "unknown" : rl.getNamespace();
-            String path = rl == null ? id : rl.getPath();
             Set<String> tabs = itemTabKeys.getOrDefault(id, Set.of());
-            if (!selectedCategory.matches(namespace, tabs)) {
+            if (!selectedCategory.matches(exactEntry.namespace(), tabs)) {
                 continue;
             }
-            entries.add(new Entry(id, namespace, path, e.getValue()));
+            entries.add(exactEntry);
         }
 
         List<FluidEntry> fluidEntries = new ArrayList<>();
         for (var e : fluidAmounts.entrySet()) {
             String id = e.getKey();
             ResourceLocation rl = ResourceLocation.tryParse(id);
-            if (!matchesSearchQuery(rl, id, query)) {
+            if (!matchesSearchQuery(rl, id, null, query)) {
                 continue;
             }
             String namespace = rl == null ? "unknown" : rl.getNamespace();
@@ -914,9 +922,15 @@ public final class RtsStorageManager {
         }
 
         Comparator<Entry> comparator = switch (sort) {
-            case MOD -> Comparator.comparing(Entry::namespace).thenComparing(Entry::path);
-            case NAME -> Comparator.comparing(Entry::path).thenComparing(Entry::namespace);
-            case QUANTITY -> Comparator.comparingLong(Entry::count).thenComparing(Entry::path);
+            case MOD -> Comparator.comparing(Entry::namespace, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(Entry::label, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(Entry::path, String.CASE_INSENSITIVE_ORDER);
+            case NAME -> Comparator.comparing(Entry::label, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(Entry::namespace, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(Entry::path, String.CASE_INSENSITIVE_ORDER);
+            case QUANTITY -> Comparator.comparingLong(Entry::count)
+                    .thenComparing(Entry::label, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(Entry::path, String.CASE_INSENSITIVE_ORDER);
         };
         if (sort == RtsStorageSort.QUANTITY && !ascending) {
             comparator = comparator.reversed();
@@ -941,11 +955,11 @@ public final class RtsStorageManager {
         int from = safePage * PAGE_SIZE;
         int to = Math.min(from + PAGE_SIZE, totalEntries);
 
-        List<String> itemIds = new ArrayList<>();
+        List<ItemStack> itemStacks = new ArrayList<>();
         List<Long> itemCounts = new ArrayList<>();
         for (int i = from; i < to; i++) {
             Entry e = entries.get(i);
-            itemIds.add(e.itemId());
+            itemStacks.add(e.stack().copy());
             itemCounts.add(e.count());
         }
 
@@ -1009,7 +1023,7 @@ public final class RtsStorageManager {
                 session.ascending,
                 session.autoStoreMinedDrops,
                 categories,
-                itemIds,
+                itemStacks,
                 itemCounts,
                 totalItemIds,
                 totalItemCounts,
@@ -1604,7 +1618,7 @@ public final class RtsStorageManager {
         return encodeModCategory(value);
     }
 
-    private static boolean matchesSearchQuery(ResourceLocation id, String rawId, String query) {
+    private static boolean matchesSearchQuery(ResourceLocation id, String rawId, String label, String query) {
         if (query == null || query.isEmpty()) {
             return true;
         }
@@ -1617,7 +1631,11 @@ public final class RtsStorageManager {
             return namespace.contains(modQuery);
         }
         String normalizedId = rawId == null ? "" : rawId.toLowerCase(Locale.ROOT);
-        return normalizedId.contains(query);
+        if (normalizedId.contains(query)) {
+            return true;
+        }
+        String normalizedLabel = label == null ? "" : label.toLowerCase(Locale.ROOT);
+        return normalizedLabel.contains(query);
     }
 
     private static int compareNamespace(String a, String b) {
@@ -2738,7 +2756,7 @@ public final class RtsStorageManager {
         return out;
     }
 
-    public static void pickupLinkedToCarried(ServerPlayer player, String itemId, int amount) {
+    public static void pickupLinkedToCarried(ServerPlayer player, ItemStack prototype, int amount) {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null) {
             return;
@@ -2747,7 +2765,7 @@ public final class RtsStorageManager {
         if (session.linkedPositions.isEmpty()) {
             return;
         }
-        if (itemId == null || itemId.isBlank() || amount <= 0) {
+        if (prototype == null || prototype.isEmpty() || amount <= 0) {
             return;
         }
 
@@ -2760,17 +2778,11 @@ public final class RtsStorageManager {
             handlers.add(linked.handler());
         }
 
-        ResourceLocation id = ResourceLocation.tryParse(itemId);
-        if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
-            return;
-        }
-        Item item = BuiltInRegistries.ITEM.get(id);
-
         ItemStack carried = player.containerMenu.getCarried();
-        int maxStack = item.getDefaultMaxStackSize();
+        int maxStack = prototype.getMaxStackSize();
         int wanted = Math.min(amount, maxStack);
         if (!carried.isEmpty()) {
-            if (!ItemStack.isSameItemSameComponents(carried, new ItemStack(item))) {
+            if (!ItemStack.isSameItemSameComponents(carried, prototype)) {
                 return;
             }
             wanted = Math.min(wanted, carried.getMaxStackSize() - carried.getCount());
@@ -2779,7 +2791,7 @@ public final class RtsStorageManager {
             }
         }
 
-        ItemStack extracted = extractMatchingFromNetwork(handlers, player, item, wanted);
+        ItemStack extracted = extractMatchingFromNetwork(handlers, player, prototype.getItem(), prototype, wanted);
         if (extracted.isEmpty()) {
             return;
         }
@@ -2794,13 +2806,13 @@ public final class RtsStorageManager {
         requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
     }
 
-    public static void quickMoveLinkedItem(ServerPlayer player, String itemId) {
+    public static void quickMoveLinkedItem(ServerPlayer player, ItemStack prototype) {
         Session session = SESSIONS.get(player.getUUID());
         if (session == null) {
             return;
         }
         sanitizeSessionDimension(player, session);
-        if (session.linkedPositions.isEmpty() || itemId == null || itemId.isBlank()) {
+        if (session.linkedPositions.isEmpty() || prototype == null || prototype.isEmpty()) {
             return;
         }
 
@@ -2813,13 +2825,8 @@ public final class RtsStorageManager {
             handlers.add(linked.handler());
         }
 
-        ResourceLocation id = ResourceLocation.tryParse(itemId);
-        if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
-            return;
-        }
-        Item item = BuiltInRegistries.ITEM.get(id);
-        int maxStack = Math.max(1, item.getDefaultMaxStackSize());
-        ItemStack extracted = extractMatchingFromLinked(handlers, item, maxStack);
+        int maxStack = Math.max(1, prototype.getMaxStackSize());
+        ItemStack extracted = extractMatchingFromLinked(handlers, prototype.getItem(), prototype, maxStack);
         if (extracted.isEmpty()) {
             return;
         }
@@ -2934,6 +2941,83 @@ public final class RtsStorageManager {
         stopActiveMining(player, session);
     }
 
+    public static void startUltimine(ServerPlayer player, BlockPos pos, Direction face, byte toolSlot, int requestedLimit) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) {
+            return;
+        }
+        sanitizeSessionDimension(player, session);
+
+        int slot = clampHotbarSlot(toolSlot);
+        int limit = Math.max(1, Math.min(ULTIMINE_MAX_BLOCKS, requestedLimit));
+        Deque<BlockPos> targets = collectUltimineTargets(player, pos, slot, limit);
+        if (targets.isEmpty()) {
+            stopActiveMining(player, session);
+            return;
+        }
+
+        stopActiveMining(player, session);
+        session.miningQueue.clear();
+        session.miningQueue.addAll(targets);
+        session.miningFace = face == null ? Direction.DOWN : face;
+        session.miningToolSlot = slot;
+        startNextQueuedMining(player, session);
+    }
+
+    private static Deque<BlockPos> collectUltimineTargets(ServerPlayer player, BlockPos seed, int toolSlot, int limit) {
+        Deque<BlockPos> result = new ArrayDeque<>();
+        if (!canAccessWorldTarget(player, seed)) {
+            return result;
+        }
+
+        ServerLevel level = player.serverLevel();
+        BlockState seedState = level.getBlockState(seed);
+        if (!isUltimineCandidate(player, seed, seedState, seedState, toolSlot)) {
+            return result;
+        }
+
+        Set<BlockPos> visited = new HashSet<>();
+        Deque<BlockPos> frontier = new ArrayDeque<>();
+        frontier.add(seed.immutable());
+        visited.add(seed.immutable());
+
+        while (!frontier.isEmpty() && result.size() < limit) {
+            BlockPos current = frontier.removeFirst();
+            BlockState currentState = level.getBlockState(current);
+            if (!isUltimineCandidate(player, current, currentState, seedState, toolSlot)) {
+                continue;
+            }
+
+            result.add(current.immutable());
+            for (Direction direction : Direction.values()) {
+                BlockPos next = current.relative(direction);
+                if (visited.size() >= limit * 8) {
+                    break;
+                }
+                BlockPos immutableNext = next.immutable();
+                if (visited.add(immutableNext)) {
+                    frontier.addLast(immutableNext);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static boolean isUltimineCandidate(
+            ServerPlayer player,
+            BlockPos pos,
+            BlockState state,
+            BlockState seedState,
+            int toolSlot) {
+        if (state.isAir() || state.getBlock() != seedState.getBlock() || state.getDestroySpeed(player.serverLevel(), pos) < 0.0F) {
+            return false;
+        }
+        if (!canAccessWorldTarget(player, pos)) {
+            return false;
+        }
+        return computeRemoteDestroyStep(player, state, pos, toolSlot) > 0.0F;
+    }
+
     private static void beginRemoteMining(ServerPlayer player, Session session, BlockPos pos, Direction face, int toolSlot) {
         if (session.miningPos != null && !session.miningPos.equals(pos)) {
             player.serverLevel().destroyBlockProgress(player.getId(), session.miningPos, -1);
@@ -2944,6 +3028,22 @@ public final class RtsStorageManager {
         session.miningToolSlot = clampHotbarSlot(toolSlot);
         session.miningProgress = 0.0F;
         session.miningStage = -1;
+    }
+
+    private static void startNextQueuedMining(ServerPlayer player, Session session) {
+        while (!session.miningQueue.isEmpty()) {
+            BlockPos next = session.miningQueue.removeFirst();
+            if (!canAccessWorldTarget(player, next)) {
+                continue;
+            }
+            BlockState state = player.serverLevel().getBlockState(next);
+            if (state.isAir() || state.getDestroySpeed(player.serverLevel(), next) < 0.0F) {
+                continue;
+            }
+            beginRemoteMining(player, session, next, session.miningFace, session.miningToolSlot);
+            return;
+        }
+        resetMiningState(session);
     }
 
     private static void tickActiveMining(ServerPlayer player, Session session) {
@@ -2983,6 +3083,8 @@ public final class RtsStorageManager {
         boolean broken = destroyMinedBlock(player, pos, session.miningToolSlot);
         level.destroyBlockProgress(player.getId(), pos, -1);
         sendMineProgress(player, pos, -1);
+        Direction queuedFace = session.miningFace;
+        int queuedToolSlot = session.miningToolSlot;
         resetMiningState(session);
 
         if (broken && session.autoStoreMinedDrops) {
@@ -2992,6 +3094,12 @@ public final class RtsStorageManager {
                 runQuestDetect(player, session, false);
             }
         }
+
+        if (broken && !session.miningQueue.isEmpty()) {
+            session.miningFace = queuedFace;
+            session.miningToolSlot = queuedToolSlot;
+            startNextQueuedMining(player, session);
+        }
     }
 
     private static void stopActiveMining(ServerPlayer player, Session session) {
@@ -2999,6 +3107,7 @@ public final class RtsStorageManager {
             player.serverLevel().destroyBlockProgress(player.getId(), session.miningPos, -1);
             sendMineProgress(player, session.miningPos, -1);
         }
+        session.miningQueue.clear();
         resetMiningState(session);
     }
 
@@ -3102,7 +3211,7 @@ public final class RtsStorageManager {
         return level.getBlockEntity(pos) instanceof MenuProvider menuProvider ? menuProvider : null;
     }
 
-    private static String resolveGuiBindingIconItemId(ServerLevel level, BlockPos pos, String itemIdHint) {
+    private static String resolveGuiBindingIconItemId(ServerLevel level, BlockPos pos, Direction face, String itemIdHint, String label) {
         if (level == null || pos == null || !level.hasChunkAt(pos)) {
             return "";
         }
@@ -3117,10 +3226,57 @@ public final class RtsStorageManager {
         ItemStack cloneStack = state.getBlock().getCloneItemStack(level, pos, state);
         Item item = cloneStack.isEmpty() ? state.getBlock().asItem() : cloneStack.getItem();
         if (item == null || item == Items.AIR) {
-            return "";
+            return RtsAe2Compat.resolveGuiBindingIconItemId(level, pos, face, label);
         }
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
-        return id == null ? "" : id.toString();
+        if (id != null) {
+            return id.toString();
+        }
+        return RtsAe2Compat.resolveGuiBindingIconItemId(level, pos, face, label);
+    }
+
+    private static void refreshMissingGuiBindingIcons(ServerPlayer player, Session session) {
+        if (player == null || session == null || player.server == null) {
+            return;
+        }
+
+        boolean changed = false;
+        for (int i = 0; i < session.guiBindings.length; i++) {
+            GuiBinding binding = session.guiBindings[i];
+            if (binding == null || binding.pos() == null || binding.dimension() == null) {
+                continue;
+            }
+            if (binding.itemId() != null && !binding.itemId().isBlank()) {
+                continue;
+            }
+
+            ServerLevel bindingLevel = player.server.getLevel(binding.dimension());
+            if (bindingLevel == null || !bindingLevel.hasChunkAt(binding.pos())) {
+                continue;
+            }
+
+            String resolvedItemId = resolveGuiBindingIconItemId(
+                    bindingLevel,
+                    binding.pos(),
+                    binding.face(),
+                    "",
+                    binding.label());
+            if (resolvedItemId.isBlank()) {
+                continue;
+            }
+
+            session.guiBindings[i] = new GuiBinding(
+                    binding.pos(),
+                    binding.dimension(),
+                    binding.label(),
+                    resolvedItemId,
+                    binding.face());
+            changed = true;
+        }
+
+        if (changed) {
+            saveSessionToPlayerNbt(player, session);
+        }
     }
 
     private static boolean storeFluidFromLinkedItem(ServerPlayer player, Session session, List<IItemHandler> itemHandlers,
@@ -3539,6 +3695,54 @@ public final class RtsStorageManager {
         }
     }
 
+    private static void accumulatePlayerMainInventoryEntries(ServerPlayer player, List<Entry> exactEntries) {
+        if (player == null || exactEntries == null) {
+            return;
+        }
+        int start = getPlayerMainInventoryStart(player);
+        int end = getPlayerMainInventoryEndExclusive(player);
+        for (int slot = start; slot < end; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            mergeExactEntry(exactEntries, stack, stack.getCount());
+        }
+    }
+
+    private static void mergeExactEntry(List<Entry> entries, ItemStack stack, long count) {
+        if (entries == null || stack == null || stack.isEmpty() || count <= 0L) {
+            return;
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        if (id == null) {
+            return;
+        }
+        ItemStack prototype = stack.copy();
+        prototype.setCount(1);
+        for (int i = 0; i < entries.size(); i++) {
+            Entry existing = entries.get(i);
+            if (!ItemStack.isSameItemSameComponents(existing.stack(), prototype)) {
+                continue;
+            }
+            entries.set(i, new Entry(
+                    existing.stack(),
+                    existing.itemId(),
+                    existing.namespace(),
+                    existing.path(),
+                    existing.label(),
+                    existing.count() + count));
+            return;
+        }
+        entries.add(new Entry(
+                prototype,
+                id.toString(),
+                id.getNamespace(),
+                id.getPath(),
+                prototype.getHoverName().getString(),
+                count));
+    }
+
     private static ItemStack extractOne(IItemHandler handler, Item targetItem) {
         for (int slot = 0; slot < handler.getSlots(); slot++) {
             ItemStack stack = handler.getStackInSlot(slot);
@@ -3554,6 +3758,10 @@ public final class RtsStorageManager {
     }
 
     private static ItemStack extractMatching(IItemHandler handler, Item targetItem, int limit) {
+        return extractMatching(handler, targetItem, ItemStack.EMPTY, limit);
+    }
+
+    private static ItemStack extractMatching(IItemHandler handler, Item targetItem, ItemStack preferred, int limit) {
         int remaining = Math.max(0, limit);
         if (remaining <= 0) {
             return ItemStack.EMPTY;
@@ -3565,14 +3773,31 @@ public final class RtsStorageManager {
             if (stack.isEmpty() || stack.getItem() != targetItem) {
                 continue;
             }
+            ItemStack expected = out.isEmpty() ? preferred : out;
+            if (!expected.isEmpty() && !ItemStack.isSameItemSameComponents(stack, expected)) {
+                continue;
+            }
             ItemStack extracted = handler.extractItem(slot, remaining, false);
             if (extracted.isEmpty()) {
                 continue;
             }
             if (out.isEmpty()) {
+                if (!preferred.isEmpty() && !ItemStack.isSameItemSameComponents(extracted, preferred)) {
+                    ItemStack remain = insertToHandlerPreferExisting(handler, extracted);
+                    if (!remain.isEmpty()) {
+                        return ItemStack.EMPTY;
+                    }
+                    continue;
+                }
                 out = extracted;
             } else if (ItemStack.isSameItemSameComponents(out, extracted)) {
                 out.grow(extracted.getCount());
+            } else {
+                ItemStack remain = insertToHandlerPreferExisting(handler, extracted);
+                if (!remain.isEmpty()) {
+                    return out;
+                }
+                continue;
             }
             remaining -= extracted.getCount();
         }
@@ -3759,13 +3984,17 @@ public final class RtsStorageManager {
     }
 
     private static ItemStack extractMatchingFromLinked(List<IItemHandler> handlers, Item targetItem, int limit) {
+        return extractMatchingFromLinked(handlers, targetItem, ItemStack.EMPTY, limit);
+    }
+
+    private static ItemStack extractMatchingFromLinked(List<IItemHandler> handlers, Item targetItem, ItemStack preferred, int limit) {
         int remaining = Math.max(0, limit);
         ItemStack out = ItemStack.EMPTY;
         for (IItemHandler handler : handlers) {
             if (remaining <= 0) {
                 break;
             }
-            ItemStack part = extractMatching(handler, targetItem, remaining);
+            ItemStack part = extractMatching(handler, targetItem, out.isEmpty() ? preferred : out, remaining);
             if (part.isEmpty()) {
                 continue;
             }
@@ -3780,6 +4009,11 @@ public final class RtsStorageManager {
     }
 
     private static ItemStack extractMatchingFromPlayerMainInventory(ServerPlayer player, Item targetItem, int limit) {
+        return extractMatchingFromPlayerMainInventory(player, targetItem, ItemStack.EMPTY, limit);
+    }
+
+    private static ItemStack extractMatchingFromPlayerMainInventory(ServerPlayer player, Item targetItem, ItemStack preferred,
+            int limit) {
         if (player == null || targetItem == null) {
             return ItemStack.EMPTY;
         }
@@ -3796,6 +4030,10 @@ public final class RtsStorageManager {
             if (current.isEmpty() || current.getItem() != targetItem) {
                 continue;
             }
+            ItemStack expected = out.isEmpty() ? preferred : out;
+            if (!expected.isEmpty() && !ItemStack.isSameItemSameComponents(current, expected)) {
+                continue;
+            }
             int take = Math.min(remaining, current.getCount());
             ItemStack extracted = current.split(take);
             if (current.isEmpty()) {
@@ -3807,9 +4045,16 @@ public final class RtsStorageManager {
                 continue;
             }
             if (out.isEmpty()) {
+                if (!preferred.isEmpty() && !ItemStack.isSameItemSameComponents(extracted, preferred)) {
+                    player.getInventory().add(extracted);
+                    continue;
+                }
                 out = extracted;
             } else if (ItemStack.isSameItemSameComponents(out, extracted)) {
                 out.grow(extracted.getCount());
+            } else {
+                player.getInventory().add(extracted);
+                continue;
             }
             remaining -= extracted.getCount();
         }
@@ -3817,6 +4062,11 @@ public final class RtsStorageManager {
     }
 
     private static ItemStack extractMatchingFromPlayerHotbarForQuickDrop(ServerPlayer player, Item targetItem, int limit) {
+        return extractMatchingFromPlayerHotbarForQuickDrop(player, targetItem, ItemStack.EMPTY, limit);
+    }
+
+    private static ItemStack extractMatchingFromPlayerHotbarForQuickDrop(ServerPlayer player, Item targetItem, ItemStack preferred,
+            int limit) {
         if (player == null || targetItem == null) {
             return ItemStack.EMPTY;
         }
@@ -3827,7 +4077,7 @@ public final class RtsStorageManager {
 
         ItemStack out = ItemStack.EMPTY;
         int selected = clampHotbarSlot(player.getInventory().selected);
-        ItemStack selectedPart = extractMatchingFromPlayerSlot(player, targetItem, selected, remaining);
+        ItemStack selectedPart = extractMatchingFromPlayerSlot(player, targetItem, preferred, selected, remaining);
         out = mergeExtractedStacks(out, selectedPart);
         remaining -= selectedPart.getCount();
 
@@ -3835,14 +4085,15 @@ public final class RtsStorageManager {
             if (slot == selected) {
                 continue;
             }
-            ItemStack part = extractMatchingFromPlayerSlot(player, targetItem, slot, remaining);
+            ItemStack part = extractMatchingFromPlayerSlot(player, targetItem, out.isEmpty() ? preferred : out, slot, remaining);
             out = mergeExtractedStacks(out, part);
             remaining -= part.getCount();
         }
         return out;
     }
 
-    private static ItemStack extractMatchingFromPlayerSlot(ServerPlayer player, Item targetItem, int slot, int limit) {
+    private static ItemStack extractMatchingFromPlayerSlot(ServerPlayer player, Item targetItem, ItemStack preferred, int slot,
+            int limit) {
         if (player == null || targetItem == null || slot < 0 || limit <= 0) {
             return ItemStack.EMPTY;
         }
@@ -3852,6 +4103,9 @@ public final class RtsStorageManager {
 
         ItemStack current = player.getInventory().getItem(slot);
         if (current.isEmpty() || current.getItem() != targetItem) {
+            return ItemStack.EMPTY;
+        }
+        if (!preferred.isEmpty() && !ItemStack.isSameItemSameComponents(current, preferred)) {
             return ItemStack.EMPTY;
         }
         int take = Math.min(limit, current.getCount());
@@ -3936,18 +4190,23 @@ public final class RtsStorageManager {
 
     private static ItemStack extractMatchingFromNetwork(List<IItemHandler> handlers, ServerPlayer player, Item targetItem,
             int limit) {
+        return extractMatchingFromNetwork(handlers, player, targetItem, ItemStack.EMPTY, limit);
+    }
+
+    private static ItemStack extractMatchingFromNetwork(List<IItemHandler> handlers, ServerPlayer player, Item targetItem,
+            ItemStack preferred, int limit) {
         int remaining = Math.max(0, limit);
         if (remaining <= 0) {
             return ItemStack.EMPTY;
         }
 
-        ItemStack out = extractMatchingFromLinked(handlers, targetItem, remaining);
+        ItemStack out = extractMatchingFromLinked(handlers, targetItem, preferred, remaining);
         remaining -= out.getCount();
         if (remaining <= 0) {
             return out;
         }
 
-        ItemStack fromPlayer = extractMatchingFromPlayerMainInventory(player, targetItem, remaining);
+        ItemStack fromPlayer = extractMatchingFromPlayerMainInventory(player, targetItem, out.isEmpty() ? preferred : out, remaining);
         if (fromPlayer.isEmpty()) {
             return out;
         }
@@ -3973,14 +4232,14 @@ public final class RtsStorageManager {
             return out;
         }
 
-        ItemStack fromHotbar = extractMatchingFromPlayerHotbarForQuickDrop(player, targetItem, remaining);
+        ItemStack fromHotbar = extractMatchingFromPlayerHotbarForQuickDrop(player, targetItem, out, remaining);
         out = mergeExtractedStacks(out, fromHotbar);
         remaining -= fromHotbar.getCount();
         if (remaining <= 0) {
             return out;
         }
 
-        ItemStack fromMainInventory = extractMatchingFromPlayerMainInventory(player, targetItem, remaining);
+        ItemStack fromMainInventory = extractMatchingFromPlayerMainInventory(player, targetItem, out, remaining);
         out = mergeExtractedStacks(out, fromMainInventory);
         return out;
     }
@@ -4982,31 +5241,20 @@ public final class RtsStorageManager {
             player.containerMenu = remoteMenu;
         }
         relaxOpenedMenuValidation(remoteMenu);
-    }
-
-    private static void clearRemoteMenuValidation(Session session) {
-        if (session == null) {
-            return;
+        if (session != null && RtsSophisticatedStorageCompat.isSupportedRemoteMenu(remoteMenu)) {
+            RtsSophisticatedStorageCompat.markServerRemoteMenu(player, remoteMenu);
+        } else {
+            clearRemoteMenuValidation(player, session);
         }
-        session.remoteMenuValidationPos = null;
-        session.remoteMenuRestorePos = null;
-        session.remoteMenuValidationSpoofed = false;
     }
 
-    private static void restoreRemoteMenuValidationPosition(ServerPlayer player, Session session) {
-        if (session == null) {
-            return;
-        }
-        session.remoteMenuValidationSpoofed = false;
-        session.remoteMenuRestorePos = null;
-    }
-
-    private static Vec3 resolveMenuValidationPosition(BlockPos pos) {
-        return new Vec3(pos.getX() + 0.5D, pos.getY() + 0.1D, pos.getZ() + 0.5D);
+    private static void clearRemoteMenuValidation(ServerPlayer player, Session session) {
+        RtsSophisticatedStorageCompat.clearServerRemoteMenu(player);
     }
 
     private static void sendRemoteMenuOpenHint(ServerPlayer player, BlockPos pos) {
-        // 1.0.6 baseline: client uses only the local open-grace window.
+        // 1.0.8: Sophisticated Storage remote validation is handled through
+        // dedicated stillValid bypass rather than client position spoofing.
     }
 
     private static SyntheticBlockInteraction createGuiBindingInteraction(ServerPlayer player, BlockPos pos, Direction preferredFace) {
@@ -5308,7 +5556,7 @@ public final class RtsStorageManager {
         return RtsAe2Compat.getReportedCount(handler, slot, stack);
     }
 
-    private record Entry(String itemId, String namespace, String path, long count) {
+    private record Entry(ItemStack stack, String itemId, String namespace, String path, String label, long count) {
     }
 
     private record FluidEntry(String fluidId, String namespace, String path, long amount, long capacity) {
@@ -5705,6 +5953,7 @@ public final class RtsStorageManager {
         private int funnelTickCooldown;
         private final List<ItemStack> funnelBuffer = new ArrayList<>();
         private BlockPos miningPos;
+        private final Deque<BlockPos> miningQueue = new ArrayDeque<>();
         private Direction miningFace = Direction.DOWN;
         private int miningToolSlot;
         private float miningProgress;
@@ -5713,9 +5962,6 @@ public final class RtsStorageManager {
         private final Deque<RecentEntry> recentEntries = new ArrayDeque<>();
         private final String[] quickSlotItemIds = new String[QUICK_SLOT_COUNT];
         private final GuiBinding[] guiBindings = new GuiBinding[GUI_BINDING_SLOT_COUNT];
-        private BlockPos remoteMenuValidationPos;
-        private Vec3 remoteMenuRestorePos;
-        private boolean remoteMenuValidationSpoofed;
 
         private Session() {
             Arrays.fill(this.quickSlotItemIds, "");

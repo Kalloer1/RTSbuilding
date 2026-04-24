@@ -12,6 +12,7 @@ import java.util.Set;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
+import com.rtsbuilding.rtsbuilding.compat.sophisticatedstorage.RtsSophisticatedStorageCompat;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsBreakPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsFunnelTargetPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsCraftRecipePayload;
@@ -173,6 +174,7 @@ public final class ClientRtsController {
     private int activeMineFace = -1;
     private int activeMineToolSlot;
     private BlockPos mineRenderPos;
+    private int mineRenderStage = -1;
     private BuildShape buildShape = BuildShape.BLOCK;
     private boolean pendingCraftTerminalOpen;
     private int pendingCraftTerminalOpenTicks;
@@ -193,6 +195,7 @@ public final class ClientRtsController {
     private double storagePanelYNormalized;
     private double storagePanelWidthNormalized;
     private double storagePanelHeightNormalized;
+    private boolean chunkCurtainVisible;
 
     // Local render-only camera entity to isolate rendering from network interpolation.
     private RtsCameraEntity localMirrorCamera;
@@ -478,6 +481,14 @@ public final class ClientRtsController {
         this.buildShape = shape == null ? BuildShape.BLOCK : shape;
     }
 
+    public boolean isChunkCurtainVisible() {
+        return this.chunkCurtainVisible;
+    }
+
+    public void setChunkCurtainVisible(boolean visible) {
+        this.chunkCurtainVisible = visible;
+    }
+
     public void cycleBuildShape(int step) {
         BuildShape[] values = BuildShape.values();
         int index = this.buildShape.ordinal();
@@ -651,6 +662,7 @@ public final class ClientRtsController {
             this.activeMinePos = null;
             this.activeMineFace = -1;
             this.mineRenderPos = null;
+            this.mineRenderStage = -1;
             this.buildShape = BuildShape.BLOCK;
             this.funnelEnabled = false;
             this.lastFunnelTarget = null;
@@ -710,6 +722,7 @@ public final class ClientRtsController {
             minecraft.level.destroyBlockProgress(RTS_MINE_RENDER_ID, this.mineRenderPos, -1);
         }
         this.mineRenderPos = null;
+        this.mineRenderStage = -1;
 
         if (minecraft.screen instanceof BuilderScreen) {
             minecraft.setScreen(null);
@@ -777,15 +790,20 @@ public final class ClientRtsController {
 
         if (hasRemoteMenuOpen) {
             this.pendingRemoteMenuOpenTicks = 0;
-            AbstractContainerMenu activeRemoteMenu = RtsClientRemoteMenuCompat.install(minecraft, minecraft.player.containerMenu);
-            if (this.relaxedRemoteMenu != activeRemoteMenu) {
-                RtsClientRemoteMenuCompat.relaxValidation(activeRemoteMenu);
-                this.relaxedRemoteMenu = activeRemoteMenu;
-            }
-            if (minecraft.screen instanceof BuilderScreen) {
-                // First-open GUI construction can leave a brief null-screen handoff. Once a real
-                // container menu exists, let it take over instead of keeping BuilderScreen active.
-                minecraft.setScreen(null);
+            try {
+                AbstractContainerMenu activeRemoteMenu = RtsClientRemoteMenuCompat.install(minecraft, minecraft.player.containerMenu);
+                if (this.relaxedRemoteMenu != activeRemoteMenu) {
+                    RtsClientRemoteMenuCompat.relaxValidation(activeRemoteMenu);
+                    this.relaxedRemoteMenu = activeRemoteMenu;
+                }
+                if (minecraft.screen instanceof BuilderScreen) {
+                    // First-open GUI construction can leave a brief null-screen handoff. Once a real
+                    // container menu exists, let it take over instead of keeping BuilderScreen active.
+                    minecraft.setScreen(null);
+                }
+            } catch (Throwable throwable) {
+                handleRemoteMenuOpenFailure(minecraft, throwable);
+                hasRemoteMenuOpen = false;
             }
         } else if (this.pendingRemoteMenuOpenTicks > 0) {
             this.pendingRemoteMenuOpenTicks--;
@@ -1090,14 +1108,19 @@ public final class ClientRtsController {
         this.fluidEntries.clear();
         this.recentEntries.clear();
 
-        int size = Math.min(payload.itemIds().size(), payload.counts().size());
+        int size = Math.min(payload.itemStacks().size(), payload.counts().size());
         for (int i = 0; i < size; i++) {
-            ResourceLocation id = ResourceLocation.tryParse(payload.itemIds().get(i));
-            if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
+            ItemStack stack = payload.itemStacks().get(i);
+            if (stack == null || stack.isEmpty()) {
                 continue;
             }
-            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
-            this.storageEntries.add(new StorageEntry(stack, payload.itemIds().get(i), payload.counts().get(i), id.getNamespace(), id.getPath()));
+            ItemStack preview = stack.copy();
+            preview.setCount(1);
+            ResourceLocation id = BuiltInRegistries.ITEM.getKey(preview.getItem());
+            if (id == null) {
+                continue;
+            }
+            this.storageEntries.add(new StorageEntry(preview, id.toString(), payload.counts().get(i), id.getNamespace(), id.getPath()));
         }
 
         int totalItemSize = Math.min(payload.totalItemIds().size(), payload.totalItemCounts().size());
@@ -1174,7 +1197,7 @@ public final class ClientRtsController {
     }
 
     public void applyRemoteMenuHint(S2CRtsRemoteMenuHintPayload payload) {
-        // 1.0.6 baseline: keep only the local open-grace window and do not spoof player position.
+        beginRemoteMenuOpenGrace();
     }
 
     public void applyCraftables(S2CRtsCraftablesPayload payload) {
@@ -1395,6 +1418,7 @@ public final class ClientRtsController {
             } else {
                 minecraft.level.destroyBlockProgress(RTS_MINE_RENDER_ID, pos, -1);
             }
+            this.mineRenderStage = -1;
             return;
         }
 
@@ -1403,6 +1427,7 @@ public final class ClientRtsController {
         }
         minecraft.level.destroyBlockProgress(RTS_MINE_RENDER_ID, pos, Math.min(9, stage));
         this.mineRenderPos = pos.immutable();
+        this.mineRenderStage = Math.min(9, stage);
     }
 
     public void selectStorageEntry(int index) {
@@ -1700,7 +1725,21 @@ public final class ClientRtsController {
         this.activeMinePos = pos.immutable();
         this.activeMineFace = face;
         this.activeMineToolSlot = Mth.clamp(toolSlot, 0, 8);
+        this.mineRenderPos = this.activeMinePos;
+        this.mineRenderStage = 0;
         RtsClientPacketGateway.sendMineStart(this.activeMinePos, face, this.activeMineToolSlot);
+    }
+
+    public void startUltimine(BlockPos pos, int face, int toolSlot, int limit) {
+        if (pos == null) {
+            return;
+        }
+        this.activeMinePos = pos.immutable();
+        this.activeMineFace = face;
+        this.activeMineToolSlot = Mth.clamp(toolSlot, 0, 8);
+        this.mineRenderPos = this.activeMinePos;
+        this.mineRenderStage = 0;
+        RtsClientPacketGateway.sendUltimineStart(this.activeMinePos, face, this.activeMineToolSlot, limit);
     }
 
     public void continueMining(int toolSlot) {
@@ -1714,14 +1753,44 @@ public final class ClientRtsController {
         RtsClientPacketGateway.sendMineAbort(this.activeMinePos, this.activeMineFace, toolSlot);
         this.activeMinePos = null;
         this.activeMineFace = -1;
+        this.mineRenderStage = -1;
+    }
+
+    public int getMineProgressStage() {
+        return this.mineRenderStage;
+    }
+
+    public BlockPos getMineProgressPos() {
+        return this.mineRenderPos;
     }
 
     private void beginRemoteMenuOpenGrace() {
         this.pendingRemoteMenuOpenTicks = Math.max(this.pendingRemoteMenuOpenTicks, REMOTE_MENU_OPEN_GRACE_TICKS);
+        RtsSophisticatedStorageCompat.beginClientRemoteMenuOpen();
+    }
+
+    private void handleRemoteMenuOpenFailure(Minecraft minecraft, Throwable throwable) {
+        String menuClass = minecraft.player != null && minecraft.player.containerMenu != null
+                ? minecraft.player.containerMenu.getClass().getName()
+                : "null";
+        String screenClass = minecraft.screen != null ? minecraft.screen.getClass().getName() : "null";
+        RtsbuildingMod.LOGGER.error(
+                "RTS remote menu open failed for menu {} on screen {}; closing container to prevent a client crash.",
+                menuClass,
+                screenClass,
+                throwable);
+        clearRemoteMenuValidationState();
+        this.pendingRemoteMenuOpenTicks = 0;
+        if (minecraft.player != null) {
+            minecraft.player.closeContainer();
+            minecraft.player.displayClientMessage(Component.literal("Open failed."), true);
+        }
+        minecraft.setScreen(null);
     }
 
     private void clearRemoteMenuValidationState() {
         this.relaxedRemoteMenu = null;
+        RtsSophisticatedStorageCompat.clearClientRemoteMenu();
     }
 
     private void clearSelectedItemOnly() {

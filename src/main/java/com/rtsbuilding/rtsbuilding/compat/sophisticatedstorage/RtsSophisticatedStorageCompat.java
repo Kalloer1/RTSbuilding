@@ -1,18 +1,21 @@
 package com.rtsbuilding.rtsbuilding.compat.sophisticatedstorage;
 
-import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-import net.minecraft.world.Container;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 
 public final class RtsSophisticatedStorageCompat {
     private static final String MOD_ID = "sophisticatedstorage";
     private static final String MENU_CLASS_PREFIX = "net.p3pp3rf1y.sophisticatedstorage.common.gui.";
+    private static final String STORAGE_MENU_BASE_CLASS = "net.p3pp3rf1y.sophisticatedcore.common.gui.StorageContainerMenuBase";
+    private static final Map<UUID, Integer> SERVER_REMOTE_MENU_IDS = new ConcurrentHashMap<>();
+    private static volatile int clientRemoteMenuId = -1;
+    private static volatile boolean clientRemoteMenuPending;
 
     private RtsSophisticatedStorageCompat() {
     }
@@ -21,111 +24,73 @@ public final class RtsSophisticatedStorageCompat {
         if (!isSupportedRemoteMenu(menu)) {
             return menu;
         }
-        return menu instanceof StillValidBypassMenu ? menu : new StillValidBypassMenu(menu);
+        // SophisticatedCore storage screens hard-require the original
+        // StorageContainerMenuBase type, so remote opens must preserve it.
+        return menu;
     }
 
     public static boolean isSupportedRemoteMenu(AbstractContainerMenu menu) {
-        if (menu == null || !ModList.get().isLoaded(MOD_ID)) {
+        return menu != null
+                && ModList.get().isLoaded(MOD_ID)
+                && menu.getClass().getName().startsWith(MENU_CLASS_PREFIX);
+    }
+
+    public static boolean isStorageContainerMenuBase(AbstractContainerMenu menu) {
+        return menu != null && isInstanceOf(menu, STORAGE_MENU_BASE_CLASS);
+    }
+
+    public static void markServerRemoteMenu(ServerPlayer player, AbstractContainerMenu menu) {
+        if (player == null || !isSupportedRemoteMenu(menu)) {
+            clearServerRemoteMenu(player);
+            return;
+        }
+        SERVER_REMOTE_MENU_IDS.put(player.getUUID(), menu.containerId);
+    }
+
+    public static void clearServerRemoteMenu(ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        SERVER_REMOTE_MENU_IDS.remove(player.getUUID());
+    }
+
+    public static void beginClientRemoteMenuOpen() {
+        clientRemoteMenuPending = true;
+    }
+
+    public static void markClientRemoteMenu(AbstractContainerMenu menu) {
+        if (!isSupportedRemoteMenu(menu)) {
+            clearClientRemoteMenu();
+            return;
+        }
+        clientRemoteMenuId = menu.containerId;
+        clientRemoteMenuPending = false;
+    }
+
+    public static void clearClientRemoteMenu() {
+        clientRemoteMenuId = -1;
+        clientRemoteMenuPending = false;
+    }
+
+    public static boolean shouldForceStillValid(AbstractContainerMenu menu, Player player) {
+        if (!isSupportedRemoteMenu(menu) || player == null) {
             return false;
         }
-        AbstractContainerMenu unwrapped = unwrap(menu);
-        return unwrapped.getClass().getName().startsWith(MENU_CLASS_PREFIX);
+        if (player.level().isClientSide()) {
+            return clientRemoteMenuPending || menu.containerId == clientRemoteMenuId;
+        }
+        if (player instanceof ServerPlayer serverPlayer) {
+            Integer remoteMenuId = SERVER_REMOTE_MENU_IDS.get(serverPlayer.getUUID());
+            return remoteMenuId != null && remoteMenuId == menu.containerId;
+        }
+        return false;
     }
 
-    private static AbstractContainerMenu unwrap(AbstractContainerMenu menu) {
-        AbstractContainerMenu current = menu;
-        while (current instanceof StillValidBypassMenu wrapped) {
-            current = wrapped.delegate;
-        }
-        return current;
-    }
-
-    private static final class StillValidBypassMenu extends AbstractContainerMenu {
-        private final AbstractContainerMenu delegate;
-
-        private StillValidBypassMenu(AbstractContainerMenu delegate) {
-            super(null, delegate.containerId);
-            this.delegate = delegate;
-            syncVisibleState();
-        }
-
-        private void syncVisibleState() {
-            this.slots.clear();
-            this.slots.addAll(this.delegate.slots);
-        }
-
-        @Override
-        public boolean stillValid(Player player) {
-            return true;
-        }
-
-        @Override
-        public ItemStack quickMoveStack(Player player, int index) {
-            ItemStack moved = this.delegate.quickMoveStack(player, index);
-            syncVisibleState();
-            return moved;
-        }
-
-        @Override
-        public void clicked(int slotId, int button, ClickType clickType, Player player) {
-            this.delegate.clicked(slotId, button, clickType, player);
-            syncVisibleState();
-        }
-
-        @Override
-        public void removed(Player player) {
-            this.delegate.removed(player);
-            syncVisibleState();
-        }
-
-        @Override
-        public void broadcastChanges() {
-            this.delegate.broadcastChanges();
-            syncVisibleState();
-        }
-
-        @Override
-        public void sendAllDataToRemote() {
-            this.delegate.sendAllDataToRemote();
-            syncVisibleState();
-        }
-
-        @Override
-        public void slotsChanged(Container container) {
-            this.delegate.slotsChanged(container);
-            syncVisibleState();
-        }
-
-        @Override
-        public void setItem(int slotId, int stateId, ItemStack stack) {
-            this.delegate.setItem(slotId, stateId, stack);
-            syncVisibleState();
-        }
-
-        @Override
-        public void initializeContents(int stateId, List<ItemStack> items, ItemStack carried) {
-            this.delegate.initializeContents(stateId, items, carried);
-            syncVisibleState();
-        }
-
-        @Override
-        public void setCarried(ItemStack stack) {
-            this.delegate.setCarried(stack);
-        }
-
-        @Override
-        public ItemStack getCarried() {
-            return this.delegate.getCarried();
-        }
-
-        @Override
-        public boolean canTakeItemForPickAll(ItemStack stack, Slot slot) {
-            return this.delegate.canTakeItemForPickAll(stack, slot);
-        }
-
-        @Override
-        public Slot getSlot(int slotId) {
-            return this.delegate.getSlot(slotId);
+    private static boolean isInstanceOf(Object instance, String className) {
+        try {
+            return Class.forName(className).isInstance(instance);
+        } catch (ClassNotFoundException ignored) {
+            return false;
         }
     }
 }

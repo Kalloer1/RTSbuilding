@@ -9,6 +9,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 public record S2CRtsStoragePagePayload(
         boolean linked,
@@ -23,7 +24,7 @@ public record S2CRtsStoragePagePayload(
         boolean ascending,
         boolean autoStoreMinedDrops,
         List<String> categories,
-        List<String> itemIds,
+        List<ItemStack> itemStacks,
         List<Long> counts,
         List<String> totalItemIds,
         List<Long> totalItemCounts,
@@ -72,10 +73,10 @@ public record S2CRtsStoragePagePayload(
                     buf.writeUtf(category, 128);
                 }
 
-                int size = Math.min(payload.itemIds().size(), payload.counts().size());
+                int size = Math.min(payload.itemStacks().size(), payload.counts().size());
                 buf.writeVarInt(size);
                 for (int i = 0; i < size; i++) {
-                    buf.writeUtf(payload.itemIds().get(i), 128);
+                    ItemStack.STREAM_CODEC.encode(buf, payload.itemStacks().get(i));
                     buf.writeVarLong(payload.counts().get(i));
                 }
 
@@ -153,10 +154,10 @@ public record S2CRtsStoragePagePayload(
                     categories.add(buf.readUtf(128));
                 }
                 int size = buf.readVarInt();
-                List<String> itemIds = new ArrayList<>(size);
+                List<ItemStack> itemStacks = new ArrayList<>(size);
                 List<Long> counts = new ArrayList<>(size);
                 for (int i = 0; i < size; i++) {
-                    itemIds.add(buf.readUtf(128));
+                    itemStacks.add(ItemStack.STREAM_CODEC.decode(buf));
                     counts.add(buf.readVarLong());
                 }
                 int totalItemSize = buf.readVarInt();
@@ -222,7 +223,7 @@ public record S2CRtsStoragePagePayload(
                         ascending,
                         autoStoreMinedDrops,
                         categories,
-                        itemIds,
+                        itemStacks,
                         counts,
                         totalItemIds,
                         totalItemCounts,

@@ -24,6 +24,7 @@ import com.rtsbuilding.rtsbuilding.network.C2SRtsSetModePayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsSetQuickSlotPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreFluidPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreHotbarSlotPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsUltiminePayload;
 import com.rtsbuilding.rtsbuilding.network.RtsStorageSort;
 
 import net.minecraft.core.BlockPos;
@@ -273,6 +274,14 @@ final class RtsClientPacketGateway {
 
     static void sendMineStart(BlockPos pos, int face, int toolSlot) {
         PacketDistributor.sendToServer(new C2SRtsMinePayload(pos, (byte) face, true, (byte) Mth.clamp(toolSlot, 0, 8)));
+    }
+
+    static void sendUltimineStart(BlockPos pos, int face, int toolSlot, int limit) {
+        PacketDistributor.sendToServer(new C2SRtsUltiminePayload(
+                pos,
+                (byte) face,
+                (byte) Mth.clamp(toolSlot, 0, 8),
+                (short) Mth.clamp(limit, 1, 256)));
     }
 
     static void sendMineAbort(BlockPos pos, int face, int toolSlot) {

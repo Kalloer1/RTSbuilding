@@ -69,19 +69,8 @@ public final class RtsBoundaryRenderer {
         LevelRenderer.renderLineBox(poseStack, lineBuffer, minX, ay - 0.25D, minZ, maxX, ay + 0.25D, maxZ,
                 1.0F, 0.25F, 0.25F, 1.0F);
 
-        // Chunk boundaries around anchor +/- 3 chunks
-        int anchorChunkX = SectionPos.blockToSectionCoord(Mth.floor(ax));
-        int anchorChunkZ = SectionPos.blockToSectionCoord(Mth.floor(az));
-        int chunkRange = 3;
-        for (int cx = anchorChunkX - chunkRange; cx <= anchorChunkX + chunkRange; cx++) {
-            for (int cz = anchorChunkZ - chunkRange; cz <= anchorChunkZ + chunkRange; cz++) {
-                double cMinX = cx * 16.0D;
-                double cMinZ = cz * 16.0D;
-                LevelRenderer.renderLineBox(poseStack, lineBuffer,
-                        cMinX, ay - 0.15D, cMinZ,
-                        cMinX + 16.0D, ay + 0.15D, cMinZ + 16.0D,
-                        0.25F, 0.85F, 1.0F, 0.9F);
-            }
+        if (controller.isChunkCurtainVisible()) {
+            renderChunkGuides(minecraft, controller, poseStack, lineBuffer);
         }
 
         renderLinkedStorages(minecraft, controller, poseStack, lineBuffer);
@@ -91,6 +80,92 @@ public final class RtsBoundaryRenderer {
         bufferSource.endBatch(RenderType.lines());
         bufferSource.endBatch(RenderType.debugFilledBox());
         poseStack.popPose();
+    }
+
+    private static void renderChunkGuides(
+            Minecraft minecraft,
+            ClientRtsController controller,
+            PoseStack poseStack,
+            VertexConsumer lineBuffer) {
+        if (minecraft.level == null) {
+            return;
+        }
+        int anchorChunkX = SectionPos.blockToSectionCoord(Mth.floor(controller.getAnchorX()));
+        int anchorChunkZ = SectionPos.blockToSectionCoord(Mth.floor(controller.getAnchorZ()));
+        int chunkRange = 3;
+        double zMin = (anchorChunkZ - chunkRange) * 16.0D;
+        double zMax = (anchorChunkZ + chunkRange + 1) * 16.0D;
+        double xMin = (anchorChunkX - chunkRange) * 16.0D;
+        double xMax = (anchorChunkX + chunkRange + 1) * 16.0D;
+        double yMin = minecraft.level.getMinBuildHeight();
+        double yMax = minecraft.level.getMaxBuildHeight();
+        double bandY = minecraft.player != null
+                ? Mth.clamp(minecraft.player.getY(), yMin + 1.0D, yMax - 1.0D)
+                : controller.getAnchorY();
+        double centerMinX = anchorChunkX * 16.0D;
+        double centerMaxX = centerMinX + 16.0D;
+        double centerMinZ = anchorChunkZ * 16.0D;
+        double centerMaxZ = centerMinZ + 16.0D;
+
+        for (int cx = anchorChunkX - chunkRange; cx <= anchorChunkX + chunkRange + 1; cx++) {
+            double x = cx * 16.0D;
+            LevelRenderer.renderLineBox(
+                    poseStack,
+                    lineBuffer,
+                    x,
+                    yMin,
+                    zMin,
+                    x,
+                    yMax,
+                    zMax,
+                    0.26F,
+                    0.56F,
+                    1.0F,
+                    0.52F);
+        }
+        for (int cz = anchorChunkZ - chunkRange; cz <= anchorChunkZ + chunkRange + 1; cz++) {
+            double z = cz * 16.0D;
+            LevelRenderer.renderLineBox(
+                    poseStack,
+                    lineBuffer,
+                    xMin,
+                    yMin,
+                    z,
+                    xMax,
+                    yMax,
+                    z,
+                    0.26F,
+                    0.56F,
+                    1.0F,
+                    0.52F);
+        }
+
+        LevelRenderer.renderLineBox(
+                poseStack,
+                lineBuffer,
+                xMin,
+                bandY,
+                zMin,
+                xMax,
+                bandY,
+                zMax,
+                0.18F,
+                0.44F,
+                0.95F,
+                0.35F);
+        LevelRenderer.renderLineBox(
+                poseStack,
+                lineBuffer,
+                centerMinX,
+                yMin,
+                centerMinZ,
+                centerMaxX,
+                yMax,
+                centerMaxZ,
+                0.55F,
+                0.82F,
+                1.0F,
+                0.95F);
     }
 
     private static void renderLinkedStorages(Minecraft minecraft, ClientRtsController controller, PoseStack poseStack,

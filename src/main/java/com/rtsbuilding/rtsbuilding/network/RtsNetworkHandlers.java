@@ -265,6 +265,15 @@ public final class RtsNetworkHandlers {
         });
     }
 
+    public static void handleUltimine(C2SRtsUltiminePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                Direction face = Direction.from3DDataValue(payload.face());
+                RtsStorageManager.startUltimine(serverPlayer, payload.pos(), face, payload.toolSlot(), payload.limit());
+            }
+        });
+    }
+
     public static void handleFunnelTarget(C2SRtsFunnelTargetPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
@@ -284,7 +293,7 @@ public final class RtsNetworkHandlers {
     public static void handleLinkedPickup(C2SRtsLinkedPickupPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.pickupLinkedToCarried(serverPlayer, payload.itemId(), payload.amount());
+                RtsStorageManager.pickupLinkedToCarried(serverPlayer, payload.prototype(), payload.amount());
             }
         });
     }
@@ -292,7 +301,7 @@ public final class RtsNetworkHandlers {
     public static void handleLinkedQuickMove(C2SRtsLinkedQuickMovePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.quickMoveLinkedItem(serverPlayer, payload.itemId());
+                RtsStorageManager.quickMoveLinkedItem(serverPlayer, payload.prototype());
             }
         });
     }

@@ -117,6 +117,11 @@ public final class RtsPayloadRegistrar {
                 RtsNetworkHandlers::handleMine);
 
         registrar.playToServer(
+                C2SRtsUltiminePayload.TYPE,
+                C2SRtsUltiminePayload.STREAM_CODEC,
+                RtsNetworkHandlers::handleUltimine);
+
+        registrar.playToServer(
                 C2SRtsFunnelTargetPayload.TYPE,
                 C2SRtsFunnelTargetPayload.STREAM_CODEC,
                 RtsNetworkHandlers::handleFunnelTarget);

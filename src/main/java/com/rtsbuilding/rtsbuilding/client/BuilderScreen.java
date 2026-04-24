@@ -12,6 +12,7 @@ import java.util.Set;
 
 import org.lwjgl.glfw.GLFW;
 
+import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2Compat;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsInteractPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsToggleCameraPayload;
 import com.rtsbuilding.rtsbuilding.network.RtsStorageSort;
@@ -24,6 +25,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
@@ -75,7 +77,12 @@ public final class BuilderScreen extends Screen {
     private static final int INTERACT_WHEEL_SLOT = 18;
     private static final int INTERACT_WHEEL_SLOT_HALF = INTERACT_WHEEL_SLOT / 2;
     private static final int TOP_BUTTON_GAP = 5;
+    private static final int TOP_BUTTON_H = 24;
     private static final int MIN_TOP_BUTTON_W = 28;
+    private static final int TOP_MODE_BUTTON_W = 32;
+    private static final int TOP_ICON_BUTTON_W = 32;
+    private static final int TOP_QUICK_BUILD_BUTTON_W = 96;
+    private static final int TOP_ULTIMINE_BUTTON_W = 74;
     private static final int TOP_ACTION_BUTTON_W = 74;
     private static final int TOP_SENS_BUTTON_W = 96;
     private static final int TOP_AUTOSTORE_BUTTON_W = 116;
@@ -83,6 +90,14 @@ public final class BuilderScreen extends Screen {
     private static final int SHAPE_ROTATE_BUTTON_W = 84;
     private static final int TOP_GUIDE_BUTTON_W = 78;
     private static final int QUEST_DETECT_BUTTON_W = 104;
+    private static final int QUICK_BUILD_PANEL_W = 188;
+    private static final int QUICK_BUILD_PANEL_H = 216;
+    private static final int ULTIMINE_PANEL_W = 188;
+    private static final int ULTIMINE_PANEL_H = 122;
+    private static final int QUICK_BUILD_SHAPE_SLOT = 32;
+    private static final int QUICK_BUILD_SHAPE_GAP = 8;
+    private static final int QUICK_BUILD_GEAR_MENU_W = 148;
+    private static final int QUICK_BUILD_GEAR_ROW_H = 18;
     private static final int SHAPE_WHEEL_RADIUS = 52;
     private static final int SHAPE_WHEEL_SLOT = 22;
     private static final int SHAPE_MAX_DIMENSION = 32;
@@ -125,6 +140,11 @@ public final class BuilderScreen extends Screen {
     private double rightDragDistance = 0.0D;
     private boolean leftMiningActive = false;
     private boolean guideOpen = false;
+    private boolean gearMenuOpen = false;
+    private boolean quickBuildOpen = true;
+    private boolean ultimineOpen = false;
+    private int ultimineLimit = 64;
+    private int lastUltimineSentLimit = 0;
     private int pinPage = 0;
     private int craftScroll = 0;
     private int lastCraftablesStorageRevision = -1;
@@ -152,6 +172,24 @@ public final class BuilderScreen extends Screen {
     private int pendingGuiBindSlot = -1;
     private final List<ShapeHistoryBatch> shapeUndoStack = new ArrayList<>();
     private final List<ShapeHistoryBatch> shapeRedoStack = new ArrayList<>();
+    private static final ResourceLocation SHAPE_BLOCK_INACTIVE = quickBuildTexture("shape_block_inactive");
+    private static final ResourceLocation SHAPE_BLOCK_HOVER = quickBuildTexture("shape_block_hover");
+    private static final ResourceLocation SHAPE_BLOCK_ACTIVE = quickBuildTexture("shape_block_active");
+    private static final ResourceLocation SHAPE_LINE_INACTIVE = quickBuildTexture("shape_line_inactive");
+    private static final ResourceLocation SHAPE_LINE_HOVER = quickBuildTexture("shape_line_hover");
+    private static final ResourceLocation SHAPE_LINE_ACTIVE = quickBuildTexture("shape_line_active");
+    private static final ResourceLocation SHAPE_SQUARE_INACTIVE = quickBuildTexture("shape_square_inactive");
+    private static final ResourceLocation SHAPE_SQUARE_HOVER = quickBuildTexture("shape_square_hover");
+    private static final ResourceLocation SHAPE_SQUARE_ACTIVE = quickBuildTexture("shape_square_active");
+    private static final ResourceLocation SHAPE_WALL_INACTIVE = quickBuildTexture("shape_wall_inactive");
+    private static final ResourceLocation SHAPE_WALL_HOVER = quickBuildTexture("shape_wall_hover");
+    private static final ResourceLocation SHAPE_WALL_ACTIVE = quickBuildTexture("shape_wall_active");
+    private static final ResourceLocation SHAPE_CIRCLE_INACTIVE = quickBuildTexture("shape_circle_inactive");
+    private static final ResourceLocation SHAPE_CIRCLE_HOVER = quickBuildTexture("shape_circle_hover");
+    private static final ResourceLocation SHAPE_CIRCLE_ACTIVE = quickBuildTexture("shape_circle_active");
+    private static final ResourceLocation SHAPE_BOX_INACTIVE = quickBuildTexture("shape_box_inactive");
+    private static final ResourceLocation SHAPE_BOX_HOVER = quickBuildTexture("shape_box_hover");
+    private static final ResourceLocation SHAPE_BOX_ACTIVE = quickBuildTexture("shape_box_active");
 
     public BuilderScreen(ClientRtsController controller) {
         super(Component.literal("RTS Builder"));
@@ -161,6 +199,7 @@ public final class BuilderScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        applyStoredUiState();
         this.searchBox = new EditBox(this.font, 8, this.height - 52, 150, 14, Component.literal("Search"));
         this.searchBox.setMaxLength(128);
         this.searchBox.setBordered(true);
@@ -196,6 +235,7 @@ public final class BuilderScreen extends Screen {
         closeInteractionWheel();
         closeShapeWheel();
         clearShapeBuildSession();
+        persistUiState();
         this.pendingGuiBindSlot = -1;
         this.altShapeMenuHeld = false;
         this.funnelHotkeyHeld = false;
@@ -258,6 +298,7 @@ public final class BuilderScreen extends Screen {
                     this.controller.setBuildShape(picked);
                     ensureFillModeForShape(picked);
                     clearShapeBuildSession();
+                    persistUiState();
                 }
                 closeShapeWheel();
                 return true;
@@ -296,7 +337,16 @@ public final class BuilderScreen extends Screen {
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            if (handleShapeContextPanelClick(mouseX, mouseY)) {
+            if (this.gearMenuOpen) {
+                if (handleGearMenuClick(mouseX, mouseY)) {
+                    return true;
+                }
+                this.gearMenuOpen = false;
+            }
+            if (handleQuickBuildPanelClick(mouseX, mouseY)) {
+                return true;
+            }
+            if (handleUltiminePanelClick(mouseX, mouseY)) {
                 return true;
             }
             if (handleTopBarClick(mouseX, mouseY)) {
@@ -335,7 +385,13 @@ public final class BuilderScreen extends Screen {
                     && this.controller.getMode() != BuilderMode.FUNNEL) {
                 BlockHitResult hit = pickBlockHit();
                 if (hit != null) {
-                    this.controller.startMining(hit.getBlockPos(), hit.getDirection().get3DDataValue(), getSelectedToolSlot());
+                    if (this.ultimineOpen) {
+                        this.controller.startUltimine(hit.getBlockPos(), hit.getDirection().get3DDataValue(), getSelectedToolSlot(), this.ultimineLimit);
+                        this.lastUltimineSentLimit = this.ultimineLimit;
+                    } else {
+                        this.controller.startMining(hit.getBlockPos(), hit.getDirection().get3DDataValue(), getSelectedToolSlot());
+                        this.lastUltimineSentLimit = 1;
+                    }
                     this.leftMiningActive = true;
                     return true;
                 }
@@ -594,6 +650,7 @@ public final class BuilderScreen extends Screen {
             }
             ensureFillModeForShape(this.controller.getBuildShape());
             clearShapeBuildSession();
+            persistUiState();
             return true;
         }
 
@@ -661,6 +718,7 @@ public final class BuilderScreen extends Screen {
                 ensureFillModeForShape(this.controller.getBuildShape());
                 clearShapeBuildSession();
                 closeShapeWheel();
+                persistUiState();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_2) {
@@ -668,6 +726,7 @@ public final class BuilderScreen extends Screen {
                 ensureFillModeForShape(this.controller.getBuildShape());
                 clearShapeBuildSession();
                 closeShapeWheel();
+                persistUiState();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_3) {
@@ -675,6 +734,7 @@ public final class BuilderScreen extends Screen {
                 ensureFillModeForShape(this.controller.getBuildShape());
                 clearShapeBuildSession();
                 closeShapeWheel();
+                persistUiState();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_4) {
@@ -682,6 +742,7 @@ public final class BuilderScreen extends Screen {
                 ensureFillModeForShape(this.controller.getBuildShape());
                 clearShapeBuildSession();
                 closeShapeWheel();
+                persistUiState();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_5) {
@@ -689,6 +750,7 @@ public final class BuilderScreen extends Screen {
                 ensureFillModeForShape(this.controller.getBuildShape());
                 clearShapeBuildSession();
                 closeShapeWheel();
+                persistUiState();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_6) {
@@ -696,6 +758,7 @@ public final class BuilderScreen extends Screen {
                 ensureFillModeForShape(this.controller.getBuildShape());
                 clearShapeBuildSession();
                 closeShapeWheel();
+                persistUiState();
                 return true;
             }
             return true;
@@ -872,9 +935,11 @@ public final class BuilderScreen extends Screen {
 
         guiGraphics.fill(0, 0, this.width, TOP_H, 0xC0101116);
 
-        renderTopBar(guiGraphics);
+        renderTopBar(guiGraphics, mouseX, mouseY);
         renderBottomPanel(guiGraphics, mouseX, mouseY, partialTick);
-        renderShapeContextPanel(guiGraphics, mouseX, mouseY);
+        renderQuickBuildPanel(guiGraphics, mouseX, mouseY);
+        renderUltiminePanel(guiGraphics, mouseX, mouseY);
+        renderGearMenu(guiGraphics, mouseX, mouseY);
         renderFunnelBufferPanel(guiGraphics, mouseX, mouseY);
 
         if (!this.craftQuantityDialog.isOpen()) {
@@ -984,10 +1049,10 @@ public final class BuilderScreen extends Screen {
         renderCraftFeedback(guiGraphics);
     }
 
-    private void renderTopBar(GuiGraphics g) {
+    private void renderTopBar(GuiGraphics g, int mouseX, int mouseY) {
         ensureFillModeForShape(this.controller.getBuildShape());
         for (TopBarButtonLayout button : buildTopBarButtonLayouts()) {
-            drawTopButtonSized(g, button.x(), button.label(), button.active(), button.width());
+            drawTopButton(g, mouseX, mouseY, button);
         }
 
         String modeText = switch (this.controller.getMode()) {
@@ -1016,6 +1081,7 @@ public final class BuilderScreen extends Screen {
                 : "    Mined drops are not auto-stored")
                 + (this.controller.isFunnelEnabled() ? "    Funnel: ON" : "    Funnel: OFF")
                 + "    Shape: " + shapeLabel(this.controller.getBuildShape())
+                + (this.ultimineOpen ? "    Ultimine: " + this.ultimineLimit : "")
                 + "    Fill: " + fillModeLabel(this.shapeFillMode)
                 + "    Rot: " + this.shapeRotateDegrees + "deg"
                 + "    Undo/Redo: " + this.shapeUndoStack.size() + "/" + this.shapeRedoStack.size()
@@ -1024,8 +1090,8 @@ public final class BuilderScreen extends Screen {
 
         int statusX = 8;
         int statusW = Math.max(40, this.width - 16);
-        g.drawString(this.font, trimToWidth(row1, statusW), statusX, 29, 0xF0F0F0);
-        g.drawString(this.font, trimToWidth(row2, statusW), statusX, 40,
+        g.drawString(this.font, trimToWidth(row1, statusW), statusX, 33, 0xF0F0F0);
+        g.drawString(this.font, trimToWidth(row2, statusW), statusX, 44,
                 this.controller.isStorageLinked() ? 0xB8FFB8 : 0xFFD8AE);
     }
 
@@ -1176,64 +1242,477 @@ public final class BuilderScreen extends Screen {
             g.drawString(this.font, "empty", panelX + 6, panelY + 20, 0x99B4BCC8);
         }
     }
+    private void drawTopButton(GuiGraphics g, int mouseX, int mouseY, TopBarButtonLayout button) {
+        if (button.iconOnly()) {
+            drawTopIconButton(g, mouseX, mouseY, button);
+            return;
+        }
+        drawTopButtonSized(g, button.x(), button.label(), button.active(), button.width());
+    }
+
     private void drawTopButtonSized(GuiGraphics g, int x, String label, boolean active, int w) {
         int y = 4;
-        int h = 20;
+        int h = TOP_BUTTON_H;
         int bg = active ? 0xFF2E6A50 : 0xAA1F2329;
         g.fill(x, y, x + w, y + h, bg);
         g.hLine(x, x + w, y, 0xFF5B6673);
         g.hLine(x, x + w, y + h, 0xFF0D0E10);
         g.vLine(x, y, y + h, 0xFF5B6673);
         g.vLine(x + w, y, y + h, 0xFF0D0E10);
-        g.drawCenteredString(this.font, trimToWidth(label, Math.max(6, w - 8)), x + w / 2, y + 6, 0xFFFFFF);
+        g.drawCenteredString(this.font, trimToWidth(label, Math.max(6, w - 8)), x + w / 2, y + 8, 0xFFFFFF);
+    }
+
+    private void drawTopIconButton(GuiGraphics g, int mouseX, int mouseY, TopBarButtonLayout button) {
+        int x = button.x();
+        int y = 4;
+        int w = button.width();
+        int h = TOP_BUTTON_H;
+        boolean hovered = inside(mouseX, mouseY, x, y, w, h);
+        boolean pressed = hovered && isPrimaryMouseDown();
+
+        int bg = 0xAA1F2329;
+        int light = 0xFF5B6673;
+        int dark = 0xFF0D0E10;
+        int icon = 0xFFBDC9D6;
+        if (button.active()) {
+            bg = 0xFF2D6B47;
+            light = 0xFF9AD2AE;
+            icon = 0xFFF4FBF5;
+        } else if (pressed) {
+            bg = 0xFF1F5037;
+            light = 0xFF6AA784;
+            icon = 0xFFD9E3EF;
+        } else if (hovered) {
+            bg = 0xFF1D2530;
+            light = 0xFF7A90AA;
+            icon = 0xFFD9E3EF;
+        }
+
+        g.fill(x, y, x + w, y + h, bg);
+        g.hLine(x, x + w, y, light);
+        g.hLine(x, x + w, y + h, dark);
+        g.vLine(x, y, y + h, light);
+        g.vLine(x + w, y, y + h, dark);
+        if (pressed) {
+            g.hLine(x + 1, x + w - 1, y + 1, dark);
+            g.vLine(x + 1, y + 1, y + h - 1, dark);
+        }
+
+        int cx = x + (w / 2);
+        int cy = y + (h / 2);
+        switch (button.id()) {
+            case INTERACT -> drawInteractModeIcon(g, cx, cy, icon);
+            case LINK -> drawLinkModeIcon(g, cx, cy, icon, button.active());
+            case FUNNEL -> drawFunnelModeIcon(g, cx, cy, icon, button.active());
+            case ROTATE -> drawRotateModeIcon(g, cx, cy, icon);
+            case QUEST_DETECT -> drawQuestCheckIcon(g, cx, cy, icon);
+            case CHUNK_VIEW -> drawChunkCurtainIcon(g, cx, cy, icon, button.active());
+            case GEAR -> drawGearIcon(g, cx, cy, icon);
+            default -> g.drawCenteredString(this.font, "?", cx, y + 6, icon);
+        }
+    }
+
+    private boolean isPrimaryMouseDown() {
+        return this.minecraft != null
+                && this.minecraft.getWindow() != null
+                && GLFW.glfwGetMouseButton(this.minecraft.getWindow().getWindow(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+    }
+
+    private void drawInteractModeIcon(GuiGraphics g, int cx, int cy, int color) {
+        int baseX = cx - 5;
+        int baseY = cy - 7;
+        g.fill(baseX, baseY, baseX + 1, baseY + 14, color);
+        g.fill(baseX, baseY, baseX + 11, baseY + 1, color);
+        g.fill(baseX + 1, baseY + 1, baseX + 10, baseY + 9, color);
+        g.fill(baseX + 3, baseY + 9, baseX + 8, baseY + 15, color);
+        g.fill(baseX + 7, baseY + 6, baseX + 13, baseY + 7, color);
+        g.fill(baseX + 7, baseY + 7, baseX + 8, baseY + 8, color);
+    }
+
+    private void drawLinkModeIcon(GuiGraphics g, int cx, int cy, int color, boolean active) {
+        int accentA = active ? 0xFF88BEF4 : color;
+        int accentB = active ? 0xFF78B28C : color;
+        int accentC = active ? 0xFFFFC472 : color;
+        int accentD = active ? 0xFFD17474 : color;
+        g.fill(cx - 7, cy - 6, cx - 3, cy - 2, accentA);
+        g.fill(cx + 3, cy + 2, cx + 7, cy + 6, accentB);
+        g.fill(cx + 3, cy - 6, cx + 6, cy - 3, accentC);
+        g.fill(cx - 6, cy + 3, cx - 3, cy + 6, accentD);
+        g.fill(cx - 2, cy - 5, cx + 3, cy - 4, color);
+        g.fill(cx + 4, cy - 2, cx + 5, cy + 3, color);
+        g.fill(cx - 2, cy - 2, cx + 3, cy + 3, color);
+        g.fill(cx - 1, cy - 1, cx + 2, cy + 2, color);
+    }
+
+    private void drawFunnelModeIcon(GuiGraphics g, int cx, int cy, int color, boolean active) {
+        int top = active ? 0xFFFFC472 : color;
+        int mid = active ? 0xFF78B28C : color;
+        int low = active ? 0xFF2D6B47 : color;
+        int tip = active ? 0xFF88BEF4 : color;
+        g.fill(cx - 8, cy - 6, cx + 8, cy - 4, top);
+        g.fill(cx - 6, cy - 4, cx + 6, cy - 2, top);
+        g.fill(cx - 4, cy - 2, cx + 4, cy, mid);
+        g.fill(cx - 3, cy, cx + 3, cy + 2, low);
+        g.fill(cx - 1, cy + 2, cx + 1, cy + 8, tip);
+    }
+
+    private void drawRotateModeIcon(GuiGraphics g, int cx, int cy, int color) {
+        g.fill(cx - 6, cy - 4, cx - 2, cy - 3, color);
+        g.fill(cx - 6, cy - 4, cx - 5, cy + 1, color);
+        g.fill(cx - 1, cy - 6, cx + 4, cy - 2, color);
+        g.fill(cx + 4, cy + 2, cx + 5, cy + 7, color);
+        g.fill(cx - 4, cy + 4, cx + 1, cy + 5, color);
+        g.fill(cx - 6, cy + 2, cx - 2, cy + 6, color);
+        g.fill(cx - 1, cy - 1, cx + 2, cy + 2, 0xFF1B222C);
+    }
+
+    private void drawQuestCheckIcon(GuiGraphics g, int cx, int cy, int color) {
+        g.fill(cx - 7, cy + 1, cx - 3, cy + 5, color);
+        g.fill(cx - 4, cy + 4, cx, cy + 8, color);
+        g.fill(cx - 1, cy + 1, cx + 3, cy + 5, color);
+        g.fill(cx + 2, cy - 2, cx + 6, cy + 2, color);
+        g.fill(cx + 5, cy - 5, cx + 9, cy - 1, color);
+    }
+
+    private void drawChunkCurtainIcon(GuiGraphics g, int cx, int cy, int color, boolean active) {
+        int glow = active ? 0x4488BEF4 : 0x221D2530;
+        g.fill(cx - 8, cy - 7, cx + 8, cy + 7, glow);
+        g.fill(cx - 7, cy - 6, cx - 6, cy + 6, color);
+        g.fill(cx - 1, cy - 6, cx, cy + 6, color);
+        g.fill(cx + 5, cy - 6, cx + 6, cy + 6, color);
+        g.fill(cx - 7, cy - 6, cx + 6, cy - 5, color);
+        g.fill(cx - 7, cy, cx + 6, cy + 1, color);
+        g.fill(cx - 7, cy + 6, cx + 6, cy + 7, color);
+    }
+
+    private void drawGearIcon(GuiGraphics g, int cx, int cy, int color) {
+        g.fill(cx - 2, cy - 8, cx + 2, cy - 5, color);
+        g.fill(cx - 2, cy + 5, cx + 2, cy + 8, color);
+        g.fill(cx - 8, cy - 2, cx - 5, cy + 2, color);
+        g.fill(cx + 5, cy - 2, cx + 8, cy + 2, color);
+        g.fill(cx - 6, cy - 6, cx - 3, cy - 3, color);
+        g.fill(cx + 3, cy - 6, cx + 6, cy - 3, color);
+        g.fill(cx - 6, cy + 3, cx - 3, cy + 6, color);
+        g.fill(cx + 3, cy + 3, cx + 6, cy + 6, color);
+        g.fill(cx - 4, cy - 4, cx + 4, cy + 4, color);
+        g.fill(cx - 1, cy - 1, cx + 1, cy + 1, 0xFF1B222C);
     }
 
     private List<TopBarButtonLayout> buildTopBarButtonLayouts() {
-        List<TopBarButtonSpec> specs = List.of(
-                new TopBarButtonSpec(TopBarButtonId.INTERACT, "INTERACT", topActionForMode() == TopAction.INTERACT, TOP_ACTION_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.LINK, "LINK", topActionForMode() == TopAction.LINK, TOP_ACTION_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.FUNNEL, "FUNNEL", topActionForMode() == TopAction.FUNNEL, TOP_ACTION_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.ROTATE, "ROTATE", topActionForMode() == TopAction.ROTATE, TOP_ACTION_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.SENSITIVITY, "SENS " + this.controller.getInputSensitivityLabel(), false, TOP_SENS_BUTTON_W),
-                new TopBarButtonSpec(
-                        TopBarButtonId.AUTO_STORE,
-                        this.controller.isAutoStoreMinedDrops() ? "AUTO STORE: ON" : "AUTO STORE: OFF",
-                        this.controller.isAutoStoreMinedDrops(),
-                        TOP_AUTOSTORE_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.SHAPE, "SHAPE: " + shapeLabel(this.controller.getBuildShape()), this.shapeWheelOpen, SHAPE_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.SHAPE_ROTATE, "ROT: " + this.shapeRotateDegrees + "deg", false, SHAPE_ROTATE_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.GUIDE, "GUIDE", this.guideOpen, TOP_GUIDE_BUTTON_W),
-                new TopBarButtonSpec(TopBarButtonId.QUEST_DETECT, "QUEST DETECT", false, QUEST_DETECT_BUTTON_W));
-
-        int gapsTotal = Math.max(0, specs.size() - 1) * TOP_BUTTON_GAP;
-        int buttonsBaseWidth = 0;
-        for (TopBarButtonSpec spec : specs) {
-            buttonsBaseWidth += spec.baseWidth();
-        }
-
-        int availableWidth = Math.max(80, this.width - 16);
-        int availableForButtons = Math.max(MIN_TOP_BUTTON_W, availableWidth - gapsTotal);
-        int minButtonWidth = Math.max(12, Math.min(MIN_TOP_BUTTON_W, availableForButtons / Math.max(1, specs.size())));
-        double widthScale = Math.min(1.0D, availableForButtons / (double) Math.max(1, buttonsBaseWidth));
-
-        List<TopBarButtonLayout> layouts = new ArrayList<>(specs.size());
+        List<TopBarButtonLayout> layouts = new ArrayList<>();
         int x = 8;
-        int remainingWidth = availableForButtons;
-        for (int i = 0; i < specs.size(); i++) {
-            TopBarButtonSpec spec = specs.get(i);
-            int remainingButtons = specs.size() - i - 1;
-            int minReserved = remainingButtons * minButtonWidth;
-            int width = i == specs.size() - 1
-                    ? Math.max(minButtonWidth, remainingWidth)
-                    : Math.max(minButtonWidth, (int) Math.round(spec.baseWidth() * widthScale));
-            if (remainingButtons > 0) {
-                width = Math.min(width, Math.max(minButtonWidth, remainingWidth - minReserved));
-            }
-            layouts.add(new TopBarButtonLayout(spec.id(), x, width, spec.label(), spec.active()));
-            remainingWidth -= width;
-            x += width + TOP_BUTTON_GAP;
-        }
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.INTERACT, x, TOP_MODE_BUTTON_W, "", true, topActionForMode() == TopAction.INTERACT));
+        x += TOP_MODE_BUTTON_W + TOP_BUTTON_GAP;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.LINK, x, TOP_MODE_BUTTON_W, "", true, topActionForMode() == TopAction.LINK));
+        x += TOP_MODE_BUTTON_W + TOP_BUTTON_GAP;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.FUNNEL, x, TOP_MODE_BUTTON_W, "", true, topActionForMode() == TopAction.FUNNEL));
+        x += TOP_MODE_BUTTON_W + TOP_BUTTON_GAP;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.ROTATE, x, TOP_MODE_BUTTON_W, "", true, topActionForMode() == TopAction.ROTATE));
+        x += TOP_MODE_BUTTON_W + 12;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.QUICK_BUILD, x, TOP_QUICK_BUILD_BUTTON_W, "Quick Build", false, this.quickBuildOpen));
+        x += TOP_QUICK_BUILD_BUTTON_W + TOP_BUTTON_GAP;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.ULTIMINE, x, TOP_ULTIMINE_BUTTON_W, "Ultimine", false, this.ultimineOpen));
+        x += TOP_ULTIMINE_BUTTON_W + TOP_BUTTON_GAP;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.QUEST_DETECT, x, TOP_ICON_BUTTON_W, "", true, false));
+        x += TOP_ICON_BUTTON_W + TOP_BUTTON_GAP;
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.CHUNK_VIEW, x, TOP_ICON_BUTTON_W, "", true, this.controller.isChunkCurtainVisible()));
+        int gearX = Math.max(x + TOP_BUTTON_GAP, this.width - TOP_ICON_BUTTON_W - 8);
+        layouts.add(new TopBarButtonLayout(TopBarButtonId.GEAR, gearX, TOP_ICON_BUTTON_W, "", true, this.gearMenuOpen));
         return layouts;
+    }
+
+    private static ResourceLocation quickBuildTexture(String key) {
+        ResourceLocation id = ResourceLocation.tryParse("rtsbuilding:textures/gui/quickbuild/" + key + ".png");
+        return id == null ? ResourceLocation.withDefaultNamespace("missingno") : id;
+    }
+
+    private void applyStoredUiState() {
+        RtsClientUiStateStore.UiState state = RtsClientUiStateStore.load();
+        this.quickBuildOpen = state.quickBuildOpen;
+        this.ultimineOpen = state.ultimineOpen;
+        this.ultimineLimit = Math.max(1, Math.min(256, state.ultimineLimit));
+        this.controller.setChunkCurtainVisible(state.chunkCurtainVisible);
+        try {
+            this.controller.setBuildShape(ClientRtsController.BuildShape.valueOf(state.buildShape));
+        } catch (IllegalArgumentException ignored) {
+            this.controller.setBuildShape(ClientRtsController.BuildShape.BLOCK);
+        }
+        try {
+            this.shapeFillMode = ShapeFillMode.valueOf(state.fillMode);
+        } catch (IllegalArgumentException ignored) {
+            this.shapeFillMode = ShapeFillMode.FILL;
+        }
+        this.shapeRotateDegrees = Math.floorMod(state.rotationDegrees, 360);
+        ensureFillModeForShape(this.controller.getBuildShape());
+    }
+
+    private void persistUiState() {
+        RtsClientUiStateStore.UiState state = new RtsClientUiStateStore.UiState();
+        state.buildShape = this.controller.getBuildShape().name();
+        state.fillMode = this.shapeFillMode.name();
+        state.rotationDegrees = this.shapeRotateDegrees;
+        state.quickBuildOpen = this.quickBuildOpen;
+        state.ultimineOpen = this.ultimineOpen;
+        state.ultimineLimit = this.ultimineLimit;
+        state.chunkCurtainVisible = this.controller.isChunkCurtainVisible();
+        RtsClientUiStateStore.save(state);
+    }
+
+    private void renderGearMenu(GuiGraphics g, int mouseX, int mouseY) {
+        if (!this.gearMenuOpen) {
+            return;
+        }
+        int x = this.width - QUICK_BUILD_GEAR_MENU_W - 8;
+        int y = 4 + TOP_BUTTON_H + 6;
+        int h = 8 + (QUICK_BUILD_GEAR_ROW_H * 3) + 8;
+        drawPanelFrame(g, x, y, QUICK_BUILD_GEAR_MENU_W, h, 0xEE161C24, 0xFF6C839A, 0xFF0D1117);
+        drawGearMenuRow(g, mouseX, mouseY, x + 8, y + 8, QUICK_BUILD_GEAR_MENU_W - 16, QUICK_BUILD_GEAR_ROW_H,
+                "Sensitivity: " + this.controller.getInputSensitivityLabel(), false);
+        drawGearMenuRow(g, mouseX, mouseY, x + 8, y + 8 + QUICK_BUILD_GEAR_ROW_H, QUICK_BUILD_GEAR_MENU_W - 16, QUICK_BUILD_GEAR_ROW_H,
+                this.controller.isAutoStoreMinedDrops() ? "Auto Store: ON" : "Auto Store: OFF", this.controller.isAutoStoreMinedDrops());
+        drawGearMenuRow(g, mouseX, mouseY, x + 8, y + 8 + (QUICK_BUILD_GEAR_ROW_H * 2), QUICK_BUILD_GEAR_MENU_W - 16, QUICK_BUILD_GEAR_ROW_H,
+                "Guide", this.guideOpen);
+    }
+
+    private void drawGearMenuRow(GuiGraphics g, int mouseX, int mouseY, int x, int y, int w, int h, String label, boolean active) {
+        boolean hover = inside(mouseX, mouseY, x, y, w, h);
+        int bg = active ? 0xAA2D6B47 : (hover ? 0xAA253343 : 0xAA1F2732);
+        drawPanelFrame(g, x, y, w, h, bg, 0xFF6A8299, 0xFF0E1116);
+        g.drawString(this.font, trimToWidth(label, w - 10), x + 6, y + 5, 0xF2F6FB);
+    }
+
+    private boolean handleGearMenuClick(double mouseX, double mouseY) {
+        if (!this.gearMenuOpen) {
+            return false;
+        }
+        int x = this.width - QUICK_BUILD_GEAR_MENU_W - 8;
+        int y = 4 + TOP_BUTTON_H + 6;
+        int h = 8 + (QUICK_BUILD_GEAR_ROW_H * 3) + 8;
+        if (!inside(mouseX, mouseY, x, y, QUICK_BUILD_GEAR_MENU_W, h)) {
+            return false;
+        }
+        int rowX = x + 8;
+        int rowW = QUICK_BUILD_GEAR_MENU_W - 16;
+        if (inside(mouseX, mouseY, rowX, y + 8, rowW, QUICK_BUILD_GEAR_ROW_H)) {
+            this.controller.cycleInputSensitivity();
+            return true;
+        }
+        if (inside(mouseX, mouseY, rowX, y + 8 + QUICK_BUILD_GEAR_ROW_H, rowW, QUICK_BUILD_GEAR_ROW_H)) {
+            this.controller.toggleAutoStoreMinedDrops();
+            return true;
+        }
+        if (inside(mouseX, mouseY, rowX, y + 8 + (QUICK_BUILD_GEAR_ROW_H * 2), rowW, QUICK_BUILD_GEAR_ROW_H)) {
+            this.guideOpen = !this.guideOpen;
+            this.gearMenuOpen = false;
+            return true;
+        }
+        return true;
+    }
+
+    private void renderQuickBuildPanel(GuiGraphics g, int mouseX, int mouseY) {
+        if (!this.quickBuildOpen) {
+            return;
+        }
+        int x = this.width - QUICK_BUILD_PANEL_W - 10;
+        int y = TOP_H + 10;
+        if (getFloatingPanelAvailableHeight(y) < QUICK_BUILD_PANEL_H) {
+            return;
+        }
+        drawPanelFrame(g, x, y, QUICK_BUILD_PANEL_W, QUICK_BUILD_PANEL_H, 0xEE161C24, 0xFF6C839A, 0xFF0D1117);
+        g.fill(x + 1, y + 1, x + QUICK_BUILD_PANEL_W - 1, y + 20, 0xCC233345);
+        g.drawString(this.font, "Quick Build", x + 8, y + 6, 0xF2F7FF);
+
+        int shapeTitleY = y + 30;
+        g.drawString(this.font, "Shape", x + 8, shapeTitleY, 0xD8E3EE);
+        ClientRtsController.BuildShape[] shapes = new ClientRtsController.BuildShape[] {
+                ClientRtsController.BuildShape.BLOCK,
+                ClientRtsController.BuildShape.LINE,
+                ClientRtsController.BuildShape.SQUARE,
+                ClientRtsController.BuildShape.WALL,
+                ClientRtsController.BuildShape.CIRCLE,
+                ClientRtsController.BuildShape.BOX
+        };
+        for (int i = 0; i < shapes.length; i++) {
+            int col = i % 2;
+            int row = i / 2;
+            int slotX = x + 8 + (col * (QUICK_BUILD_SHAPE_SLOT + QUICK_BUILD_SHAPE_GAP));
+            int slotY = y + 40 + (row * (QUICK_BUILD_SHAPE_SLOT + 6));
+            boolean hover = inside(mouseX, mouseY, slotX, slotY, QUICK_BUILD_SHAPE_SLOT, QUICK_BUILD_SHAPE_SLOT);
+            boolean selected = shapes[i] == this.controller.getBuildShape();
+            int bg = selected ? 0xAA2D6B47 : (hover ? 0xAA243547 : 0xAA1C232D);
+            drawPanelFrame(g, slotX, slotY, QUICK_BUILD_SHAPE_SLOT, QUICK_BUILD_SHAPE_SLOT, bg, 0xFF647B92, 0xFF0D1117);
+            drawShapeTexture(g, shapes[i], selected ? "active" : (hover ? "hover" : "inactive"), slotX, slotY);
+        }
+
+        int rightX = x + 88;
+        g.drawString(this.font, "Fill", rightX, shapeTitleY, 0xD8E3EE);
+        List<ShapeFillMode> modes = availableFillModes(this.controller.getBuildShape());
+        for (int i = 0; i < modes.size(); i++) {
+            int rowY = y + 42 + (i * 20);
+            ShapeFillMode mode = modes.get(i);
+            boolean selected = this.shapeFillMode == mode;
+            boolean hover = inside(mouseX, mouseY, rightX, rowY, 84, 16);
+            int bg = selected ? 0xAA2D6B47 : (hover ? 0xAA243547 : 0xAA1C232D);
+            drawPanelFrame(g, rightX, rowY, 84, 16, bg, 0xFF647B92, 0xFF0D1117);
+            g.fill(rightX + 4, rowY + 4, rightX + 12, rowY + 12, 0xAA111820);
+            if (selected) {
+                g.fill(rightX + 6, rowY + 6, rightX + 10, rowY + 10, 0xFF78B28C);
+            }
+            g.drawString(this.font, fillModeLabel(mode), rightX + 18, rowY + 4, 0xF2F7FF);
+        }
+
+        int rotY = y + 120;
+        g.drawString(this.font, "Rotation", rightX, rotY, 0xD8E3EE);
+        drawPanelFrame(g, rightX, rotY + 10, 20, 18, 0xAA1C232D, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, "-", rightX + 10, rotY + 15, 0xFFFFFF);
+        drawPanelFrame(g, rightX + 24, rotY + 10, 56, 18, 0xAA1C232D, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, this.shapeRotateDegrees + "deg", rightX + 52, rotY + 15, 0xF2F7FF);
+        drawPanelFrame(g, rightX + 84, rotY + 10, 20, 18, 0xAA1C232D, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, "+", rightX + 94, rotY + 15, 0xFFFFFF);
+
+        String materialCost = "Materials: " + currentShapeCostText() + " blocks";
+        g.drawString(this.font, materialCost, x + 8, y + QUICK_BUILD_PANEL_H - 34, 0xB8FFB8);
+        g.drawString(this.font, "Selection persists automatically", x + 8, y + QUICK_BUILD_PANEL_H - 18, 0xAFC0D3);
+    }
+
+    private void drawShapeTexture(GuiGraphics g, ClientRtsController.BuildShape shape, String state, int x, int y) {
+        ResourceLocation texture = switch (shape) {
+            case BLOCK -> "active".equals(state) ? SHAPE_BLOCK_ACTIVE : ("hover".equals(state) ? SHAPE_BLOCK_HOVER : SHAPE_BLOCK_INACTIVE);
+            case LINE -> "active".equals(state) ? SHAPE_LINE_ACTIVE : ("hover".equals(state) ? SHAPE_LINE_HOVER : SHAPE_LINE_INACTIVE);
+            case SQUARE -> "active".equals(state) ? SHAPE_SQUARE_ACTIVE : ("hover".equals(state) ? SHAPE_SQUARE_HOVER : SHAPE_SQUARE_INACTIVE);
+            case WALL -> "active".equals(state) ? SHAPE_WALL_ACTIVE : ("hover".equals(state) ? SHAPE_WALL_HOVER : SHAPE_WALL_INACTIVE);
+            case CIRCLE -> "active".equals(state) ? SHAPE_CIRCLE_ACTIVE : ("hover".equals(state) ? SHAPE_CIRCLE_HOVER : SHAPE_CIRCLE_INACTIVE);
+            case BOX -> "active".equals(state) ? SHAPE_BOX_ACTIVE : ("hover".equals(state) ? SHAPE_BOX_HOVER : SHAPE_BOX_INACTIVE);
+        };
+        g.blit(texture, x + 2, y + 2, 0, 0, 28, 28, 32, 32);
+    }
+
+    private boolean handleQuickBuildPanelClick(double mouseX, double mouseY) {
+        if (!this.quickBuildOpen) {
+            return false;
+        }
+        int x = this.width - QUICK_BUILD_PANEL_W - 10;
+        int y = TOP_H + 10;
+        if (getFloatingPanelAvailableHeight(y) < QUICK_BUILD_PANEL_H || !inside(mouseX, mouseY, x, y, QUICK_BUILD_PANEL_W, QUICK_BUILD_PANEL_H)) {
+            return false;
+        }
+        ClientRtsController.BuildShape[] shapes = new ClientRtsController.BuildShape[] {
+                ClientRtsController.BuildShape.BLOCK,
+                ClientRtsController.BuildShape.LINE,
+                ClientRtsController.BuildShape.SQUARE,
+                ClientRtsController.BuildShape.WALL,
+                ClientRtsController.BuildShape.CIRCLE,
+                ClientRtsController.BuildShape.BOX
+        };
+        for (int i = 0; i < shapes.length; i++) {
+            int col = i % 2;
+            int row = i / 2;
+            int slotX = x + 8 + (col * (QUICK_BUILD_SHAPE_SLOT + QUICK_BUILD_SHAPE_GAP));
+            int slotY = y + 40 + (row * (QUICK_BUILD_SHAPE_SLOT + 6));
+            if (inside(mouseX, mouseY, slotX, slotY, QUICK_BUILD_SHAPE_SLOT, QUICK_BUILD_SHAPE_SLOT)) {
+                this.controller.setBuildShape(shapes[i]);
+                ensureFillModeForShape(shapes[i]);
+                clearShapeBuildSession();
+                persistUiState();
+                return true;
+            }
+        }
+
+        int rightX = x + 88;
+        List<ShapeFillMode> modes = availableFillModes(this.controller.getBuildShape());
+        for (int i = 0; i < modes.size(); i++) {
+            int rowY = y + 42 + (i * 20);
+            if (inside(mouseX, mouseY, rightX, rowY, 84, 16)) {
+                this.shapeFillMode = modes.get(i);
+                persistUiState();
+                return true;
+            }
+        }
+
+        int rotY = y + 120;
+        if (inside(mouseX, mouseY, rightX, rotY + 10, 20, 18)) {
+            rotateShapeByStep(-1);
+            return true;
+        }
+        if (inside(mouseX, mouseY, rightX + 84, rotY + 10, 20, 18)) {
+            rotateShapeByStep(1);
+            return true;
+        }
+        return true;
+    }
+
+    private void renderUltiminePanel(GuiGraphics g, int mouseX, int mouseY) {
+        if (!this.ultimineOpen) {
+            return;
+        }
+        int x = this.width - ULTIMINE_PANEL_W - 10;
+        int y = TOP_H + 10 + (this.quickBuildOpen && getFloatingPanelAvailableHeight(TOP_H + 10) >= QUICK_BUILD_PANEL_H
+                ? QUICK_BUILD_PANEL_H + 8
+                : 0);
+        if (getFloatingPanelAvailableHeight(y) < ULTIMINE_PANEL_H) {
+            return;
+        }
+
+        drawPanelFrame(g, x, y, ULTIMINE_PANEL_W, ULTIMINE_PANEL_H, 0xEE161C24, 0xFF6C839A, 0xFF0D1117);
+        g.fill(x + 1, y + 1, x + ULTIMINE_PANEL_W - 1, y + 20, 0xCC233345);
+        g.drawString(this.font, "Ultimine", x + 8, y + 6, 0xF2F7FF);
+
+        int rowY = y + 32;
+        g.drawString(this.font, "Blocks", x + 8, rowY, 0xD8E3EE);
+        drawPanelFrame(g, x + 8, rowY + 12, 24, 18, 0xAA1C232D, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, "-", x + 20, rowY + 17, 0xFFFFFF);
+        drawPanelFrame(g, x + 38, rowY + 12, 58, 18, 0xAA243547, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, Integer.toString(this.ultimineLimit), x + 67, rowY + 17, 0xF2F7FF);
+        drawPanelFrame(g, x + 102, rowY + 12, 24, 18, 0xAA1C232D, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, "+", x + 114, rowY + 17, 0xFFFFFF);
+        drawPanelFrame(g, x + 132, rowY + 12, 48, 18, 0xAA1C232D, 0xFF647B92, 0xFF0D1117);
+        g.drawCenteredString(this.font, "MAX", x + 156, rowY + 17, 0xFFFFFF);
+
+        int stage = this.controller.getMineProgressStage();
+        int progressY = y + 82;
+        String progressLabel = stage >= 0
+                ? "Breaking " + Math.max(1, this.lastUltimineSentLimit)
+                : "Ready";
+        g.drawString(this.font, progressLabel, x + 8, progressY - 12, stage >= 0 ? 0xB8FFB8 : 0xAFC0D3);
+        drawPanelFrame(g, x + 8, progressY, ULTIMINE_PANEL_W - 16, 12, 0xAA101820, 0xFF647B92, 0xFF0D1117);
+        int fillW = stage < 0 ? 0 : Math.min(ULTIMINE_PANEL_W - 20, Math.max(1, (int) (((stage + 1) / 10.0F) * (ULTIMINE_PANEL_W - 20))));
+        if (fillW > 0) {
+            g.fill(x + 10, progressY + 2, x + 10 + fillW, progressY + 10, 0xFF78B28C);
+        }
+    }
+
+    private boolean handleUltiminePanelClick(double mouseX, double mouseY) {
+        if (!this.ultimineOpen) {
+            return false;
+        }
+        int x = this.width - ULTIMINE_PANEL_W - 10;
+        int y = TOP_H + 10 + (this.quickBuildOpen && getFloatingPanelAvailableHeight(TOP_H + 10) >= QUICK_BUILD_PANEL_H
+                ? QUICK_BUILD_PANEL_H + 8
+                : 0);
+        if (getFloatingPanelAvailableHeight(y) < ULTIMINE_PANEL_H || !inside(mouseX, mouseY, x, y, ULTIMINE_PANEL_W, ULTIMINE_PANEL_H)) {
+            return false;
+        }
+
+        int rowY = y + 32;
+        if (inside(mouseX, mouseY, x + 8, rowY + 12, 24, 18)) {
+            adjustUltimineLimit(hasShiftDown() ? -16 : -1);
+            return true;
+        }
+        if (inside(mouseX, mouseY, x + 102, rowY + 12, 24, 18)) {
+            adjustUltimineLimit(hasShiftDown() ? 16 : 1);
+            return true;
+        }
+        if (inside(mouseX, mouseY, x + 132, rowY + 12, 48, 18)) {
+            this.ultimineLimit = 256;
+            persistUiState();
+            return true;
+        }
+        return true;
+    }
+
+    private void adjustUltimineLimit(int delta) {
+        this.ultimineLimit = Math.max(1, Math.min(256, this.ultimineLimit + delta));
+        persistUiState();
     }
 
     private void renderShapeContextPanel(GuiGraphics g, int mouseX, int mouseY) {
@@ -1592,7 +2071,8 @@ public final class BuilderScreen extends Screen {
 
             if (i < entries.size()) {
                 var entry = entries.get(i);
-                boolean selected = entry.itemId().equals(this.controller.getSelectedItemId());
+                boolean selected = !this.controller.getSelectedItemPreview().isEmpty()
+                        && ItemStack.isSameItemSameComponents(entry.stack(), this.controller.getSelectedItemPreview());
                 if (selected) {
                     g.fill(cx + 1, cy + 1, cx + box - 1, cy + box - 1, 0x3326C56D);
                 }
@@ -1876,12 +2356,12 @@ public final class BuilderScreen extends Screen {
     }
 
     private boolean handleTopBarClick(double mouseX, double mouseY) {
-        if (mouseY < 4 || mouseY > 24) {
+        if (mouseY < 4 || mouseY > 4 + TOP_BUTTON_H) {
             return false;
         }
 
         for (TopBarButtonLayout button : buildTopBarButtonLayouts()) {
-            if (!inside(mouseX, mouseY, button.x(), 4, button.width(), 20)) {
+            if (!inside(mouseX, mouseY, button.x(), 4, button.width(), TOP_BUTTON_H)) {
                 continue;
             }
             switch (button.id()) {
@@ -1905,18 +2385,28 @@ public final class BuilderScreen extends Screen {
                     this.controller.setFunnelEnabled(false);
                     clearShapeBuildSession();
                 }
-                case SENSITIVITY -> this.controller.cycleInputSensitivity();
-                case AUTO_STORE -> this.controller.toggleAutoStoreMinedDrops();
-                case SHAPE -> {
-                    this.shapeWheelOpenedByAlt = false;
-                    openShapeWheel(mouseX, mouseY);
+                case QUICK_BUILD -> {
+                    this.quickBuildOpen = !this.quickBuildOpen;
+                    this.gearMenuOpen = false;
+                    persistUiState();
                 }
-                case SHAPE_ROTATE -> rotateShapeByStep(1);
-                case GUIDE -> this.guideOpen = !this.guideOpen;
+                case ULTIMINE -> {
+                    this.ultimineOpen = !this.ultimineOpen;
+                    this.gearMenuOpen = false;
+                    persistUiState();
+                }
                 case QUEST_DETECT -> this.controller.detectQuestsNow();
+                case CHUNK_VIEW -> {
+                    this.controller.setChunkCurtainVisible(!this.controller.isChunkCurtainVisible());
+                    persistUiState();
+                }
+                case GEAR -> this.gearMenuOpen = !this.gearMenuOpen;
+                default -> {
+                }
             }
             return true;
         }
+        this.gearMenuOpen = false;
         return false;
     }
 
@@ -2740,7 +3230,7 @@ public final class BuilderScreen extends Screen {
             preview = new ItemStack(state.getBlock().asItem());
         }
         if (preview.isEmpty() || preview.is(Items.AIR)) {
-            return "";
+            return RtsAe2Compat.resolveGuiBindingIconItemId(this.minecraft.level, pos, hit.getDirection(), "");
         }
         var id = BuiltInRegistries.ITEM.getKey(preview.getItem());
         return id == null ? "" : id.toString();
@@ -2937,6 +3427,7 @@ public final class BuilderScreen extends Screen {
     private void rotateShapeByStep(int step) {
         int raw = this.shapeRotateDegrees + (step * SHAPE_ROTATE_STEP_DEGREES);
         this.shapeRotateDegrees = Math.floorMod(raw, 360);
+        persistUiState();
     }
 
     public ShapeGhostPreview getShapeGhostPreview() {
@@ -3665,20 +4156,24 @@ public final class BuilderScreen extends Screen {
         int currentIndex = modes.indexOf(this.shapeFillMode);
         if (currentIndex < 0) {
             this.shapeFillMode = modes.get(0);
+            persistUiState();
             return;
         }
         int next = Math.floorMod(currentIndex + step, modes.size());
         this.shapeFillMode = modes.get(next);
+        persistUiState();
     }
 
     private void ensureFillModeForShape(ClientRtsController.BuildShape shape) {
         List<ShapeFillMode> modes = availableFillModes(shape);
         if (modes.isEmpty()) {
             this.shapeFillMode = ShapeFillMode.FILL;
+            persistUiState();
             return;
         }
         if (!modes.contains(this.shapeFillMode)) {
             this.shapeFillMode = modes.get(0);
+            persistUiState();
         }
     }
 
@@ -4727,11 +5222,7 @@ public final class BuilderScreen extends Screen {
     }
 
     private void drawSlotCountOverlay(GuiGraphics g, int slotX, int slotY, int box, String countText, int color) {
-        g.pose().pushPose();
-        g.pose().translate(0.0F, 0.0F, 300.0F);
-        g.fill(slotX + 1, slotY + box - 9, slotX + box - 1, slotY + box - 1, 0xB0000000);
-        g.drawString(this.font, countText, slotX + 2, slotY + box - 8, color, true);
-        g.pose().popPose();
+        RtsClientUiUtil.drawSlotCountOverlay(g, this.font, slotX, slotY, box, countText, color);
     }
 
     private TopAction topActionForMode() {
@@ -4847,6 +5338,7 @@ public final class BuilderScreen extends Screen {
     private record TopBarButtonSpec(
             TopBarButtonId id,
             String label,
+            boolean iconOnly,
             boolean active,
             int baseWidth) {
     }
@@ -4856,6 +5348,7 @@ public final class BuilderScreen extends Screen {
             int x,
             int width,
             String label,
+            boolean iconOnly,
             boolean active) {
     }
 
@@ -4864,6 +5357,10 @@ public final class BuilderScreen extends Screen {
         LINK,
         FUNNEL,
         ROTATE,
+        QUICK_BUILD,
+        ULTIMINE,
+        CHUNK_VIEW,
+        GEAR,
         SENSITIVITY,
         AUTO_STORE,
         SHAPE,

@@ -1,5 +1,5 @@
 RTSBUILDING DETAILED PROJECT RECORD
-Last Rewrite: 2026-03-31
+Last Rewrite: 2026-04-24
 Project Root: E:\RTSbuilding
 Runtime Target: Minecraft 1.21.1 + NeoForge 21.1.219 + Java 21
 
@@ -31,6 +31,8 @@ Current implemented gameplay surface:
 - full-width bottom RTS builder UI with storage, hotbar/pins, categories,
   recent panel, craft panel, and a craft/GUIs dock
 - craft-dock GUI binding shortcuts with persistent server-backed slots
+  - AE2 terminal/provider binds now fall back to the original AE item icon
+    when clone-stack/block-item preview lookup comes back blank
 - linked storage browsing with search, category filtering, paging, and sort
 - linked storage modes:
   - left-click link: extract + store
@@ -54,9 +56,12 @@ Current implemented gameplay surface:
   - target face
   - cached icon item id
   so face-mounted terminals can reopen more reliably
-- remote-opened Sophisticated Storage menus are wrapped through a dedicated
-  compat path because their menu validity check does not use
-  `ContainerLevelAccess`
+- AE2 crafting/pattern/pattern-access style GUI binds fall back to icon lookup
+  from the resolved menu/part name when normal clone-stack preview lookup is
+  blank
+- remote-opened Sophisticated Storage menus keep their original menu type and
+  use a dedicated mixin-backed still-valid bypass because their menu validity
+  check does not use `ContainerLevelAccess`
 - remote mining with tool slot selection and progress sync
 - craft terminal + workbench-linked refill/import flows
 - craftables search panel with paging
@@ -75,16 +80,29 @@ Build/runtime:
 - NeoForge `21.1.219`
 - Parchment mappings for MC 1.21.1
 
+Workspace companion scaffold:
+- `sister-projects/rtsbuilding-forge-1.20.1/`
+  - Forge `47.4.16` on Minecraft `1.20.1`
+  - ForgeGradle `6.x`
+  - Java 17 baseline
+  - official MDK scaffold renamed from `examplemod` to `rtsbuilding`
+  - local docs in `README.md` and `docs/PORTING.md`
+  - verified with `gradlew.bat compileJava` using local JDK 17
+
 Optional compat:
 - JEI API/runtime integration
 - AE2 storage-service bridge via optional reflection compat
 - FTB Quests / FTB Teams via reflection-based optional compat
 - Sophisticated Storage remote-menu still-valid bypass compat for RTS opens
+  via mixin + tracked menu ids
 
 Important project files:
 - `build.gradle`
 - `gradle.properties`
+- `src/main/resources/rtsbuilding.mixins.json`
 - `src/main/templates/META-INF/neoforge.mods.toml`
+- `sister-projects/rtsbuilding-forge-1.20.1/README.md`
+- `sister-projects/rtsbuilding-forge-1.20.1/docs/PORTING.md`
 
 ================================================================
 3. Top-Level Code Map
@@ -92,6 +110,12 @@ Important project files:
 Main mod/bootstrap:
 - `src/main/java/com/rtsbuilding/rtsbuilding/RtsbuildingMod.java`
 - `src/main/java/com/rtsbuilding/rtsbuilding/Config.java`
+
+Forge 1.20.1 sister scaffold:
+- `sister-projects/rtsbuilding-forge-1.20.1/src/main/java/com/rtsbuilding/rtsbuilding/RtsbuildingMod.java`
+- `sister-projects/rtsbuilding-forge-1.20.1/src/main/java/com/rtsbuilding/rtsbuilding/Config.java`
+- `sister-projects/rtsbuilding-forge-1.20.1/src/main/resources/META-INF/mods.toml`
+- `sister-projects/rtsbuilding-forge-1.20.1/upstream/forge-1.20.1-47.4.16-mdk.zip`
 
 Client:
 - `client/ClientRtsController.java`
@@ -125,8 +149,10 @@ Client:
     between `BuilderScreen` and `RtsClientInputGate`
 - `client/RtsClientRemoteMenuCompat.java`
   - shared client remote-menu compat helper
-  - Sophisticated Storage menu wrapping plus reflection-based validity patch
+  - menu/screen pair safety guard plus reflection-based validation patch
     extraction from `ClientRtsController`
+  - coordinates Sophisticated Storage remote-menu tracking for the mixin
+    still-valid bypass path
 - `client/RtsClientPacketGateway.java`
   - shared client packet gateway
   - owns C2S payload construction/dispatch previously embedded inside
@@ -150,8 +176,8 @@ Server:
   - AE2-aware linked item-handler resolution
   - AE2 write-back/import paths also route through the network compat handler
   - remote menu validation now stays on the no-teleport path
-  - remote-opened Sophisticated Storage menus are server-wrapped to bypass
-    their hard-coded `stillValid(...)` distance check
+  - remote-opened Sophisticated Storage menus are tracked so the dedicated
+    mixin bypass only applies to RTS-opened menus
   - browsing/search/paging
   - placement / interaction / mining / crafting / fluid handling
   - recent-entry tracking
@@ -168,10 +194,17 @@ Network:
 
 Compat:
 - `compat/ae2/RtsAe2Compat.java`
+  - optional AE2 storage compat plus GUI-binding icon fallback resolution for
+    AE terminal/provider menu parts
 - `compat/jei/*`
 - `compat/ftb/RtsFtbCompat.java`
 - `compat/ftb/RtsFtbCompatImpl.java`
 - `compat/sophisticatedstorage/RtsSophisticatedStorageCompat.java`
+
+Mixins:
+- `mixin/compat/sophisticatedstorage/StorageContainerMenuMixin.java`
+  - injects Sophisticated Storage `stillValid(...)`
+  - forces `true` only for tracked RTS-opened remote menus
 
 ================================================================
 4. Core Runtime Model
@@ -380,9 +413,10 @@ Builder screen:
   the older client/server validation-position spoof after the `1.0.6` rollback
 - generic remote menus still get relaxed container/container-access
   validation when possible
-- Sophisticated Storage menus additionally need a dedicated wrapper because
-  their `StorageContainerMenu#stillValid(...)` performs its own direct
-  player-to-block distance check outside `ContainerLevelAccess`
+- Sophisticated Storage menus additionally keep their original menu type and
+  use a tracked mixin-based `stillValid(...)` bypass because the menu performs
+  its own direct player-to-block distance check outside
+  `ContainerLevelAccess`
 
 5.7 Crafting support
 Crafting-related paths currently in project:
@@ -524,9 +558,14 @@ Post-2026-03-28 15:30 follow-up reflected in the current repo state:
   pipeline
 - GUI bind packets now carry clicked face + icon hint, and the saved binding
   state persists both for AE-style multipart terminals
+- AE2 GUI binding icons now fall back to menu/part-derived item ids when the
+  direct clone-stack/block-item path returns no preview
 - added dedicated Sophisticated Storage remote-menu compat because the official
   `1.21.x` storage menu bypasses `ContainerLevelAccess` and performs its own
   direct distance `stillValid(...)` check
+- replaced the initial Sophisticated Storage wrapper approach with a
+  mixin-backed still-valid bypass that preserves the original menu type for
+  typed storage screens
 - started a deshitfication pass on the client UI layer by extracting shared
   UI primitives and craftables dialog flow out of `BuilderScreen` /
   `RtsClientInputGate` and reusing them in the craft-related screens
@@ -537,4 +576,286 @@ Post-2026-03-28 15:30 follow-up reflected in the current repo state:
   into `RtsClientPacketGateway` so the controller now focuses more on state
   orchestration than payload wiring
 
+================================================================
+10. Forge 1.20.1 Sister Project Status
+================================================================
+Sister workspace:
+- `sister-projects/rtsbuilding-forge-1.20.1`
+
+State as of 2026-04-05:
+- the sister project now contains a full first-pass port of the main RTS code
+  into `Minecraft 1.20.1 + Forge 47.4.16`
+- `compileJava` succeeds
+- `build` succeeds and produces:
+  - `sister-projects/rtsbuilding-forge-1.20.1/build/libs/rtsbuilding-0.1.0-1.20.1-snapshot.jar`
+
+Important porting choices made there:
+- kept the copied `com.rtsbuilding.rtsbuilding` package structure aligned with
+  mainline so future cherry-pick / manual diff work stays sane
+- rewrote the NeoForge payload registrar to a Forge `SimpleChannel` backend
+  while preserving most packet payload classes behind local compatibility shims
+- migrated major client event hooks from NeoForge events to Forge 1.20.1
+  client events
+- migrated `SavedData` to the 1.20.1 save/load signatures
+- migrated storage / fluid access to Forge item + fluid capability paths
+- replaced `1.21.x` crafting input usage with 1.20.1 transient crafting
+  containers
+- adjusted JEI transfer handling to the 1.20.1 JEI crafting recipe type
+- replaced the AE2 network host lookup path with a reflection-based
+  `GridHelper.getNodeHost(...)` path instead of NeoForge block capabilities
+
+Known remaining quality items in the sister project:
+- there are still a couple of deprecation warnings around `ResourceLocation`
+  constructors in the Forge sister branch
+- AE2 compat still compiles via reflection and should be runtime-tested in a
+  real AE2 1.20.1 Forge environment
+- no automated tests exist yet; validation so far is compile/build level only
+
+2026-04-05 runtime follow-up:
+- the first generated Forge sister jar originally still contained temporary
+  compatibility shim classes under `net.minecraft.network.*`
+- that caused a Java module split-package failure at runtime:
+  - `Modules rtsbuilding and minecraft export package net.minecraft.network ...`
+- fix applied:
+  - moved all temporary shim classes out of `net.minecraft.*` /
+    `net.neoforged.*` and into:
+    - `com.rtsbuilding.rtsbuilding.forgecompat.network.*`
+    - `com.rtsbuilding.rtsbuilding.forgecompat.fml.*`
+  - updated all packet payload / compat imports to the new shim namespace
+- post-fix validation:
+  - `sister-projects/rtsbuilding-forge-1.20.1`: `compileJava` SUCCESS
+  - `sister-projects/rtsbuilding-forge-1.20.1`: `build` SUCCESS
+
+2026-04-05 JEI compatibility follow-up:
+- runtime pack reported `NoSuchMethodError` for
+  `IIngredientManager.createClickableIngredient(...)` while loading
+  `jei-1.20.1-forge-15.8.0.11`
+- root cause:
+  - the sister project had been compiled against a newer JEI 15.x API surface
+  - RTS JEI handlers were directly calling the newer
+    `createClickableIngredient(stack, area, normalize)` path
+- fix applied:
+  - added `compat/jei/RtsJeiIngredientCompat.java`
+  - JEI clickable-ingredient lookup now uses reflection to probe supported
+    `createClickableIngredient(...)` signatures at runtime and gracefully
+    falls back across JEI 1.20.1 15.x variants
+  - lowered sister-project development dependency baseline to:
+    - `jei_version=15.8.0.11`
+- post-fix validation:
+  - `sister-projects/rtsbuilding-forge-1.20.1`: `build` SUCCESS
+
 End of file.
+
+================================================================
+11. 2026-04-20 RTS Builder UI Overhaul Pass
+================================================================
+
+This pass replaced a large part of the old text-heavy builder top bar and
+shape-selection UI with icon-first controls and a persistent quick-build
+panel.
+
+Top bar changes:
+- the old right-click interaction labels (`Interact`, `Link`, `Funnel`,
+  `Rotate`) are now rendered as compact icon buttons instead of large text
+  buttons
+- the old `FTB check` text button was replaced by a dedicated checkmark icon
+  button that still triggers quest detection through
+  `ClientRtsController#detectQuestsNow()`
+- added a new `Quick Build` button that opens a right-side build-shape panel
+- added a new chunk-visibility toggle button in the top bar
+- moved system-style utility controls behind a far-right gear button
+
+Quick Build panel changes:
+- the old shape context panel flow in `BuilderScreen` was superseded by a
+  dedicated right-side quick-build panel
+- shape selection is now a 2x3 icon grid using custom pixel-art textures for:
+  - `block`
+  - `line`
+  - `square`
+  - `wall`
+  - `circle`
+  - `box`
+- fill mode remains text/radio based (`fill`, `hollow`, `skeleton`) per
+  user preference
+- rotation was simplified to text + degree readout instead of the earlier
+  icon-driven proposal
+- all quick-build choices now persist between sessions
+
+Persistent client UI state:
+- added `client/RtsClientUiStateStore.java`
+- stores the following in `config/rtsbuilding-client-ui.json`:
+  - selected build shape
+  - fill mode
+  - rotation degrees
+  - quick-build panel open/closed state
+  - chunk curtain visibility
+- `BuilderScreen` now loads the persisted state in `init()` and writes it
+  back on relevant UI changes and on close
+
+Chunk boundary visualization rework:
+- added `chunkCurtainVisible` state to `ClientRtsController`
+- replaced the earlier chunk boundary display path in
+  `RtsBoundaryRenderer` with translucent blue vertical chunk "curtains"
+  closer to the original desired visual language
+- the chunk visualization is now explicitly toggleable from the top bar
+
+Asset pipeline / resources:
+- generated and staged multiple icon concepts during iteration under
+  `staging/`
+- accepted quick-build shape icon set was copied into:
+  - `src/main/resources/assets/rtsbuilding/textures/gui/quickbuild/`
+- generated a current UI concept preview image at:
+  - `staging/ui-concepts/current_ui_concept.png`
+
+Main code touched for this pass:
+- `src/main/java/com/rtsbuilding/rtsbuilding/client/BuilderScreen.java`
+- `src/main/java/com/rtsbuilding/rtsbuilding/client/ClientRtsController.java`
+- `src/main/java/com/rtsbuilding/rtsbuilding/client/RtsBoundaryRenderer.java`
+- `src/main/java/com/rtsbuilding/rtsbuilding/client/RtsClientUiStateStore.java`
+
+Validation:
+- ran `.\gradlew.bat compileJava`
+- result: SUCCESS
+- ran `.\gradlew.bat build`
+- result: SUCCESS
+
+Versioning:
+- bumped `gradle.properties` `mod_version` from `1.0.8-alpha` to
+  `1.0.9-alpha`
+
+Count overlay formatting follow-up:
+- reduced slot count overlay text to a smaller scaled render size so stack
+  counts no longer dominate 18x18 slot visuals
+- unified the overlay drawing path across:
+  - `BuilderScreen`
+  - `RtsClientInputGate`
+  - `RtsCraftTerminalScreen`
+  via `client/RtsClientUiUtil.java`
+- count display rule is now:
+  - below `1000`: show the full integer
+  - `1000+`: abbreviate using `K`, `M`, and `B`
+  - target roughly `3` significant digits so the text stays short enough for
+    narrow item slots
+- representative examples:
+  - `999 -> 999`
+  - `1200 -> 1.2K`
+  - `9876 -> 9.88K`
+  - `12500 -> 12.5K`
+  - `256000 -> 256K`
+  - `1542000 -> 1.54M`
+- overlay alignment is now right-anchored in the slot footer to reduce
+  overflow risk at the display ceiling
+
+================================================================
+12. 2026-04-24 Quick Build Cost Display and Forge 1.19.2 Sister Port
+================================================================
+
+Quick-build material-cost display:
+- updated the main 1.21.1 UI in:
+  - `src/main/java/com/rtsbuilding/rtsbuilding/client/BuilderScreen.java`
+- the quick-build panel now displays the current material requirement as:
+  - `Materials: <count> blocks`
+- the count uses `currentShapeCostText()`, which:
+  - returns `1` for single-block mode
+  - resolves the current shape input from the active block hit
+  - builds the selected shape using the current fill mode
+  - filters out occupied/non-ready placement targets before reporting the
+    final block count
+- this makes the right-side quick-build panel show the consumption estimate
+  before confirming shape placement.
+
+UI icon concept pass:
+- generated a review-only image-model concept for the top-bar
+  `Interact`, `Link`, `Funnel`, and `Rotate` controls
+- target style was Minecraft-vanilla-like 16x16 pixel UI icons arranged in a
+  clean sheet format for later chopping
+- no chopped icon assets were committed from this step yet; it was produced
+  for visual approval first.
+
+Forge 1.19.2 sister project:
+- created a new isolated sister project at:
+  - `sister-projects/rtsbuilding-forge-1.19.2/`
+- all 1.19.2 down-port edits for this pass were kept inside that new folder
+  except for this documentation entry
+- baseline came from the existing Forge 1.20.1 sister project, then was
+  retargeted to:
+  - Minecraft `1.19.2`
+  - Forge `43.4.0`
+  - Java runtime/toolchain path compatible with MC 1.19.2 execution
+  - JEI `11.6.0.1019`
+  - resource `pack_format=9`
+  - mod version `0.1.0-1.19.2-snapshot`
+- project metadata and docs were updated for the 1.19.2 target:
+  - `settings.gradle`
+  - `gradle.properties`
+  - `README.md`
+  - changelog/porting notes
+  - `META-INF/mods.toml`
+- added a project-local `.gitignore` so generated build/run artifacts stay
+  outside the tracked source surface:
+  - `build/`
+  - `.gradle/`
+  - `run/`
+  - `run-data/`
+  - upstream Forge MDK zip
+
+1.19.2 API compatibility work:
+- moved compatibility shims into mod-owned packages to avoid Java module
+  split-package conflicts:
+  - `com.rtsbuilding.rtsbuilding.forgecompat.client.GuiGraphics`
+  - `com.rtsbuilding.rtsbuilding.forgecompat.registry.BuiltInRegistries`
+  - `com.rtsbuilding.rtsbuilding.forgecompat.registry.Registries`
+- removed earlier `net.minecraft.*` shim classes after runtime testing showed
+  they made module resolution fail with exported-package conflicts
+- replaced 1.20.x-only imports in the sister project with the local
+  compatibility wrappers
+- replaced `TransientCraftingContainer` usage with the 1.19.2
+  `CraftingContainer` API
+- adapted creative-tab access to the older 1.19.2 eager creative tab model
+  using `CreativeModeTab.fillItemList(...)`
+- changed the mod constructor back to the Forge 1.19.2 JavaFML pattern:
+  - `public RtsbuildingMod()`
+  - `FMLJavaModLoadingContext.get().getModEventBus()`
+- this fixed the client-side mod loading crash:
+  - `NoSuchMethodException: com.rtsbuilding.rtsbuilding.RtsbuildingMod.<init>()`
+
+Validation performed for the 1.19.2 sister project:
+- static source scan:
+  - no remaining `1.20.1`, `47.4.16`, `pack_format 15`, `NeoForge`, or
+    `net.neoforged` references in the new sister project source/config
+    surface after excluding generated build/cache output
+- clean build:
+  - command: `.\gradlew.bat --no-daemon --no-watch-fs --console plain clean build`
+  - result: SUCCESS
+  - output jar:
+    `sister-projects/rtsbuilding-forge-1.19.2/build/libs/rtsbuilding-0.1.0-1.19.2-snapshot.jar`
+- jar inspection:
+  - `mods.toml` advertises Forge loader `[43,)`
+  - Minecraft range is `[1.19.2,1.20)`
+  - resource pack format is `9`
+  - no project-owned classes are packaged under `net/minecraft/*` or
+    `net/neoforged/*`
+- server launch check:
+  - command: `.\gradlew.bat --no-daemon --no-watch-fs --console plain runServer`
+  - Forge 43.4.0, Minecraft 1.19.2, RTSBuilding, and JEI were detected
+  - launch reached the expected dedicated-server EULA stop
+  - EULA was not accepted or modified automatically
+- client launch check:
+  - first `runClient` found the missing no-arg mod constructor and produced
+    an FML crash report
+  - after fixing the constructor, `runClient` reached client setup,
+    initialized JEI, entered a singleplayer world, and then saved/stopped
+    cleanly
+  - latest client log contained `HELLO FROM CLIENT SETUP`, JEI runtime
+    startup, integrated-server save messages, and normal shutdown messages
+  - post-run process check found and stopped leftover Java processes from the
+    interrupted Gradle/client command; a follow-up process check showed no
+    remaining Java processes
+
+Known caveats after this pass:
+- compile output still reports existing deprecation warnings and unchecked
+  AE2 compatibility warnings
+- `runServer` remains intentionally stopped by the vanilla EULA gate until a
+  user explicitly accepts the EULA in the generated run directory
+- the generated icon concept for `Interact`, `Link`, `Funnel`, and `Rotate`
+  has not yet been chopped into production assets
