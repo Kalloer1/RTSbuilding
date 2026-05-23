@@ -66,7 +66,7 @@ public final class RtsHomeScreen extends Screen {
     }
 
     private boolean canRelocateHome() {
-        return this.controller.getUnlockedProgressionNodes().contains(RtsProgressionNodes.HOME_RELOCATION.toString());
+        return this.controller.getUnlockedProgressionNodes().contains(RtsProgressionNodes.FIELD_DEPLOYMENT.toString());
     }
 
     private void drawWrapped(GuiGraphics g, String text, int x, int y, int width, int color) {

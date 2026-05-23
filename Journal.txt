@@ -3135,6 +3135,8 @@ Compile validation
   - Result: SUCCESS
   - Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache build`
   - Result: SUCCESS
+  - Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache build`
+  - Result: SUCCESS
   - Produced `build/libs/rtsbuilding-built-from-above-1.0.11-alpha.jar`
   - Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache build`
   - Result: SUCCESS
@@ -4051,3 +4053,37 @@ Compile validation
   - Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache build`
   - Result: SUCCESS
   - Produced `build/libs/rtsbuilding-built-from-above-1.0.11-alpha.jar`
+
+[2026-05-24] Merged Home Relocation into Field Deployment
+- Request
+  - Do not implement automatic linked-storage chunk loading.
+  - Treat modpack chunk loaders, such as FTB chunk loading, as the intended
+    way to keep linked storage chunks loaded.
+  - Make Field Deployment the expensive late-game unlock.
+  - Remove the separate 10-netherite-block Home Relocation upgrade.
+
+- Progression
+  - `progression/RtsProgressionNodes.java`
+    - removed the active `home_relocation` node
+    - changed `field_deployment` cost to `minecraft:dragon_head` x1
+    - kept dependency on `radius_3`
+    - kept `bypassHomeRadius()` as the unlock effect
+
+- RTS Home
+  - `server/RtsProgressionManager.java`
+    - `canChangeHome(...)` now checks `field_deployment`
+  - `server/RtsCameraManager.java`
+    - changed the blocked relocation message to name Field Deployment
+  - `client/RtsHomeScreen.java`
+    - the change-home button now unlocks from Field Deployment
+
+- Localization
+  - `en_us.json` and `zh_cn.json`
+    - Field Deployment copy now describes both home-radius bypass and RTS Home
+      movement
+    - Home panel warning now points players at Field Deployment instead of a
+      separate Home Relocation skill
+
+- Validation
+  - Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache compileJava`
+  - Result: SUCCESS

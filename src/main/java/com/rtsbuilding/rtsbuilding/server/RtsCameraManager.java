@@ -99,8 +99,7 @@ public final class RtsCameraManager {
             return;
         }
         if (!RtsProgressionManager.canChangeHome(player)) {
-            long days = Math.max(1L, (RtsProgressionManager.remainingHomeCooldownTicks(player) + 23999L) / 24000L);
-            player.displayClientMessage(net.minecraft.network.chat.Component.literal("RTS home can be changed in " + days + " days."), true);
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal("RTS home relocation requires Field Deployment."), true);
             return;
         }
         stopIfActive(player);

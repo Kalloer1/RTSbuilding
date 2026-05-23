@@ -1161,6 +1161,8 @@ Validation:
 - Result: SUCCESS
 - Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache build`
 - Result: SUCCESS
+- Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache build`
+- Result: SUCCESS
 
 2026-05-23 - Chunk x-ray grid render-stage correction:
 
@@ -2107,3 +2109,45 @@ Validation so far:
 - Result: SUCCESS
 - Produced jar:
   - `build/libs/rtsbuilding-built-from-above-1.0.11-alpha.jar`
+
+2026-05-24 - Field Deployment replaces Home Relocation:
+
+Survival progression:
+- `progression/RtsProgressionNodes.java`
+  - removed the separate `home_relocation` node from the active progression
+    tree
+  - changed `field_deployment` cost from:
+    - `minecraft:ender_eye` x4
+    - `minecraft:gold_block` x1
+  - to:
+    - `minecraft:dragon_head` x1
+  - `field_deployment` remains dependent on `radius_3`
+
+RTS Home rules:
+- `server/RtsProgressionManager.java`
+  - changing an existing RTS Home now requires `field_deployment`
+  - the old `home_relocation` unlock is no longer checked
+- `server/RtsCameraManager.java`
+  - the server denial message now names `Field Deployment` instead of the old
+    day/cooldown wording
+- `client/RtsHomeScreen.java`
+  - the Home panel's relocation gate now checks `field_deployment`
+
+Localization:
+- `assets/rtsbuilding/lang/en_us.json`
+  - Field Deployment description now says it bypasses home radius and allows
+    moving RTS Home
+  - removed active Home Relocation progression copy
+- `assets/rtsbuilding/lang/zh_cn.json`
+  - same progression/home copy change in Chinese
+
+Chunk loading policy:
+- linked-storage chunk loading was intentionally not added
+- current behavior remains:
+  - linked storage must be in a loaded chunk
+  - modpack chunk loaders such as FTB chunk loading can handle persistent
+    loading
+
+Validation:
+- Ran `.\gradlew.bat --offline --no-daemon --no-configuration-cache compileJava`
+- Result: SUCCESS

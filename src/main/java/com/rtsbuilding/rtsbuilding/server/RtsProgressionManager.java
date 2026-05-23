@@ -194,7 +194,7 @@ public final class RtsProgressionManager {
         if (home == null) {
             return true;
         }
-        return unlockedNodes(player).contains(RtsProgressionNodes.HOME_RELOCATION);
+        return unlockedNodes(player).contains(RtsProgressionNodes.FIELD_DEPLOYMENT);
     }
 
     public static long remainingHomeCooldownTicks(ServerPlayer player) {

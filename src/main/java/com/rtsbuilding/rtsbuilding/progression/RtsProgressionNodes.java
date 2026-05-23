@@ -28,7 +28,6 @@ public final class RtsProgressionNodes {
     public static final ResourceLocation JEI_TRANSFER = id("jei_transfer");
     public static final ResourceLocation ULTIMINE = id("ultimine");
     public static final ResourceLocation FIELD_DEPLOYMENT = id("field_deployment");
-    public static final ResourceLocation HOME_RELOCATION = id("home_relocation");
 
     private static final Map<ResourceLocation, RtsProgressionNode> NODES = buildNodes();
     private static volatile Map<String, String> syncedCostOverrides = Map.of();
@@ -133,10 +132,8 @@ public final class RtsProgressionNodes {
 
         add(nodes, ULTIMINE, List.of(AUTO_STORE_MINED), cost("minecraft:diamond_pickaxe", 1, "minecraft:redstone_block", 1),
                 List.of(RtsUnlockEffect.unlock(RtsFeature.ULTIMINE), RtsUnlockEffect.ultimineLimit(64)), 3, 3);
-        add(nodes, FIELD_DEPLOYMENT, List.of(RADIUS_3), cost("minecraft:ender_eye", 4, "minecraft:gold_block", 1),
+        add(nodes, FIELD_DEPLOYMENT, List.of(RADIUS_3), cost("minecraft:dragon_head", 1),
                 List.of(RtsUnlockEffect.bypassHomeRadius()), 4, 0);
-        add(nodes, HOME_RELOCATION, List.of(), cost("minecraft:netherite_block", 10),
-                List.of(), 4, 3);
 
         return Collections.unmodifiableMap(nodes);
     }

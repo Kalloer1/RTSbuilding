@@ -92,9 +92,9 @@
   "screen.rtsbuilding.home.dimension": "Dimension: %s",
   "screen.rtsbuilding.home.not_set": "Home: not set",
   "screen.rtsbuilding.home.radius": "Build radius: %s blocks",
-  "screen.rtsbuilding.home.relocation_unlocked": "Relocation skill: unlocked",
-  "screen.rtsbuilding.home.relocation_locked": "Relocation skill: locked",
-  "screen.rtsbuilding.home.warning": "Choose your starter home carefully. RTS building is limited to this home's build radius. Moving it later requires the extremely expensive Home Relocation skill.",
+  "screen.rtsbuilding.home.relocation_unlocked": "Field Deployment: unlocked",
+  "screen.rtsbuilding.home.relocation_locked": "Field Deployment: locked",
+  "screen.rtsbuilding.home.warning": "Choose your starter home carefully. RTS building is limited to this home's build radius until Field Deployment is unlocked with a dragon head.",
   "screen.rtsbuilding.guide.page": "%s / %s",
   "screen.rtsbuilding.guide.top.title": "Top Bar Tutorial",
   "screen.rtsbuilding.guide.top.1": "1. Interact is the normal play mode inside RTS. Right-click mobs, machines, chests, doors, and blocks to use them normally.",
@@ -219,7 +219,5 @@
   "rtsbuilding.progression.ultimine": "Ultimine",
   "rtsbuilding.progression.ultimine.desc": "Chain-mine matching blocks.",
   "rtsbuilding.progression.field_deployment": "Field Deployment",
-  "rtsbuilding.progression.field_deployment.desc": "Bypass home radius limits.",
-  "rtsbuilding.progression.home_relocation": "Home Relocation",
-  "rtsbuilding.progression.home_relocation.desc": "Unlock the ability to move your RTS home."
+  "rtsbuilding.progression.field_deployment.desc": "Bypass home radius limits and allow moving RTS Home."
 }
