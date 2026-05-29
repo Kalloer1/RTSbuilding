@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 
+import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
 import com.rtsbuilding.rtsbuilding.compat.sophisticatedstorage.RtsSophisticatedStorageCompat;
 
 import net.minecraft.client.Minecraft;
@@ -31,6 +32,7 @@ final class RtsClientRemoteMenuCompat {
         } else {
             RtsSophisticatedStorageCompat.clearClientRemoteMenu();
         }
+        RtsRemoteMenuCompat.markClientRemoteMenu(wrapped);
         if (!isScreenMenuPairSafe(minecraft.screen, wrapped)) {
             throw new IllegalStateException("Incompatible menu " + wrapped.getClass().getName()
                     + " for screen " + minecraft.screen.getClass().getName());

@@ -5,6 +5,7 @@ import net.minecraft.client.gui.GuiGraphics;
 
 final class RtsClientUiUtil {
     private static final float SLOT_COUNT_SCALE = 0.65F;
+    private static final long EFFECTIVELY_INFINITE_COUNT = Long.MAX_VALUE / 2L;
 
     private RtsClientUiUtil() {
     }
@@ -32,6 +33,9 @@ final class RtsClientUiUtil {
 
     static String compactCount(long value) {
         long positive = Math.max(0L, value);
+        if (positive >= EFFECTIVELY_INFINITE_COUNT) {
+            return "INF";
+        }
         if (positive < 1_000L) {
             return Long.toString(positive);
         }

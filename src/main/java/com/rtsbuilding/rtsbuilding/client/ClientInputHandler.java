@@ -1,14 +1,12 @@
 package com.rtsbuilding.rtsbuilding.client;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
-import com.rtsbuilding.rtsbuilding.network.C2SRtsToggleCameraPayload;
 
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 @EventBusSubscriber(modid = RtsbuildingMod.MODID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
 public final class ClientInputHandler {
@@ -39,7 +37,7 @@ public final class ClientInputHandler {
 
         boolean toggleKeyDown = ClientKeyMappings.TOGGLE_RTS.isDown();
         if (!toggleKeyDown && toggleKeyWasDown && toggleCooldownTicks == 0) {
-            PacketDistributor.sendToServer(new C2SRtsToggleCameraPayload());
+            RtsClientPacketGateway.sendToggleCamera(ClientRtsController.get().isStartCameraAtPlayerHead());
             toggleCooldownTicks = 6;
         }
         toggleKeyWasDown = toggleKeyDown;

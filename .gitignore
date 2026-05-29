@@ -30,6 +30,24 @@ run-data
 # local maven publish output
 repo
 
+# local-only release/output work
+outputs/
+staging/
+update_report_*.txt
+carry_over_*.md
+PORT_MATRIX.md
+
+# local-only porting/comparison workspaces; ports are published from their own
+# branch roots, not as nested projects in main.
+sister-projects/
+
+# local-only presentation/video helpers
+tools/build_all_ports.ps1
+tools/build_unicom_training_video*.py
+tools/generate_unicom_restatements.py
+tools/resume_unicom_video_from_assets.py
+tools/video_progress_server.py
+
 # JVM crash logs / replays
 hs_err_pid*
 replay_pid*
@@ -37,6 +55,10 @@ replay_pid*
 # generic logs
 *.log
 logs/
+
+# Python helper caches
+__pycache__/
+*.pyc
 
 # OS noise
 .DS_Store

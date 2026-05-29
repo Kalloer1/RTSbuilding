@@ -1,7 +1,7 @@
 package com.rtsbuilding.rtsbuilding.network;
 
 import com.rtsbuilding.rtsbuilding.Config;
-import com.rtsbuilding.rtsbuilding.client.ClientRtsController;
+import com.rtsbuilding.rtsbuilding.common.BuilderMode;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import com.rtsbuilding.rtsbuilding.server.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.RtsProgressionManager;
@@ -18,7 +18,7 @@ public final class RtsNetworkHandlers {
     public static void handleToggle(C2SRtsToggleCameraPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsCameraManager.toggle(serverPlayer);
+                RtsCameraManager.toggle(serverPlayer, payload.startAtPlayerHead());
             }
         });
     }
@@ -30,6 +30,7 @@ public final class RtsNetworkHandlers {
                         serverPlayer,
                         payload.forward(),
                         payload.strafe(),
+                        payload.vertical(),
                         payload.panX(),
                         payload.panY(),
                         payload.rotateX(),
@@ -45,7 +46,7 @@ public final class RtsNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 int modeId = payload.mode();
-                var modes = com.rtsbuilding.rtsbuilding.client.BuilderMode.values();
+                var modes = BuilderMode.values();
                 if (modeId < 0 || modeId >= modes.length) {
                     return;
                 }
@@ -133,7 +134,9 @@ public final class RtsNetworkHandlers {
                         payload.search(),
                         payload.category(),
                         RtsStorageSort.byId(payload.sort()),
-                        payload.ascending());
+                        payload.ascending(),
+                        payload.pinyinSearchEnabled(),
+                        payload.localizedSearchMatches());
             }
         });
     }
@@ -146,7 +149,9 @@ public final class RtsNetworkHandlers {
                         payload.search(),
                         payload.showUnavailable(),
                         payload.offset(),
-                        payload.limit());
+                        payload.limit(),
+                        payload.pinyinSearchEnabled(),
+                        payload.localizedSearchMatches());
             }
         });
     }
@@ -171,7 +176,8 @@ public final class RtsNetworkHandlers {
                         payload.rayOriginZ(),
                         payload.rayDirX(),
                         payload.rayDirY(),
-                        payload.rayDirZ());
+                        payload.rayDirZ(),
+                        payload.quickBuild());
             }
         });
     }
@@ -263,7 +269,14 @@ public final class RtsNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.mine(serverPlayer, payload.pos(), face, payload.start(), payload.toolSlot(), payload.toolItemId());
+                RtsStorageManager.mine(
+                        serverPlayer,
+                        payload.pos(),
+                        face,
+                        payload.start(),
+                        payload.toolSlot(),
+                        payload.toolItemId(),
+                        payload.allowPlacedBlockRecovery());
             }
         });
     }
@@ -423,31 +436,4 @@ public final class RtsNetworkHandlers {
         });
     }
 
-    public static void handleCameraState(S2CRtsCameraStatePayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyServerCameraState(payload));
-    }
-
-    public static void handleStoragePage(S2CRtsStoragePagePayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyStoragePage(payload));
-    }
-
-    public static void handleRemoteMenuHint(S2CRtsRemoteMenuHintPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyRemoteMenuHint(payload));
-    }
-
-    public static void handleCraftables(S2CRtsCraftablesPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyCraftables(payload));
-    }
-
-    public static void handleCraftFeedback(S2CRtsCraftFeedbackPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyCraftFeedback(payload));
-    }
-
-    public static void handleMineProgress(S2CRtsMineProgressPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyMineProgress(payload));
-    }
-
-    public static void handleProgressionState(S2CRtsProgressionStatePayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyProgressionState(payload));
-    }
 }

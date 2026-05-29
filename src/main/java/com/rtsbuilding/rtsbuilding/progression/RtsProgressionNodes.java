@@ -16,6 +16,7 @@ public final class RtsProgressionNodes {
     public static final ResourceLocation RADIUS_1 = id("radius_1");
     public static final ResourceLocation RADIUS_2 = id("radius_2");
     public static final ResourceLocation RADIUS_3 = id("radius_3");
+    public static final ResourceLocation RADIUS_MAX = id("radius_max");
     public static final ResourceLocation STORAGE_LINK = id("storage_link");
     public static final ResourceLocation REMOTE_PLACE = id("remote_place");
     public static final ResourceLocation REMOTE_BREAK = id("remote_break");
@@ -104,6 +105,8 @@ public final class RtsProgressionNodes {
                 List.of(RtsUnlockEffect.radius(32)), 2, 0);
         add(nodes, RADIUS_3, List.of(RADIUS_2), cost("minecraft:ender_pearl", 2),
                 List.of(RtsUnlockEffect.radius(48)), 3, 0);
+        add(nodes, RADIUS_MAX, List.of(RADIUS_3), cost("minecraft:netherite_ingot", 1),
+                List.of(RtsUnlockEffect.radius(Config.maxActionRadiusBlocks())), 4, 0);
 
         add(nodes, STORAGE_LINK, List.of(CAMERA_CORE), cost("minecraft:chest", 2, "minecraft:redstone", 8),
                 List.of(RtsUnlockEffect.unlock(RtsFeature.LINK_STORAGE), RtsUnlockEffect.unlock(RtsFeature.STORAGE_BROWSER)), 1, 1);
@@ -132,8 +135,8 @@ public final class RtsProgressionNodes {
 
         add(nodes, ULTIMINE, List.of(AUTO_STORE_MINED), cost("minecraft:diamond_pickaxe", 1, "minecraft:redstone_block", 1),
                 List.of(RtsUnlockEffect.unlock(RtsFeature.ULTIMINE), RtsUnlockEffect.ultimineLimit(64)), 3, 3);
-        add(nodes, FIELD_DEPLOYMENT, List.of(RADIUS_3), cost("minecraft:dragon_head", 1),
-                List.of(RtsUnlockEffect.bypassHomeRadius()), 4, 0);
+        add(nodes, FIELD_DEPLOYMENT, List.of(RADIUS_MAX), cost("minecraft:dragon_head", 1),
+                List.of(RtsUnlockEffect.bypassHomeRadius()), 5, 0);
 
         return Collections.unmodifiableMap(nodes);
     }

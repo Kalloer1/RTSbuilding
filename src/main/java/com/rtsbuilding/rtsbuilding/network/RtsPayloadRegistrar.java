@@ -209,36 +209,41 @@ public final class RtsPayloadRegistrar {
         registrar.playToClient(
                 S2CRtsCameraStatePayload.TYPE,
                 S2CRtsCameraStatePayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleCameraState);
+                RtsClientPayloadBridge::handleCameraState);
 
         registrar.playToClient(
                 S2CRtsStoragePagePayload.TYPE,
                 S2CRtsStoragePagePayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleStoragePage);
+                RtsClientPayloadBridge::handleStoragePage);
 
         registrar.playToClient(
                 S2CRtsRemoteMenuHintPayload.TYPE,
                 S2CRtsRemoteMenuHintPayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleRemoteMenuHint);
+                RtsClientPayloadBridge::handleRemoteMenuHint);
 
         registrar.playToClient(
                 S2CRtsCraftablesPayload.TYPE,
                 S2CRtsCraftablesPayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleCraftables);
+                RtsClientPayloadBridge::handleCraftables);
 
         registrar.playToClient(
                 S2CRtsCraftFeedbackPayload.TYPE,
                 S2CRtsCraftFeedbackPayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleCraftFeedback);
+                RtsClientPayloadBridge::handleCraftFeedback);
+
+        registrar.playToClient(
+                S2CRtsQuestDetectStatusPayload.TYPE,
+                S2CRtsQuestDetectStatusPayload.STREAM_CODEC,
+                RtsClientPayloadBridge::handleQuestDetectStatus);
 
         registrar.playToClient(
                 S2CRtsMineProgressPayload.TYPE,
                 S2CRtsMineProgressPayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleMineProgress);
+                RtsClientPayloadBridge::handleMineProgress);
 
         registrar.playToClient(
                 S2CRtsProgressionStatePayload.TYPE,
                 S2CRtsProgressionStatePayload.STREAM_CODEC,
-                RtsNetworkHandlers::handleProgressionState);
+                RtsClientPayloadBridge::handleProgressionState);
     }
 }

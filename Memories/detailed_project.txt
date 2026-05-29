@@ -1,0 +1,546 @@
+RTSBUILDING PROJECT MAP
+
+This file is the compact architecture and project-state map for future coding
+sessions. Chronological implementation history belongs in `Journal.txt`; do
+not append dated change-log blocks here.
+
+Project root: `E:\RTSbuilding`
+Main target: Minecraft 1.21.1 + NeoForge + Java 21
+Current mainline version: `1.0.3-beta`
+Official Java 21 path: `C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot`
+
+================================================================
+1. Product Identity
+================================================================
+
+RTSBuilding turns Minecraft base work into a top-down RTS-style
+builder/operator mode while keeping the server authoritative.
+
+Main goals:
+- remote camera with bounded action radius
+- storage-network style building without becoming full AE automation
+- remote placement, interaction, mining, crafting, fluid handling, and GUI
+  binding
+- preserve vanilla and modded item/container behavior wherever possible
+- keep high-risk convenience features discoverable and opt-in
+
+Current public/mainline branch should be the root NeoForge 1.21.1 project.
+The Forge 1.20.1 port should live as a separate branch whose repository root
+is the Forge project itself, not `sister-projects` nested inside mainline.
+
+`sister-projects` is a local-only porting/comparison workspace. Do not publish
+it wholesale.
+
+================================================================
+2. Build Commands
+================================================================
+
+Build both active release targets, 1.21.1 NeoForge and Forge 1.20.1:
+
+```powershell
+cd E:\RTSbuilding
+.\tools\build_all_ports.ps1
+```
+
+Useful variants:
+
+```powershell
+# Compile both instead of full build
+.\tools\build_all_ports.ps1 -Tasks compileJava
+
+# If dependency caches are missing, allow Gradle to go online
+.\tools\build_all_ports.ps1 -Online
+
+# Build only one target
+.\tools\build_all_ports.ps1 -Skip120
+.\tools\build_all_ports.ps1 -SkipMain
+```
+
+Main 1.21.1 manual build:
+
+```powershell
+cd E:\RTSbuilding
+$env:JAVA_HOME='C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+$env:GRADLE_USER_HOME='E:\RTSbuilding\.gradle-user-home'
+.\gradlew.bat --offline --no-daemon --no-configuration-cache build
+```
+
+Main 1.21.1 quick compile check:
+
+```powershell
+cd E:\RTSbuilding
+$env:JAVA_HOME='C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+$env:GRADLE_USER_HOME='E:\RTSbuilding\.gradle-user-home'
+.\gradlew.bat --offline --no-daemon --no-configuration-cache compileJava
+```
+
+Forge 1.20.1 manual build:
+
+```powershell
+cd E:\RTSbuilding\sister-projects\rtsbuilding-forge-1.20.1
+$env:JAVA_HOME='C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+$env:GRADLE_USER_HOME='E:\RTSbuilding\sister-projects\rtsbuilding-forge-1.20.1\.gradle-user-home'
+.\gradlew.bat --offline --no-daemon --no-watch-fs --console plain --no-configuration-cache build
+```
+
+Known validation notes:
+- `tools\build_all_ports.ps1` currently succeeds for both mainline 1.21.1 and
+  Forge 1.20.1.
+- `tools\build_all_ports.ps1 -Tasks compileJava` also succeeds for both active
+  targets.
+- As of the 2026-05-29 local session, the 1.21.1 mainline `compileJava`
+  succeeds after the remote-GUI/overlay/config fixes. The Forge 1.20.1 source
+  has the same fixes ported, but local compile validation was blocked by a
+  Windows access-denied Gradle wrapper lock on
+  `sister-projects\rtsbuilding-forge-1.20.1\.gradle-user-home\wrapper\dists\gradle-8.8-bin\...\gradle-8.8-bin.zip.lck`.
+- Existing deprecation warnings around `EventBusSubscriber.Bus` are known.
+- Forge 1.20.1 also has known `ResourceLocation` / Forge API deprecation
+  warnings.
+- Language files should parse as UTF-8 JSON after localization changes.
+- `git diff --check` may print LF -> CRLF warnings in this workspace; treat
+  actual whitespace errors separately.
+
+================================================================
+3. Workspace Rules
+================================================================
+
+- Read `AGENT.md` before major edits.
+- The working tree is often dirty; never revert unrelated user/session changes.
+- Prefer `rg` / `rg --files` for search.
+- Use `apply_patch` for manual source/doc edits.
+- Do not restore or publish `sister-projects/rtsbuilding-neoforge-26.1`.
+- Do not treat 1.19.x as part of the first GitHub publication pass.
+- If cleanup is requested, prefer moving explicitly identified generated junk
+  into a user-approved trash directory such as `E:\RTStrash`; do not delete
+  broad trees blindly.
+- Update `Journal.txt` for chronological work logs. Update this file only when
+  the architecture, project policy, or current roadmap changes.
+
+================================================================
+4. Current Gameplay Surface
+================================================================
+
+RTS mode:
+- toggleable top-down camera
+- bounded action radius
+- optional start-at-player-head camera setting
+- configurable RTS camera raise/lower actions, default Space and Shift
+- client prediction with server-authoritative camera session
+- multiplayer mitigation currently throttles idle camera packets and camera
+  restore fights
+- camera movement packets include vertical input so indoor height micro-adjusts
+  are predicted locally and synchronized on the server
+
+Builder UI:
+- full-screen RTS builder screen
+- icon top bar for Interact / Storage Link / Funnel / Rotate / Quick Build /
+  Ultimine / Chunk / Settings and related controls
+- configurable RTS action mappings for interact/place, break/mine, rotate-drag,
+  pan-drag, pick-block, camera up, and camera down
+- mouse click/drag disambiguation keeps the default old behavior: short right
+  click interacts/places, right drag rotates, short middle click picks, and
+  middle drag pans
+- the RTS builder screen keeps a local held-state bridge for camera up/down
+  key actions so Space/Shift-style inputs still drive camera ticks while the
+  screen is consuming key events
+- bottom storage/craft dock with search, categories, paging, hotbar, quick
+  pins, recent items, fluids, craft panel, and GUI bindings
+- settings panel for client controls such as sensitivity, UI scale, camera
+  start mode, auto-store, and dangerous placed-block recovery
+- settings panel renders outside the RTS UI-scale transform, so changing the
+  RTS UI scale affects the main RTS panels but does not resize/distort the
+  settings panel that controls that scale
+- in-game `i` tutorials for top bar, bottom bar, settings, overlay, and
+  quick-build discoverability
+- 1.21.1 shows a delayed client join reminder with the RTS toggle key,
+  community feedback links, `i` tutorial hint, and a 1.0.3 beta new-version
+  bug warning that suggests trying 1.0.2 after severe crashes
+- the Hong Kong Traditional onboarding reminder intentionally matches the
+  Taiwan Traditional wording instead of using Cantonese phrasing
+
+Remote building:
+- place from linked storage
+- place from player main inventory when no storage is bound and the player is
+  in the normal RTS/inventory context
+- place from current hotbar slot
+- staged shapes for items and fluids:
+  - block
+  - line
+  - square
+  - wall
+  - circle
+  - box
+- undo/redo for confirmed batches when the same item is selected
+- Quick Build preview can be cancelled by closing/toggling the panel
+
+Storage:
+- linked storage browsing with search/category/paging/sort
+- bidirectional links and extract-only links
+- AE2 optional network item access
+- internal fluid buffer gated by progression capacity
+- recent placed/used/crafted entries
+- quick pins backed by server-sent total item counts
+- unbound RTS storage view shows player backpack items so users do not think
+  only hotbar items are available
+
+Container overlay:
+- draggable overlay on normal container/crafting screens
+- full overlay can collapse to a one-row strip
+- collapsed overlay keeps the drag/collapse controls, sort direction, search
+  field, refresh/info controls, and the first linked-storage row; it does not
+  keep the quick-slot bar
+- client settings can hide the ordinary container/crafting/machine overlay
+  entirely without affecting the main RTS storage dock or remote GUI lifecycle
+- overlay can refresh linked storage manually
+- ordinary container overlay statistics should not mix in player backpack
+  counts; hover count text distinguishes storage vs inventory source
+
+Remote GUI:
+- craft-dock GUI binding slots persist server-backed targets
+- GUI binds store target dimension/pos, clicked face, display label, and cached
+  icon item id
+- AE2 terminal/provider GUI binds use fallback icon resolution when clone-stack
+  preview is blank
+- Sophisticated Storage keeps original menu type and uses a dedicated
+  mixin-backed still-valid bypass only for tracked RTS-opened menus
+- RTS-opened remote menus track both menu id and source block position so Esc,
+  RTS exit, or screen switches can force a server-side closed visual update for
+  vanilla-style open-count containers
+
+Mining:
+- survival mining uses server progress sync
+- creative RTS mining destroys immediately
+- Ultimine highlights a connected same-block target set while holding left
+  click, then breaks cached targets after the seed block completes
+- Ultimine target processing is batched to avoid large finish spikes
+- direct recovery of RTS-placed tracked blocks through normal mining is
+  disabled by default and exposed as a risky client setting
+- explicit undo recovery stays on its separate path
+
+Crafting:
+- RTS craft terminal menu/screen
+- craftables search panel with paging
+- recipe option/count dialog
+- JEI transfer bridge
+- workbench-linked refill/import flows
+- crafted output can feed linked storage and recent history
+
+Compat:
+- AE2 optional storage-service bridge via reflection/compat helpers
+- JEI runtime integration
+- FTB Quests / FTB Teams optional reflection compat
+- Sophisticated Storage remote-menu still-valid compat
+
+================================================================
+5. Important Files
+================================================================
+
+Bootstrap/config:
+- `src/main/java/com/rtsbuilding/rtsbuilding/RtsbuildingMod.java`
+- `src/main/java/com/rtsbuilding/rtsbuilding/Config.java`
+- `src/main/java/com/rtsbuilding/rtsbuilding/RtsCommunityLinks.java`
+- `src/main/resources/rtsbuilding.mixins.json`
+- `src/main/templates/META-INF/neoforge.mods.toml`
+
+Common/shared:
+- `common/BuilderMode.java`
+  - shared RTS mode enum safe for server/common classloading
+
+Client:
+- `client/RtsClientBootstrap.java`
+  - client-only config-screen registration
+- `client/RtsClientModEvents.java`
+  - client-only mod-bus setup and renderer registration
+- `client/RtsClientNetworkHandlers.java`
+  - client-only S2C payload application
+- `client/ClientRtsController.java`
+  - client RTS state hub
+  - camera prediction inputs
+  - storage/craftables snapshots
+  - selected item/fluid/tool state
+  - C2S action calls through `RtsClientPacketGateway`
+- `client/BuilderScreen.java`
+  - main RTS UI
+  - top bar, bottom dock, quick build, ultimine panel, settings, tutorials
+- `client/RtsClientInputGate.java`
+  - compact container/crafting overlay render and input handling
+- `client/ClientKeyMappings.java`
+  - normal RTS toggle and internal mode/action key mappings
+- `client/RtsClientPacketGateway.java`
+  - owns client payload construction/dispatch
+- `client/RtsClientRemoteMenuCompat.java`
+  - screen/menu handoff and client-side remote-menu compatibility helpers
+- `client/RtsClientUiStateStore.java`
+  - local persistent UI state such as shape, panels, UI scale, camera start,
+    and risky placed-block recovery toggle
+- `client/RtsClientUiUtil.java`
+  - common panel, text, count, and amount drawing helpers
+- `client/RtsBoundaryRenderer.java`
+  - boundary, linked-storage, hover, shape-preview, and chunk-related world
+    rendering
+
+Server:
+- `server/RtsCameraManager.java`
+  - server RTS camera session and authoritative movement
+- `server/RtsStorageManager.java`
+  - largest gameplay hub
+  - linked storage refs/modes
+  - storage page generation
+  - placement, interaction, mining, ultimine, crafting, fluids, GUI binds,
+    recent entries, quest detect
+- `server/RtsCraftTerminalMenu.java`
+  - custom RTS crafting menu with refill/output tracking
+- `server/RtsProgressionManager.java`
+  - optional survival progression gates and effective action radius
+- `server/data/PlacedBlockTrackerData.java`
+  - tracks RTS-placed blocks for undo/risky recovery paths
+- `server/data/RtsStorageSessionStore.java`
+  - world-level storage session persistence support
+
+Network:
+- `network/RtsPayloadRegistrar.java`
+- `network/RtsNetworkHandlers.java`
+- `network/*Payload.java`
+
+Compat:
+- `compat/ae2/RtsAe2Compat.java`
+- `compat/jei/*`
+- `compat/ftb/*`
+- `compat/sophisticatedstorage/RtsSophisticatedStorageCompat.java`
+- `compat/remote/*`
+
+Language/resources:
+- `src/main/resources/assets/rtsbuilding/lang/en_us.json`
+- `src/main/resources/assets/rtsbuilding/lang/zh_cn.json`
+- `src/main/resources/assets/rtsbuilding/lang/zh_tw.json`
+- `src/main/resources/assets/rtsbuilding/lang/zh_hk.json`
+- `src/main/resources/assets/rtsbuilding/textures/gui/topbar/*`
+- `src/main/resources/assets/rtsbuilding/pinyin/*`
+
+Forge 1.20.1 sister project:
+- `sister-projects/rtsbuilding-forge-1.20.1/`
+- current local port version: `0.0.3Beta`
+- synced through the 1.21.1 `1.0.3-beta` first/second-wave storage,
+  overlay, keybind, risky-recovery, creative-mining, camera-start, and config
+  layout changes
+- Forge 1.20.1 intentionally does not currently wire the 1.21.1 onboarding
+  reminder, but language/config keys otherwise match the mainline resource set
+  when `chat.rtsbuilding.intro.*` is excluded
+- local docs:
+  - `README.md`
+  - `docs/PORTING.md`
+
+================================================================
+6. Core Runtime Model
+================================================================
+
+Authority split:
+- client owns input feel, prediction, UI state, hover state, and rendering
+- server owns placement, extraction, storage mutation, mining completion,
+  crafting, fluid transfer, GUI opening, progression gates, and persistence
+
+RTS storage session:
+- per-player server session stores linked storages, link modes, current
+  search/category/page/sort, craft search, fluid buffer, funnel state, recent
+  entries, quick pins, GUI bindings, mining state, ultimine state, and quest
+  detect cooldown
+- session data is loaded from player persistent NBT on first RTS access
+- session data is saved on logout / RTS disable and key mutation paths
+- linked storage refs are dimension-aware; links from other dimensions remain
+  saved but inactive until the player returns
+
+Storage page:
+- client sends `C2SRtsRequestStoragePagePayload`
+- server builds counts from active linked handlers, fluid handlers, internal
+  fluids, and optionally player main inventory
+- player main inventory is included only when the active server menu is the
+  normal player inventory; this enables unbound RTS inventory use without
+  polluting ordinary container overlay counts
+- client stores entries, fluids, categories, total counts, recent entries,
+  quick pins, GUI binding labels/icons, and linked position summaries
+
+Network classloading:
+- common C2S handlers remain in `network/RtsNetworkHandlers`
+- S2C registration goes through `network/RtsClientPayloadBridge`
+- client payload application is isolated in `client/RtsClientNetworkHandlers`
+- config screen and renderer registration are isolated behind client-only
+  bootstrap/events so dedicated servers do not directly load GUI classes
+
+Remote GUI handoff:
+- server remote interaction can temporarily open a vanilla/modded menu
+- client gives menu opens a short grace window so `BuilderScreen` does not
+  immediately steal the screen back
+- server tracks RTS-opened remote menu ids where needed so close/cleanup can
+  follow the normal container path
+- remote menu close cleanup also sends a source-block close visual event and
+  block update to avoid chest lids staying open after Esc closes the GUI
+- compatibility should prefer a generic menu-opening path; per-mod mixins are
+  fallback only when the mod's own menu validation protocol requires it
+
+Camera:
+- server creates and moves a real RTS camera entity
+- client uses a local mirror/prediction path for smooth rendering
+- idle camera move packets are throttled; zero-input heartbeat is periodic
+- camera restore attempts are cooldown-limited to reduce fights with other
+  camera/audio/POV mods
+- longer-term direction: prefer the server-synced camera entity when available,
+  use the local mirror only as a short fallback/prediction aid
+
+Progression:
+- survival progression is optional and defaults off
+- progression gates camera, interaction, storage link/browser, remote place,
+  remote break, rotate, funnel, auto-store, fluid handling, remote GUI, craft
+  terminal, JEI transfer, and ultimine
+- action radius comes from the progression ladder when survival progression is
+  enabled, or from `maxActionRadiusBlocks` when disabled
+- optional team sharing can use FTB Teams first, vanilla scoreboard teams as
+  fallback
+- when survival progression is disabled, server sync sends a disabled/empty
+  lock state and the client clears any cached lock sets immediately
+
+================================================================
+7. Key User-Facing Behaviors To Preserve
+================================================================
+
+- Remote GUI opening must not permanently hide the player's UI.
+- Closing RTS / switching screens should close tracked remote menus through a
+  path that lets vanilla containers run `removed` / `stopOpen`.
+- Closing an RTS-opened vanilla-style remote container should not leave the
+  block model in an open visual state after the GUI closes.
+- Unbound RTS storage should still show and use player backpack items.
+- Ordinary container overlays should not label player backpack contents as
+  container/linked storage.
+- Creative players expect instant remote breaking.
+- Dangerous convenience behavior, especially direct recovery of placed blocks,
+  should be off by default and clearly labeled.
+- Tutorial/tooltips must cover undo/cancel affordances, especially Quick Build
+  preview cancellation and Ctrl+Z / Ctrl+Y.
+- Settings/tutorial overlays must stay visually separate from the settings
+  panel and clip their own body text, especially at high RTS UI scale.
+- Dedicated server startup must not load client-only GUI/screen classes.
+- Multi-language UI needs English, Simplified Chinese, Traditional Chinese
+  Taiwan, and Traditional Chinese Hong Kong coverage.
+
+================================================================
+8. Current High-Priority Roadmap
+================================================================
+
+Remote GUI compatibility专项:
+- Waystones right-click in RTS can hide all UI until RTS is closed.
+- Iron Furnaces and Generator Galore remote opens can flash then disappear.
+- Check our remote menu open/handoff protocol against mod source expectations:
+  menu type, extra sync packets, client init data, stillValid, close path, and
+  screen handoff.
+- Prefer a general compatibility layer; per-mod mixin/special casing should be
+  the last resort.
+
+Dedicated server safety:
+- Highest priority before wider publication: verify Linux/headless dedicated
+  servers do not load `net.minecraft.client.*` screens, GUI config factories,
+  key mappings, or client-only event subscribers.
+- Likely fix direction: gate all client initialization behind Dist.CLIENT and
+  keep common/server entrypoints free of direct client class references.
+
+Survival balance live toggles:
+- If survival balance is turned off after being enabled, pressing R / refreshing
+  RTS should not leave previously locked features cached until restart.
+- Likely fix direction: invalidate/re-request progression state when config
+  changes, and let disabled survival balance bypass local lock caches.
+
+Config / overlay polish:
+- keep config layouts readable across languages and Minecraft 1.21.1 GUI
+  scaling
+- watch text clipping, edit-box contrast, background opacity, and mobile-sized
+  narrow layouts
+- the mod config screen in both active versions uses the same compact responsive
+  layout, community-link section, translated survival/team buttons, and a single
+  scroll rebuild path so left labels and right edit boxes move together
+- settings-menu scrolling is present before adding more rows
+- ordinary container RTS overlay has a persisted client show/hide setting;
+  default on
+
+Usability:
+- keep improving keybind discoverability and remapping
+- validate rotate mode in game after recent key-mapping changes
+- consider grouped favorites / quick-slot organization
+- consider safer shape/range demolition later, with explicit limits and
+  confirmation
+
+Performance:
+- container-open lag and RTS frame-rate work are long-run optimization tracks
+- preserve existing cache/refresh guard behavior when changing storage
+  overlays or creative-tab/category classification
+
+Backlog intentionally deferred:
+- attacking mobs from RTS mode
+- automatic restoration of blocks broken by chain demolition undo
+- broad range demolition without a dedicated safety design
+
+================================================================
+9. Publication / Branch Policy
+================================================================
+
+Mainline:
+- root `E:\RTSbuilding`
+- Minecraft 1.21.1 + NeoForge
+- should become GitHub default/mainline branch
+
+Forge 1.20.1:
+- separate branch, likely `forge-1.20.1`
+- branch root should be the Forge project itself
+- do not publish the entire local `sister-projects` directory
+- current local sister port version is `0.0.3Beta`
+- currently synced with the 1.21.1 `1.0.3-beta` first/second-wave usability
+  and storage/mining/camera/config behavior changes, except the 1.21.1
+  onboarding reminder remains intentionally mainline-only for now
+
+Ignore / do not publish:
+- `build/`
+- `run/`
+- `.gradle/`
+- `.gradle-user-home/`
+- `outputs/`
+- `staging/`
+- crash logs
+- replay logs
+- local-only experimental/deleted sister workspaces
+
+================================================================
+10. Quick Sanity Commands
+================================================================
+
+Search:
+
+```powershell
+rg -n "pattern" src/main/java src/main/resources
+rg --files
+```
+
+Language JSON parse:
+
+```powershell
+$paths=@(
+  'src/main/resources/assets/rtsbuilding/lang/en_us.json',
+  'src/main/resources/assets/rtsbuilding/lang/zh_cn.json',
+  'src/main/resources/assets/rtsbuilding/lang/zh_tw.json',
+  'src/main/resources/assets/rtsbuilding/lang/zh_hk.json'
+)
+foreach($p in $paths){
+  Get-Content -Path $p -Raw -Encoding UTF8 | ConvertFrom-Json | Out-Null
+  "$p ok"
+}
+```
+
+Whitespace check:
+
+```powershell
+git diff --check
+```
+
+Current dirty-tree reminder:
+- many files may already be modified by prior sessions
+- inspect relevant diffs before editing
+- do not revert unrelated changes

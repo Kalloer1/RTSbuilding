@@ -40,7 +40,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsProgressionStatePayload;
 
 public final class RtsProgressionManager {
-    public static final double DEFAULT_ACTION_RADIUS = 48.0D;
+    public static final int DEFAULT_MAX_ACTION_RADIUS_BLOCKS = 128;
     public static final int DEFAULT_FLUID_CAPACITY_BUCKETS = 100;
     public static final int DEFAULT_ULTIMINE_LIMIT = 256;
     public static final int HOME_SELECTION_RADIUS_BLOCKS = 34;
@@ -73,7 +73,7 @@ public final class RtsProgressionManager {
 
     public static double getActionRadius(ServerPlayer player) {
         if (!isEnabled()) {
-            return DEFAULT_ACTION_RADIUS;
+            return Config.maxActionRadiusBlocks();
         }
         return Math.max(1.0D, derive(player).radiusBlocks());
     }
@@ -290,6 +290,25 @@ public final class RtsProgressionManager {
         if (player == null) {
             return;
         }
+        List<String> costOverrides = Config.progressionCostOverrides().entrySet().stream()
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .toList();
+        if (!isEnabled()) {
+            PacketDistributor.sendToPlayer(player, new S2CRtsProgressionStatePayload(
+                    false,
+                    false,
+                    BlockPos.ZERO,
+                    "",
+                    0L,
+                    Config.maxActionRadiusBlocks(),
+                    DEFAULT_FLUID_CAPACITY_BUCKETS,
+                    DEFAULT_ULTIMINE_LIMIT,
+                    true,
+                    List.of(),
+                    List.of(),
+                    costOverrides));
+            return;
+        }
         DerivedCapabilities derived = derive(player);
         HomeAnchor home = getHome(player);
         LinkedHashSet<ResourceLocation> unlockedSet = unlockedNodes(player);
@@ -303,16 +322,13 @@ public final class RtsProgressionManager {
                 .filter(node -> hasCosts(player, RtsProgressionNodes.costsFor(node)))
                 .map(node -> node.id().toString())
                 .toList();
-        List<String> costOverrides = Config.progressionCostOverrides().entrySet().stream()
-                .map(entry -> entry.getKey() + "=" + entry.getValue())
-                .toList();
         PacketDistributor.sendToPlayer(player, new S2CRtsProgressionStatePayload(
                 isEnabled(),
                 home != null,
                 home == null ? BlockPos.ZERO : home.pos(),
                 home == null ? "" : home.dimension().location().toString(),
                 remainingHomeCooldownTicks(player),
-                derived.radiusBlocks(),
+                (int) Math.round(getActionRadius(player)),
                 derived.fluidCapacityBuckets(),
                 derived.ultimineLimit(),
                 derived.bypassHomeRadius(),
@@ -350,7 +366,12 @@ public final class RtsProgressionManager {
                             features.add(effect.feature());
                         }
                     }
-                    case SET_RADIUS_BLOCKS -> radius = Math.max(radius, effect.value());
+                    case SET_RADIUS_BLOCKS -> {
+                        int radiusValue = RtsProgressionNodes.RADIUS_MAX.equals(node.id())
+                                ? Config.maxActionRadiusBlocks()
+                                : effect.value();
+                        radius = Math.max(radius, radiusValue);
+                    }
                     case SET_FLUID_CAPACITY_BUCKETS -> fluidCapacity = Math.max(fluidCapacity, effect.value());
                     case SET_ULTIMINE_LIMIT -> ultimineLimit = Math.max(ultimineLimit, effect.value());
                     case BYPASS_HOME_RADIUS -> bypassHome = true;

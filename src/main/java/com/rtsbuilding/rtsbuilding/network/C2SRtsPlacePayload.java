@@ -23,7 +23,8 @@ public record C2SRtsPlacePayload(
         double rayOriginZ,
         double rayDirX,
         double rayDirY,
-        double rayDirZ) implements CustomPacketPayload {
+        double rayDirZ,
+        boolean quickBuild) implements CustomPacketPayload {
     public static final Type<C2SRtsPlacePayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(RtsbuildingMod.MODID, "c2s_rts_place"));
 
@@ -44,6 +45,7 @@ public record C2SRtsPlacePayload(
                 buf.writeDouble(payload.rayDirX());
                 buf.writeDouble(payload.rayDirY());
                 buf.writeDouble(payload.rayDirZ());
+                buf.writeBoolean(payload.quickBuild());
             },
             (buf) -> new C2SRtsPlacePayload(
                     buf.readBlockPos(),
@@ -60,7 +62,8 @@ public record C2SRtsPlacePayload(
                     buf.readDouble(),
                     buf.readDouble(),
                     buf.readDouble(),
-                    buf.readDouble()));
+                    buf.readDouble(),
+                    buf.readBoolean()));
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

@@ -10,6 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 public record C2SRtsCameraMovePayload(
         float forward,
         float strafe,
+        float vertical,
         float panX,
         float panY,
         float rotateX,
@@ -25,6 +26,7 @@ public record C2SRtsCameraMovePayload(
             (buf, payload) -> {
                 buf.writeFloat(payload.forward());
                 buf.writeFloat(payload.strafe());
+                buf.writeFloat(payload.vertical());
                 buf.writeFloat(payload.panX());
                 buf.writeFloat(payload.panY());
                 buf.writeFloat(payload.rotateX());
@@ -34,6 +36,7 @@ public record C2SRtsCameraMovePayload(
                 buf.writeBoolean(payload.fast());
             },
             (buf) -> new C2SRtsCameraMovePayload(
+                    buf.readFloat(),
                     buf.readFloat(),
                     buf.readFloat(),
                     buf.readFloat(),

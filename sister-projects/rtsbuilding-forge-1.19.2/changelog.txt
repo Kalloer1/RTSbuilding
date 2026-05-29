@@ -1,7 +1,0 @@
-# RTSBuilding Forge 1.19.2 Sister Project Changelog
-
-- Created an isolated Minecraft 1.19.2 + Forge 43.4.0 sister project.
-- Ported build metadata, Forge dependency ranges, JEI coordinates, and resource pack format.
-- Added narrow 1.19.2 compatibility shims for newer API shapes used by nearby RTSBuilding sources.
-- Adjusted client GUI, crafting, registry, entity spawn packet, creative-tab, and server/player API usage to compile on 1.19.2.
-- Verified `compileJava` and full `build` complete successfully.

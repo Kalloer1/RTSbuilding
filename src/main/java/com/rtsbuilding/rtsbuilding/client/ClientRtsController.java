@@ -12,6 +12,8 @@ import java.util.Set;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
+import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
 import com.rtsbuilding.rtsbuilding.compat.sophisticatedstorage.RtsSophisticatedStorageCompat;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsBreakPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsFunnelTargetPayload;
@@ -32,7 +34,6 @@ import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreFluidPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreHotbarSlotPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsSetGuiBindingPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsSetQuickSlotPayload;
-import com.rtsbuilding.rtsbuilding.network.C2SRtsToggleCameraPayload;
 import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsCameraMovePayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsRequestStoragePagePayload;
@@ -45,6 +46,7 @@ import com.rtsbuilding.rtsbuilding.network.S2CRtsCraftablesPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsCraftFeedbackPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsMineProgressPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsProgressionStatePayload;
+import com.rtsbuilding.rtsbuilding.network.S2CRtsQuestDetectStatusPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsRemoteMenuHintPayload;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsStoragePagePayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
@@ -69,7 +71,6 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.fluids.FluidUtil;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 import org.lwjgl.glfw.GLFW;
 
@@ -83,6 +84,8 @@ public final class ClientRtsController {
     private static final float ROT_SENS_MAX = 10.00F;
     private static final float ROT_SENS_STEP = 0.50F;
     private static final double DOLLY_PER_SCROLL = 2.6D;
+    private static final double VERTICAL_SPEED = 0.32D;
+    private static final double FAST_VERTICAL_SPEED = 0.55D;
     private static final float[] INPUT_SENS_PRESETS = new float[] { 0.50F, 0.75F, 1.00F, 1.25F, 1.50F, 2.00F };
     private static final int INPUT_SENS_DEFAULT_INDEX = 2;
     private static final int QUICK_SLOT_COUNT = 27;
@@ -97,10 +100,18 @@ public final class ClientRtsController {
     private static final int RTS_MINE_RENDER_ID = 0x525453;
     private static final int REMOTE_MENU_OPEN_GRACE_TICKS = 80;
     private static final int SCREENLESS_REMOTE_MENU_RECOVERY_TICKS = 10;
+    private static final long QUEST_DETECT_MIN_PROGRESS_MS = 700L;
+    private static final long QUEST_DETECT_RESULT_VISIBLE_MS = 3500L;
+    private static final long STORAGE_SCAN_RESULT_VISIBLE_MS = 450L;
     private static final double MIN_CAMERA_HEIGHT_OFFSET = -5.0D;
     private static final double MAX_CAMERA_HEIGHT_OFFSET = 80.0D;
+    private static final double DEFAULT_MIN_CAMERA_DISTANCE = 8.0D;
+    private static final double MAX_CAMERA_DISTANCE = 72.0D;
     private static final float MIN_CAMERA_PITCH = -90.0F;
     private static final float MAX_CAMERA_PITCH = 90.0F;
+    private static final float CAMERA_INPUT_EPSILON = 1.0e-4F;
+    private static final int CAMERA_IDLE_HEARTBEAT_TICKS = 20;
+    private static final int CAMERA_RESTORE_COOLDOWN_TICKS = 10;
 
     private boolean enabled;
     private int serverCameraEntityId = -1;
@@ -119,7 +130,10 @@ public final class ClientRtsController {
     private double anchorZ;
     private double maxRadius;
     private boolean homeSelectionMode;
+    private boolean closeRangeAllowed;
     private boolean suppressBuilderScreenRestoreUntilRtsRestart;
+    private boolean startCameraAtPlayerHead;
+    private boolean allowPlacedBlockRecovery;
 
     private boolean localStateReady;
     private double localX;
@@ -138,6 +152,8 @@ public final class ClientRtsController {
     private float pendingRawRotateY;
     private float emaRotateX;
     private float emaRotateY;
+    private int cameraMoveHeartbeatTicks;
+    private int cameraRestoreCooldownTicks;
 
     private float rotateSensitivity = 5.00F;
     private int inputSensitivityIndex = INPUT_SENS_DEFAULT_INDEX;
@@ -160,6 +176,10 @@ public final class ClientRtsController {
     private final Map<String, Long> storageTotalCounts = new HashMap<>();
     private final List<FluidEntry> fluidEntries = new ArrayList<>();
     private final List<RecentEntry> recentEntries = new ArrayList<>();
+    private boolean storageScanRunning;
+    private long storageScanStartedAtMs;
+    private long storageScanVisibleUntilMs;
+    private long storagePageReceivedAtMs;
     private String craftablesSearch = "";
     private boolean craftablesShowUnavailable;
     private final List<CraftableEntry> craftableEntries = new ArrayList<>();
@@ -170,6 +190,13 @@ public final class ClientRtsController {
     private int craftFeedbackCount;
     private long craftFeedbackExpiryMs;
     private final List<CraftFeedbackIngredient> craftFeedbackIngredients = new ArrayList<>();
+    private byte questDetectPhase = -1;
+    private long questDetectStartedAtMs;
+    private long questDetectFinishedAtMs;
+    private long questDetectExpiryMs;
+    private int questDetectScannedTasks;
+    private int questDetectTotalTasks;
+    private int questDetectCompletedTasks;
     private String selectedItemId = "";
     private String selectedItemLabel = "";
     private ItemStack selectedItemPreview = ItemStack.EMPTY;
@@ -220,6 +247,9 @@ public final class ClientRtsController {
     private RtsCameraEntity localMirrorCamera;
 
     private ClientRtsController() {
+        RtsClientUiStateStore.UiState uiState = RtsClientUiStateStore.load();
+        this.startCameraAtPlayerHead = uiState.startCameraAtPlayerHead;
+        this.allowPlacedBlockRecovery = uiState.allowPlacedBlockRecovery;
         applyStoredLayout(RtsClientLayoutStore.loadStoragePanelLayout());
         this.storageCategories.add("all");
         for (int i = 0; i < QUICK_SLOT_COUNT; i++) {
@@ -532,6 +562,70 @@ public final class ClientRtsController {
         return Collections.unmodifiableList(this.craftFeedbackIngredients);
     }
 
+    public boolean isQuestDetectPopupVisible() {
+        if (this.questDetectPhase < 0 || this.questDetectStartedAtMs <= 0L) {
+            return false;
+        }
+        if (this.questDetectPhase == S2CRtsQuestDetectStatusPayload.PHASE_STARTED) {
+            return true;
+        }
+        return System.currentTimeMillis() < this.questDetectExpiryMs;
+    }
+
+    public boolean isQuestDetectRunning() {
+        return this.questDetectPhase == S2CRtsQuestDetectStatusPayload.PHASE_STARTED;
+    }
+
+    public byte getQuestDetectPhase() {
+        return this.questDetectPhase;
+    }
+
+    public float getQuestDetectProgress() {
+        if (!isQuestDetectPopupVisible()) {
+            return 0.0F;
+        }
+        long elapsed = Math.max(0L, System.currentTimeMillis() - this.questDetectStartedAtMs);
+        if (this.questDetectPhase == S2CRtsQuestDetectStatusPayload.PHASE_STARTED) {
+            return (float) Math.min(0.92D, elapsed / 1000.0D * 0.92D);
+        }
+        return (float) Mth.clamp(elapsed / (double) QUEST_DETECT_MIN_PROGRESS_MS, 0.0D, 1.0D);
+    }
+
+    public boolean isStorageScanPopupVisible() {
+        return this.storageScanRunning || System.currentTimeMillis() < this.storageScanVisibleUntilMs;
+    }
+
+    public boolean isStorageScanRunning() {
+        return this.storageScanRunning;
+    }
+
+    public float getStorageScanProgress() {
+        if (!isStorageScanPopupVisible()) {
+            return 0.0F;
+        }
+        if (this.storageScanRunning) {
+            long elapsed = Math.max(0L, System.currentTimeMillis() - this.storageScanStartedAtMs);
+            return (float) Math.min(0.92D, elapsed / 900.0D * 0.92D);
+        }
+        return 1.0F;
+    }
+
+    public boolean hasStoragePageSnapshot() {
+        return this.storagePageReceivedAtMs > 0L || this.storageRevision > 0;
+    }
+
+    public int getQuestDetectScannedTasks() {
+        return this.questDetectScannedTasks;
+    }
+
+    public int getQuestDetectTotalTasks() {
+        return this.questDetectTotalTasks;
+    }
+
+    public int getQuestDetectCompletedTasks() {
+        return this.questDetectCompletedTasks;
+    }
+
     public List<FunnelBufferEntry> getFunnelBufferEntries() {
         return Collections.unmodifiableList(this.funnelBufferEntries);
     }
@@ -676,6 +770,30 @@ public final class ClientRtsController {
         return this.rotateCaptured;
     }
 
+    public boolean isStartCameraAtPlayerHead() {
+        return this.startCameraAtPlayerHead;
+    }
+
+    public void setStartCameraAtPlayerHead(boolean startCameraAtPlayerHead) {
+        this.startCameraAtPlayerHead = startCameraAtPlayerHead;
+    }
+
+    public void toggleStartCameraAtPlayerHead() {
+        this.startCameraAtPlayerHead = !this.startCameraAtPlayerHead;
+    }
+
+    public boolean isAllowPlacedBlockRecovery() {
+        return this.allowPlacedBlockRecovery;
+    }
+
+    public void setAllowPlacedBlockRecovery(boolean allowPlacedBlockRecovery) {
+        this.allowPlacedBlockRecovery = allowPlacedBlockRecovery;
+    }
+
+    public void toggleAllowPlacedBlockRecovery() {
+        this.allowPlacedBlockRecovery = !this.allowPlacedBlockRecovery;
+    }
+
     public void applyServerCameraState(S2CRtsCameraStatePayload payload) {
         Minecraft minecraft = Minecraft.getInstance();
 
@@ -688,6 +806,7 @@ public final class ClientRtsController {
             this.anchorZ = payload.anchorZ();
             this.maxRadius = payload.maxRadius();
             this.homeSelectionMode = payload.homeSelection();
+            this.closeRangeAllowed = payload.closeRangeAllowed();
 
             if (freshEnable) {
                 this.previousCameraEntity = minecraft.getCameraEntity();
@@ -720,6 +839,8 @@ public final class ClientRtsController {
             this.pendingRawRotateY = 0.0F;
             this.emaRotateX = 0.0F;
             this.emaRotateY = 0.0F;
+            this.cameraMoveHeartbeatTicks = 0;
+            this.cameraRestoreCooldownTicks = 0;
             this.mode = BuilderMode.INTERACT;
             this.storageCollapsed = false;
             this.storageEntries.clear();
@@ -737,6 +858,8 @@ public final class ClientRtsController {
             this.inputSensitivityIndex = INPUT_SENS_DEFAULT_INDEX;
             this.storageCategories.clear();
             this.storageCategories.add("all");
+            clearStorageScanState();
+            this.storagePageReceivedAtMs = 0L;
             this.selectedItemId = "";
             this.selectedItemLabel = "";
             this.selectedItemPreview = ItemStack.EMPTY;
@@ -771,6 +894,7 @@ public final class ClientRtsController {
         this.serverCameraEntityId = -1;
         this.localStateReady = false;
         this.homeSelectionMode = false;
+        this.closeRangeAllowed = false;
         this.funnelEnabled = false;
         this.lastFunnelTarget = null;
         this.funnelTargetCooldownTicks = 0;
@@ -793,6 +917,8 @@ public final class ClientRtsController {
         this.pendingRawRotateY = 0.0F;
         this.emaRotateX = 0.0F;
         this.emaRotateY = 0.0F;
+        this.cameraMoveHeartbeatTicks = 0;
+        this.cameraRestoreCooldownTicks = 0;
         this.inputSensitivityIndex = INPUT_SENS_DEFAULT_INDEX;
         this.selectedItemId = "";
         this.selectedItemLabel = "";
@@ -811,6 +937,8 @@ public final class ClientRtsController {
         }
         this.mineRenderPos = null;
         this.mineRenderStage = -1;
+        clearStorageScanState();
+        this.storagePageReceivedAtMs = 0L;
 
         if (minecraft.screen instanceof BuilderScreen) {
             minecraft.setScreen(null);
@@ -929,7 +1057,8 @@ public final class ClientRtsController {
         this.ensureLocalMirrorCamera(minecraft);
 
         long window = minecraft.getWindow().getWindow();
-        boolean suppressMoveKeys = minecraft.screen instanceof BuilderScreen builderScreen && builderScreen.isSearchFocused();
+        BuilderScreen builderScreen = minecraft.screen instanceof BuilderScreen screen ? screen : null;
+        boolean suppressMoveKeys = builderScreen != null && builderScreen.isSearchFocused();
         boolean w = !suppressMoveKeys
                 && (InputConstants.isKeyDown(window, GLFW.GLFW_KEY_W) || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_UP));
         boolean s = !suppressMoveKeys
@@ -938,10 +1067,17 @@ public final class ClientRtsController {
                 && (InputConstants.isKeyDown(window, GLFW.GLFW_KEY_A) || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT));
         boolean d = !suppressMoveKeys
                 && (InputConstants.isKeyDown(window, GLFW.GLFW_KEY_D) || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT));
-        boolean shift = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT) || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+        boolean up = !suppressMoveKeys
+                && (ClientKeyMappings.CAMERA_UP.isDown()
+                        || (builderScreen != null && builderScreen.isCameraUpActionHeld()));
+        boolean down = !suppressMoveKeys
+                && (ClientKeyMappings.CAMERA_DOWN.isDown()
+                        || (builderScreen != null && builderScreen.isCameraDownActionHeld()));
+        boolean fast = !suppressMoveKeys && minecraft.options.keySprint.isDown();
 
         float forward = (w ? 1.0F : 0.0F) - (s ? 1.0F : 0.0F);
         float strafe = (a ? 1.0F : 0.0F) - (d ? 1.0F : 0.0F);
+        float vertical = (up ? 1.0F : 0.0F) - (down ? 1.0F : 0.0F);
 
         float safeRawX = Mth.clamp(this.pendingRawRotateX, -ROT_INPUT_CLAMP, ROT_INPUT_CLAMP);
         float safeRawY = Mth.clamp(this.pendingRawRotateY, -ROT_INPUT_CLAMP, ROT_INPUT_CLAMP);
@@ -960,34 +1096,51 @@ public final class ClientRtsController {
         float rotateXForTick = Mth.clamp(this.emaRotateX * this.rotateSensitivity * inputSensScale, -ROT_INPUT_CLAMP, ROT_INPUT_CLAMP);
         float rotateYForTick = Mth.clamp(this.emaRotateY * this.rotateSensitivity * inputSensScale, -ROT_INPUT_CLAMP, ROT_INPUT_CLAMP);
         float scrollForTick = this.pendingScroll * inputSensScale;
+        if (Math.abs(rotateXForTick) < CAMERA_INPUT_EPSILON) {
+            rotateXForTick = 0.0F;
+            this.emaRotateX = 0.0F;
+        }
+        if (Math.abs(rotateYForTick) < CAMERA_INPUT_EPSILON) {
+            rotateYForTick = 0.0F;
+            this.emaRotateY = 0.0F;
+        }
+        if (Math.abs(scrollForTick) < CAMERA_INPUT_EPSILON) {
+            scrollForTick = 0.0F;
+        }
 
-        if (forward != 0.0F || strafe != 0.0F
-                || this.pendingPanX != 0.0F || this.pendingPanY != 0.0F
+        boolean hasCameraInput = forward != 0.0F || strafe != 0.0F || vertical != 0.0F
+                || Math.abs(this.pendingPanX) > CAMERA_INPUT_EPSILON
+                || Math.abs(this.pendingPanY) > CAMERA_INPUT_EPSILON
                 || rotateXForTick != 0.0F || rotateYForTick != 0.0F
-                || scrollForTick != 0.0F || this.pendingRotateSteps != 0) {
+                || scrollForTick != 0.0F || this.pendingRotateSteps != 0;
+        if (hasCameraInput) {
             this.applyLocalPrediction(
                     forward,
                     strafe,
+                    vertical,
                     this.pendingPanX,
                     this.pendingPanY,
                     rotateXForTick,
                     rotateYForTick,
                     scrollForTick,
                     this.pendingRotateSteps,
-                    shift);
+                    fast);
         }
 
-        // Fixed packet frequency: one packet per client tick while RTS is enabled.
-        RtsClientPacketGateway.sendCameraMove(
-                forward,
-                strafe,
-                this.pendingPanX,
-                this.pendingPanY,
-                rotateXForTick,
-                rotateYForTick,
-                scrollForTick,
-                this.pendingRotateSteps,
-                shift);
+        if (hasCameraInput || ++this.cameraMoveHeartbeatTicks >= CAMERA_IDLE_HEARTBEAT_TICKS) {
+            RtsClientPacketGateway.sendCameraMove(
+                    forward,
+                    strafe,
+                    hasCameraInput ? vertical : 0.0F,
+                    hasCameraInput ? this.pendingPanX : 0.0F,
+                    hasCameraInput ? this.pendingPanY : 0.0F,
+                    hasCameraInput ? rotateXForTick : 0.0F,
+                    hasCameraInput ? rotateYForTick : 0.0F,
+                    hasCameraInput ? scrollForTick : 0.0F,
+                    hasCameraInput ? this.pendingRotateSteps : 0,
+                    fast);
+            this.cameraMoveHeartbeatTicks = 0;
+        }
 
         this.pendingPanX = 0.0F;
         this.pendingPanY = 0.0F;
@@ -1036,9 +1189,12 @@ public final class ClientRtsController {
         this.enabled = false;
         this.serverCameraEntityId = -1;
         this.localStateReady = false;
+        this.closeRangeAllowed = false;
+        this.cameraMoveHeartbeatTicks = 0;
+        this.cameraRestoreCooldownTicks = 0;
         this.previousCameraEntity = null;
         this.localMirrorCamera = null;
-        PacketDistributor.sendToServer(new C2SRtsToggleCameraPayload());
+        RtsClientPacketGateway.sendToggleCamera(false);
         return true;
     }
 
@@ -1087,12 +1243,23 @@ public final class ClientRtsController {
     }
 
     public void requestStoragePage(int page) {
+        markStorageScanStarted();
         RtsClientPacketGateway.sendRequestStoragePage(
                 page,
                 this.storageSearch,
                 this.storageCategory,
                 this.storageSort,
                 this.storageSortAscending);
+    }
+
+    public void requestStoragePageIfNoSnapshot(int page) {
+        if (!hasStoragePageSnapshot() && !this.storageScanRunning) {
+            requestStoragePage(page);
+        }
+    }
+
+    public void refreshStoragePage() {
+        requestStoragePage(this.storagePage);
     }
 
     public void requestCraftables() {
@@ -1194,7 +1361,19 @@ public final class ClientRtsController {
     }
 
     public void detectQuestsNow() {
+        beginQuestDetectScan();
         RtsClientPacketGateway.sendQuestDetectManual();
+    }
+
+    private void beginQuestDetectScan() {
+        long now = System.currentTimeMillis();
+        this.questDetectPhase = S2CRtsQuestDetectStatusPayload.PHASE_STARTED;
+        this.questDetectStartedAtMs = now;
+        this.questDetectFinishedAtMs = 0L;
+        this.questDetectExpiryMs = 0L;
+        this.questDetectScannedTasks = 0;
+        this.questDetectTotalTasks = 0;
+        this.questDetectCompletedTasks = 0;
     }
 
     public void rotateBlock(BlockPos pos) {
@@ -1228,6 +1407,7 @@ public final class ClientRtsController {
     }
 
     public void applyStoragePage(S2CRtsStoragePagePayload payload) {
+        markStorageScanFinished();
         this.storageLinked = payload.linked();
         this.linkedStorageName = payload.linkedName();
         this.autoStoreMinedDrops = payload.autoStoreMinedDrops();
@@ -1348,6 +1528,28 @@ public final class ClientRtsController {
         if (!this.storageLinked && this.linkedStoragePositions.isEmpty()) {
             clearCraftablesState();
         }
+    }
+
+    private void markStorageScanStarted() {
+        this.storageScanRunning = true;
+        this.storageScanStartedAtMs = System.currentTimeMillis();
+        this.storageScanVisibleUntilMs = 0L;
+    }
+
+    private void markStorageScanFinished() {
+        if (!this.storageScanRunning && this.storageScanStartedAtMs <= 0L) {
+            return;
+        }
+        this.storageScanRunning = false;
+        long now = System.currentTimeMillis();
+        this.storagePageReceivedAtMs = now;
+        this.storageScanVisibleUntilMs = now + STORAGE_SCAN_RESULT_VISIBLE_MS;
+    }
+
+    private void clearStorageScanState() {
+        this.storageScanRunning = false;
+        this.storageScanStartedAtMs = 0L;
+        this.storageScanVisibleUntilMs = 0L;
     }
 
     private void refreshSelectedItemPreviewFromStorage() {
@@ -1538,6 +1740,31 @@ public final class ClientRtsController {
         this.craftFeedbackExpiryMs = now + 2200L;
     }
 
+    public void applyQuestDetectStatus(S2CRtsQuestDetectStatusPayload payload) {
+        if (payload == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (payload.phase() == S2CRtsQuestDetectStatusPayload.PHASE_STARTED) {
+            if (this.questDetectPhase != S2CRtsQuestDetectStatusPayload.PHASE_STARTED) {
+                beginQuestDetectScan();
+            }
+            this.questDetectScannedTasks = Math.max(0, payload.scannedTasks());
+            this.questDetectTotalTasks = Math.max(0, payload.totalTasks());
+            this.questDetectCompletedTasks = Math.max(0, payload.completedTasks());
+            return;
+        }
+        if (this.questDetectStartedAtMs <= 0L) {
+            this.questDetectStartedAtMs = now;
+        }
+        this.questDetectPhase = payload.phase();
+        this.questDetectFinishedAtMs = now;
+        this.questDetectExpiryMs = now + QUEST_DETECT_RESULT_VISIBLE_MS;
+        this.questDetectScannedTasks = Math.max(0, payload.scannedTasks());
+        this.questDetectTotalTasks = Math.max(0, payload.totalTasks());
+        this.questDetectCompletedTasks = Math.max(0, payload.completedTasks());
+    }
+
     private void mergeCraftFeedbackIngredients(List<CraftFeedbackIngredient> added) {
         if (added == null || added.isEmpty()) {
             return;
@@ -1611,7 +1838,29 @@ public final class ClientRtsController {
         this.unlockedProgressionNodes.addAll(payload.unlockedNodes());
         this.unlockableProgressionNodes.clear();
         this.unlockableProgressionNodes.addAll(payload.unlockableNodes());
+        if (!this.progressionEnabled) {
+            clearProgressionLocksForDisabled(payload.radiusBlocks(), payload.fluidCapacityBuckets(), payload.ultimineLimit());
+        }
         RtsProgressionNodes.applySyncedCostOverrides(payload.costOverrides());
+    }
+
+    private void clearProgressionLocksForDisabled() {
+        clearProgressionLocksForDisabled(128, 100, 256);
+    }
+
+    private void clearProgressionLocksForDisabled(int radiusBlocks, int fluidCapacityBuckets, int ultimineLimit) {
+        this.progressionEnabled = false;
+        this.progressionHomeSet = false;
+        this.progressionHomePos = BlockPos.ZERO;
+        this.progressionHomeDimension = "";
+        this.progressionHomeCooldownTicks = 0L;
+        this.progressionRadiusBlocks = Math.max(1, radiusBlocks);
+        this.progressionFluidCapacityBuckets = Math.max(1, fluidCapacityBuckets);
+        this.progressionUltimineLimit = Math.max(1, ultimineLimit);
+        this.progressionBypassHomeRadius = true;
+        this.unlockedProgressionNodes.clear();
+        this.unlockableProgressionNodes.clear();
+        this.homeSelectionMode = false;
     }
 
     public void requestProgressionState() {
@@ -1623,7 +1872,11 @@ public final class ClientRtsController {
     }
 
     public void setSurvivalProgressionEnabled(boolean enabled) {
+        if (!enabled) {
+            clearProgressionLocksForDisabled();
+        }
         RtsClientPacketGateway.sendSetSurvivalProgression(enabled);
+        RtsClientPacketGateway.sendRequestProgressionState();
     }
 
     public void setProgressionCost(ResourceLocation nodeId, String costsText) {
@@ -1745,6 +1998,17 @@ public final class ClientRtsController {
         setMode(BuilderMode.INTERACT);
     }
 
+    public void selectItemForPlacement(String itemId, String label, ItemStack preview) {
+        if (itemId == null || itemId.isBlank() || preview == null || preview.isEmpty()) {
+            return;
+        }
+        ItemStack safePreview = preview.copy();
+        safePreview.setCount(1);
+        setSelectedItem(itemId, label == null || label.isBlank() ? safePreview.getHoverName().getString() : label, safePreview);
+        clearSelectedFluid();
+        setMode(BuilderMode.INTERACT);
+    }
+
     public void setGuiBinding(int index, BlockPos pos, Direction face, String itemIdHint) {
         if (index < 0 || index >= GUI_BINDING_SLOT_COUNT || pos == null) {
             return;
@@ -1773,6 +2037,11 @@ public final class ClientRtsController {
     }
 
     public void placeSelected(BlockHitResult hit, boolean forcePlace, Vec3 rayOrigin, Vec3 rayDir, boolean skipIfOccupied) {
+        placeSelected(hit, forcePlace, rayOrigin, rayDir, skipIfOccupied, false);
+    }
+
+    public void placeSelected(BlockHitResult hit, boolean forcePlace, Vec3 rayOrigin, Vec3 rayDir, boolean skipIfOccupied,
+            boolean quickBuild) {
         beginRemoteMenuOpenGrace();
         RtsClientPacketGateway.sendPlace(
                 hit,
@@ -1781,7 +2050,8 @@ public final class ClientRtsController {
                 this.selectedItemId,
                 this.selectedItemId.isBlank() ? 0 : this.placeRotateSteps,
                 rayOrigin,
-                rayDir);
+                rayDir,
+                quickBuild);
     }
 
     public void placeSelectedFluid(BlockHitResult hit, boolean forcePlace, Vec3 rayOrigin, Vec3 rayDir) {
@@ -1938,7 +2208,12 @@ public final class ClientRtsController {
         this.activeMineToolSlot = Mth.clamp(toolSlot, 0, 8);
         this.mineRenderPos = this.activeMinePos;
         this.mineRenderStage = 0;
-        RtsClientPacketGateway.sendMineStart(this.activeMinePos, face, this.activeMineToolSlot, selectedMiningToolItemId());
+        RtsClientPacketGateway.sendMineStart(
+                this.activeMinePos,
+                face,
+                this.activeMineToolSlot,
+                selectedMiningToolItemId(),
+                this.allowPlacedBlockRecovery);
     }
 
     public void startUltimine(BlockPos pos, int face, int toolSlot, int limit) {
@@ -1988,6 +2263,7 @@ public final class ClientRtsController {
     private void beginRemoteMenuOpenGrace() {
         this.pendingRemoteMenuOpenTicks = Math.max(this.pendingRemoteMenuOpenTicks, REMOTE_MENU_OPEN_GRACE_TICKS);
         this.screenlessRemoteMenuTicks = 0;
+        RtsRemoteMenuCompat.beginClientRemoteMenuOpen();
         RtsSophisticatedStorageCompat.beginClientRemoteMenuOpen();
     }
 
@@ -2012,6 +2288,7 @@ public final class ClientRtsController {
 
     private void clearRemoteMenuValidationState() {
         this.relaxedRemoteMenu = null;
+        RtsRemoteMenuCompat.clearClientRemoteMenu();
         RtsSophisticatedStorageCompat.clearClientRemoteMenu();
     }
 
@@ -2061,7 +2338,14 @@ public final class ClientRtsController {
         this.localMirrorCamera.snapTo(this.localX, this.localY, this.localZ, this.localYawDeg, this.localPitchDeg);
 
         if (minecraft.getCameraEntity() != this.localMirrorCamera) {
-            minecraft.setCameraEntity(this.localMirrorCamera);
+            if (this.cameraRestoreCooldownTicks <= 0) {
+                minecraft.setCameraEntity(this.localMirrorCamera);
+                this.cameraRestoreCooldownTicks = CAMERA_RESTORE_COOLDOWN_TICKS;
+            } else {
+                this.cameraRestoreCooldownTicks--;
+            }
+        } else if (this.cameraRestoreCooldownTicks > 0) {
+            this.cameraRestoreCooldownTicks--;
         }
     }
 
@@ -2079,7 +2363,7 @@ public final class ClientRtsController {
         this.localMirrorCamera.snapTo(this.localX, this.localY, this.localZ, this.localYawDeg, this.localPitchDeg);
     }
 
-    private void applyLocalPrediction(float forward, float strafe, float panX, float panY, float rotateX, float rotateY,
+    private void applyLocalPrediction(float forward, float strafe, float vertical, float panX, float panY, float rotateX, float rotateY,
             float scroll, int rotateSteps, boolean fast) {
         this.localYawDeg += rotateX * ROTATE_GAIN_X;
         if (rotateSteps != 0) {
@@ -2096,6 +2380,7 @@ public final class ClientRtsController {
         double targetY = this.localY;
         double targetZ = this.localZ;
 
+        float safeVertical = Mth.clamp(vertical, -1.0F, 1.0F);
         double dx = (-sin * forward + cos * strafe) * speed;
         double dz = (cos * forward + sin * strafe) * speed;
 
@@ -2112,6 +2397,7 @@ public final class ClientRtsController {
         dz += rightZ * moveRight + fwdZ * moveForward;
 
         targetX += dx;
+        targetY += safeVertical * (fast ? FAST_VERTICAL_SPEED : VERTICAL_SPEED);
         targetZ += dz;
 
         if (scroll != 0.0F) {
@@ -2142,7 +2428,8 @@ public final class ClientRtsController {
         Vec3 toCam = new Vec3(targetX - this.anchorX, targetY - this.anchorY, targetZ - this.anchorZ);
         double dist = toCam.length();
         if (dist > 1.0e-6) {
-            double clamped = Mth.clamp(dist, 8.0D, 72.0D);
+            double minDist = this.closeRangeAllowed || safeVertical != 0.0F ? 0.0D : DEFAULT_MIN_CAMERA_DISTANCE;
+            double clamped = Mth.clamp(dist, minDist, MAX_CAMERA_DISTANCE);
             if (Math.abs(clamped - dist) > 1.0e-4) {
                 Vec3 n = toCam.scale(clamped / dist);
                 targetX = this.anchorX + n.x;

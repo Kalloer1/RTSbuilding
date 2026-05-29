@@ -1,25 +1,43 @@
 
-Installation information
-=======
+# RTSBuilding
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+RTSBuilding is a Minecraft building mod that adds an RTS-style remote camera,
+storage-aware placement, remote interaction, mining, crafting, and utility UI
+for large base construction.
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+This branch is the Minecraft 1.21.1 NeoForge mainline.
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+## Build
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+Requirements:
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+- Java 21
+- Git
+
+Build from a fresh clone:
+
+```powershell
+.\gradlew.bat build --no-daemon --no-configuration-cache
+```
+
+Linux/macOS:
+
+```bash
+./gradlew build --no-daemon --no-configuration-cache
+```
+
+The built jar is written under `build/libs`.
+
+## Branches
+
+- `main`: Minecraft 1.21.1 / NeoForge
+- `forge-1.20.1`: Minecraft 1.20.1 / Forge, published with the Forge project at
+  the branch root
+
+Local `sister-projects` folders are porting workspaces and are not part of the
+main branch source release.
+
+## Credits And Licenses
+
+Minecraft mappings are provided under Mojang's mapping license. For details,
+see the mapping license distributed by NeoForge/Mojang.

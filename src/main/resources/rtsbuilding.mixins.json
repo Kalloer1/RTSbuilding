@@ -3,6 +3,9 @@
   "package": "com.rtsbuilding.rtsbuilding.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "compat.generatorgalore.GeneratorMenuMixin",
+    "compat.ironfurnaces.IronFurnaceContainerMixin",
+    "compat.ironfurnaces.WirelessEnergyHeaterContainerMixin",
     "compat.sophisticatedstorage.StorageContainerMenuMixin"
   ],
   "injectors": {

@@ -1,5 +1,10 @@
 package com.rtsbuilding.rtsbuilding.client;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+import com.rtsbuilding.rtsbuilding.common.BuilderMode;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsBreakPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsBeginHomeSelectionPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsCameraMovePayload;
@@ -29,13 +34,20 @@ import com.rtsbuilding.rtsbuilding.network.C2SRtsSetQuickSlotPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsSetSurvivalProgressionPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreFluidPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsStoreHotbarSlotPayload;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsToggleCameraPayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsUltiminePayload;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsUnlockProgressionNodePayload;
 import com.rtsbuilding.rtsbuilding.network.RtsStorageSort;
+import com.rtsbuilding.rtsbuilding.util.RtsPinyinSearch;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -72,15 +84,20 @@ final class RtsClientPacketGateway {
         PacketDistributor.sendToServer(new C2SRtsBeginHomeSelectionPayload());
     }
 
+    static void sendToggleCamera(boolean startAtPlayerHead) {
+        PacketDistributor.sendToServer(new C2SRtsToggleCameraPayload(startAtPlayerHead));
+    }
+
     static void sendSetFunnelEnabled(boolean enabled) {
         PacketDistributor.sendToServer(new C2SRtsSetFunnelPayload(enabled));
     }
 
-    static void sendCameraMove(float forward, float strafe, float panX, float panY, float rotateX, float rotateY,
+    static void sendCameraMove(float forward, float strafe, float vertical, float panX, float panY, float rotateX, float rotateY,
             float scroll, int rotateSteps, boolean fast) {
         PacketDistributor.sendToServer(new C2SRtsCameraMovePayload(
                 forward,
                 strafe,
+                vertical,
                 panX,
                 panY,
                 rotateX,
@@ -101,12 +118,15 @@ final class RtsClientPacketGateway {
     }
 
     static void sendRequestStoragePage(int page, String search, String category, RtsStorageSort sort, boolean ascending) {
+        boolean pinyinSearchEnabled = isChineseLanguageSelected();
         PacketDistributor.sendToServer(new C2SRtsRequestStoragePagePayload(
                 page,
                 search,
                 category,
                 (byte) sort.ordinal(),
-                ascending));
+                ascending,
+                pinyinSearchEnabled,
+                buildLocalizedSearchMatches(search, pinyinSearchEnabled)));
     }
 
     static void sendSetAutoStoreMinedDrops(boolean enabled) {
@@ -147,11 +167,84 @@ final class RtsClientPacketGateway {
     }
 
     static void sendRequestCraftables(String search, boolean showUnavailable, int offset, int limit) {
+        boolean pinyinSearchEnabled = isChineseLanguageSelected();
         PacketDistributor.sendToServer(new C2SRtsRequestCraftablesPayload(
                 search,
                 showUnavailable,
                 Math.max(0, offset),
-                Math.max(1, limit)));
+                Math.max(1, limit),
+                pinyinSearchEnabled,
+                buildLocalizedSearchMatches(search, pinyinSearchEnabled)));
+    }
+
+    private static boolean isChineseLanguageSelected() {
+        Minecraft minecraft = Minecraft.getInstance();
+        String language = "";
+        if (minecraft != null && minecraft.getLanguageManager() != null) {
+            language = minecraft.getLanguageManager().getSelected();
+        }
+        if ((language == null || language.isBlank()) && minecraft != null && minecraft.options != null) {
+            language = minecraft.options.languageCode;
+        }
+        language = language == null ? "" : language.toLowerCase(Locale.ROOT);
+        return language.equals("zh") || language.startsWith("zh_") || language.startsWith("zh-");
+    }
+
+    private static List<String> buildLocalizedSearchMatches(String search, boolean pinyinSearchEnabled) {
+        if (!pinyinSearchEnabled) {
+            return List.of();
+        }
+        String query = search == null ? "" : search.toLowerCase(Locale.ROOT).trim();
+        if (query.isEmpty()) {
+            return List.of();
+        }
+
+        String[] tokens = query.split("\\s+");
+        List<String> matches = new ArrayList<>();
+        for (Item item : BuiltInRegistries.ITEM) {
+            if (item == null) {
+                continue;
+            }
+            ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+            if (id == null) {
+                continue;
+            }
+            ItemStack stack = new ItemStack(item);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            String label = stack.getHoverName().getString();
+            if (matchesLocalizedSearch(id, label, tokens)) {
+                matches.add(id.toString());
+            }
+        }
+        return matches;
+    }
+
+    private static boolean matchesLocalizedSearch(ResourceLocation id, String label, String[] tokens) {
+        String rawId = id.toString().toLowerCase(Locale.ROOT);
+        String namespace = id.getNamespace().toLowerCase(Locale.ROOT);
+        String normalizedLabel = label == null ? "" : label.toLowerCase(Locale.ROOT);
+        boolean matchedAnyToken = false;
+        for (String token : tokens) {
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            matchedAnyToken = true;
+            if (token.startsWith("@")) {
+                String modQuery = token.substring(1).trim();
+                if (!modQuery.isEmpty() && !namespace.contains(modQuery)) {
+                    return false;
+                }
+                continue;
+            }
+            if (!rawId.contains(token)
+                    && !normalizedLabel.contains(token)
+                    && !RtsPinyinSearch.contains(label, token)) {
+                return false;
+            }
+        }
+        return matchedAnyToken;
     }
 
     static void sendSetQuickSlot(int index, String itemId) {
@@ -177,6 +270,11 @@ final class RtsClientPacketGateway {
 
     static void sendPlace(BlockHitResult hit, boolean forcePlace, boolean skipIfOccupied, String itemId, int rotateSteps,
             Vec3 rayOrigin, Vec3 rayDir) {
+        sendPlace(hit, forcePlace, skipIfOccupied, itemId, rotateSteps, rayOrigin, rayDir, false);
+    }
+
+    static void sendPlace(BlockHitResult hit, boolean forcePlace, boolean skipIfOccupied, String itemId, int rotateSteps,
+            Vec3 rayOrigin, Vec3 rayDir, boolean quickBuild) {
         PacketDistributor.sendToServer(new C2SRtsPlacePayload(
                 hit.getBlockPos(),
                 (byte) hit.getDirection().get3DDataValue(),
@@ -192,7 +290,8 @@ final class RtsClientPacketGateway {
                 rayOrigin.z,
                 rayDir.x,
                 rayDir.y,
-                rayDir.z));
+                rayDir.z,
+                quickBuild));
     }
 
     static void sendPlaceFluid(BlockHitResult hit, boolean forcePlace, String fluidId, Vec3 rayOrigin, Vec3 rayDir) {
@@ -302,8 +401,14 @@ final class RtsClientPacketGateway {
                 allowAdjacentFallback));
     }
 
-    static void sendMineStart(BlockPos pos, int face, int toolSlot, String toolItemId) {
-        PacketDistributor.sendToServer(new C2SRtsMinePayload(pos, (byte) face, true, (byte) Mth.clamp(toolSlot, 0, 8), toolItemId == null ? "" : toolItemId));
+    static void sendMineStart(BlockPos pos, int face, int toolSlot, String toolItemId, boolean allowPlacedBlockRecovery) {
+        PacketDistributor.sendToServer(new C2SRtsMinePayload(
+                pos,
+                (byte) face,
+                true,
+                (byte) Mth.clamp(toolSlot, 0, 8),
+                toolItemId == null ? "" : toolItemId,
+                allowPlacedBlockRecovery));
     }
 
     static void sendUltimineStart(BlockPos pos, int face, int toolSlot, String toolItemId, int limit) {
@@ -321,6 +426,7 @@ final class RtsClientPacketGateway {
                 (byte) face,
                 false,
                 (byte) Mth.clamp(toolSlot, 0, 8),
-                ""));
+                "",
+                false));
     }
 }

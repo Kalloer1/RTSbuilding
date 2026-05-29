@@ -45,6 +45,10 @@ public class Config {
             .comment("When survival progression is enabled, share unlocked progression nodes and RTS home anchors with the player's FTB Team, or vanilla scoreboard team when FTB Teams is unavailable.")
             .define("shareSurvivalProgressionWithTeams", false);
 
+    public static final ModConfigSpec.IntValue MAX_ACTION_RADIUS_BLOCKS = BUILDER
+            .comment("Maximum RTS action radius in blocks. Used directly when survival progression is disabled, and by the Radius Max skill when survival progression is enabled.")
+            .defineInRange("maxActionRadiusBlocks", 128, 48, 512);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> PROGRESSION_COST_OVERRIDES = BUILDER
             .comment("Skill material overrides. Format: node_path=minecraft:item:count,minecraft:item2:count. Example: ultimine=minecraft:diamond_pickaxe:1,minecraft:redstone_block:1")
             .defineListAllowEmpty("progressionCostOverrides", List.of(), () -> "", obj -> obj instanceof String);
@@ -57,6 +61,15 @@ public class Config {
 
     public static void setSurvivalProgressionEnabled(boolean enabled) {
         ENABLE_SURVIVAL_PROGRESSION.set(enabled);
+        SPEC.save();
+    }
+
+    public static int maxActionRadiusBlocks() {
+        return MAX_ACTION_RADIUS_BLOCKS.getAsInt();
+    }
+
+    public static void setMaxActionRadiusBlocks(int radiusBlocks) {
+        MAX_ACTION_RADIUS_BLOCKS.set(Math.max(48, Math.min(512, radiusBlocks)));
         SPEC.save();
     }
 

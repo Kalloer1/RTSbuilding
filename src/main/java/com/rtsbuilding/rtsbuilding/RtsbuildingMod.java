@@ -3,14 +3,11 @@ package com.rtsbuilding.rtsbuilding;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
-import com.rtsbuilding.rtsbuilding.client.RtsCameraEntityRenderer;
-import com.rtsbuilding.rtsbuilding.client.RtsModConfigScreen;
 import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.server.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.RtsProgressionManager;
 import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -33,16 +30,14 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
-import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -93,8 +88,7 @@ public class RtsbuildingMod {
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            modContainer.registerExtensionPoint(IConfigScreenFactory.class,
-                    (container, parent) -> new RtsModConfigScreen(parent));
+            com.rtsbuilding.rtsbuilding.client.RtsClientBootstrap.registerConfigUi(modContainer);
         }
     }
 
@@ -120,20 +114,6 @@ public class RtsbuildingMod {
         LOGGER.info("HELLO from server starting");
     }
 
-    @EventBusSubscriber(modid = RtsbuildingMod.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-    static class ClientModEvents {
-        @SubscribeEvent
-        static void onClientSetup(FMLClientSetupEvent event) {
-            LOGGER.info("HELLO FROM CLIENT SETUP");
-            LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
-        }
-
-        @SubscribeEvent
-        static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
-            event.registerEntityRenderer(RTS_CAMERA_ENTITY.get(), RtsCameraEntityRenderer::new);
-        }
-    }
-
     @EventBusSubscriber(modid = RtsbuildingMod.MODID, bus = EventBusSubscriber.Bus.GAME)
     static class GameEvents {
         @SubscribeEvent
@@ -141,6 +121,11 @@ public class RtsbuildingMod {
             if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
                 RtsProgressionManager.onPlayerLogin(serverPlayer);
             }
+        }
+
+        @SubscribeEvent
+        static void onServerStarted(ServerStartedEvent event) {
+            RtsStorageManager.warmCreativeTabCaches(event.getServer());
         }
 
         @SubscribeEvent

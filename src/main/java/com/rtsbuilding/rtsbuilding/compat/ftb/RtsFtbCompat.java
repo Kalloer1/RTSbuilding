@@ -18,11 +18,11 @@ public final class RtsFtbCompat {
         return IMPL != null;
     }
 
-    public static void detectNow(ServerPlayer player) {
+    public static QuestDetectResult detectNow(ServerPlayer player) {
         if (IMPL == null || player == null) {
-            return;
+            return QuestDetectResult.unavailable();
         }
-        IMPL.detectNow(player);
+        return IMPL.detectNow(player);
     }
 
     public static String progressionTeamKey(ServerPlayer player) {
@@ -53,6 +53,24 @@ public final class RtsFtbCompat {
         } catch (Throwable throwable) {
             RtsbuildingMod.LOGGER.warn("FTB Teams compat init failed; shared RTS progression will use vanilla teams only.", throwable);
             return null;
+        }
+    }
+
+    public record QuestDetectResult(
+            boolean available,
+            boolean error,
+            int scannedTasks,
+            int newlyCompletedTasks) {
+        public static QuestDetectResult unavailable() {
+            return new QuestDetectResult(false, false, 0, 0);
+        }
+
+        public static QuestDetectResult failed() {
+            return new QuestDetectResult(true, true, 0, 0);
+        }
+
+        public static QuestDetectResult complete(int scannedTasks, int newlyCompletedTasks) {
+            return new QuestDetectResult(true, false, Math.max(0, scannedTasks), Math.max(0, newlyCompletedTasks));
         }
     }
 }

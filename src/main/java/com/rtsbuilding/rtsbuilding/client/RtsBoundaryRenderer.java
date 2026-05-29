@@ -37,11 +37,27 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 public final class RtsBoundaryRenderer {
     private static final int GL_LEQUAL = 515;
 
+    private static final RenderType CHUNK_XRAY_FILL = RenderType.create(
+            "rtsbuilding_chunk_xray_fill",
+            DefaultVertexFormat.POSITION_COLOR,
+            VertexFormat.Mode.TRIANGLE_STRIP,
+            2 * 1024 * 1024,
+            false,
+            true,
+            RenderType.CompositeState.builder()
+                    .setShaderState(RenderStateShard.POSITION_COLOR_SHADER)
+                    .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
+                    .setDepthTestState(RenderStateShard.NO_DEPTH_TEST)
+                    .setOutputState(RenderStateShard.MAIN_TARGET)
+                    .setWriteMaskState(RenderStateShard.COLOR_WRITE)
+                    .setCullState(RenderStateShard.NO_CULL)
+                    .createCompositeState(false));
+
     private static final RenderType CHUNK_XRAY_LINES = RenderType.create(
             "rtsbuilding_chunk_xray_lines",
             DefaultVertexFormat.POSITION_COLOR_NORMAL,
             VertexFormat.Mode.LINES,
-            8192,
+            2 * 1024 * 1024,
             RenderType.CompositeState.builder()
                     .setShaderState(RenderStateShard.RENDERTYPE_LINES_SHADER)
                     .setLineState(RenderStateShard.DEFAULT_LINE)
@@ -77,10 +93,14 @@ public final class RtsBoundaryRenderer {
         poseStack.translate(-camPos.x, -camPos.y, -camPos.z);
 
         if (controller.isChunkCurtainVisible()) {
+            RenderType chunkFill = CHUNK_XRAY_FILL;
             RenderType chunkLines = CHUNK_XRAY_LINES;
-            try (ByteBufferBuilder chunkLineBacking = new ByteBufferBuilder(chunkLines.bufferSize())) {
+            try (ByteBufferBuilder chunkFillBacking = new ByteBufferBuilder(chunkFill.bufferSize());
+                    ByteBufferBuilder chunkLineBacking = new ByteBufferBuilder(chunkLines.bufferSize())) {
+                BufferBuilder chunkFillBuffer = new BufferBuilder(chunkFillBacking, chunkFill.mode, chunkFill.format);
                 BufferBuilder chunkLineBuffer = new BufferBuilder(chunkLineBacking, chunkLines.mode, chunkLines.format);
-                renderChunkGuides(minecraft, controller, poseStack, chunkLineBuffer);
+                renderChunkGuides(minecraft, controller, poseStack, chunkFillBuffer, chunkLineBuffer);
+                drawBuiltBufferNoDepth(chunkFill, chunkFillBuffer);
                 drawBuiltBufferNoDepth(chunkLines, chunkLineBuffer);
             }
         }
@@ -139,6 +159,7 @@ public final class RtsBoundaryRenderer {
             Minecraft minecraft,
             ClientRtsController controller,
             PoseStack poseStack,
+            VertexConsumer fillBuffer,
             VertexConsumer lineBuffer) {
         if (minecraft.level == null) {
             return;
@@ -150,68 +171,95 @@ public final class RtsBoundaryRenderer {
         int maxChunkX = anchorChunkX + chunkRange;
         int minChunkZ = anchorChunkZ - chunkRange;
         int maxChunkZ = anchorChunkZ + chunkRange;
-        double zMin = (anchorChunkZ - chunkRange) * 16.0D;
-        double zMax = (anchorChunkZ + chunkRange + 1) * 16.0D;
-        double xMin = (anchorChunkX - chunkRange) * 16.0D;
-        double xMax = (anchorChunkX + chunkRange + 1) * 16.0D;
-        double y = Math.floor(controller.getAnchorY()) + 0.06D;
+        int playerY = minecraft.player == null
+                ? Mth.floor(controller.getAnchorY())
+                : minecraft.player.blockPosition().getY();
+        int guideY = Mth.clamp(playerY, minecraft.level.getMinBuildHeight(), minecraft.level.getMaxBuildHeight() - 1);
 
-        for (int cx = minChunkX; cx <= maxChunkX + 1; cx++) {
-            double x = cx * 16.0D;
-            renderFlatChunkLineX(poseStack, lineBuffer, x, y, zMin, zMax);
-        }
-        for (int cz = minChunkZ; cz <= maxChunkZ + 1; cz++) {
-            double z = cz * 16.0D;
-            renderFlatChunkLineZ(poseStack, lineBuffer, z, y, xMin, xMax);
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                renderChunkEdgeHighlights(minecraft, poseStack, fillBuffer, lineBuffer, cx, cz, guideY);
+            }
         }
     }
 
-    private static void renderFlatChunkLineX(
+    private static void renderChunkEdgeHighlights(
+            Minecraft minecraft,
             PoseStack poseStack,
+            VertexConsumer fillBuffer,
             VertexConsumer lineBuffer,
-            double x,
-            double y,
-            double zMin,
-            double zMax) {
-        double halfWidth = 0.018D;
-        double halfHeight = 0.035D;
-        LevelRenderer.renderLineBox(
-                poseStack,
-                lineBuffer,
-                x - halfWidth,
-                y - halfHeight,
-                zMin,
-                x + halfWidth,
-                y + halfHeight,
-                zMax,
-                0.18F,
-                0.96F,
-                1.0F,
-                0.95F);
+            int chunkX,
+            int chunkZ,
+            int guideY) {
+        int startX = chunkX << 4;
+        int startZ = chunkZ << 4;
+        int endX = startX + 15;
+        int endZ = startZ + 15;
+        if (!minecraft.level.hasChunkAt(new BlockPos(startX, guideY, startZ))) {
+            return;
+        }
+
+        ChunkGuideColor color = chunkGuideColor(chunkX, chunkZ);
+        for (int x = startX; x <= endX; x++) {
+            renderChunkGuideCell(poseStack, fillBuffer, lineBuffer, x, startZ, guideY, color);
+            renderChunkGuideCell(poseStack, fillBuffer, lineBuffer, x, endZ, guideY, color);
+        }
+        for (int z = startZ + 1; z < endZ; z++) {
+            renderChunkGuideCell(poseStack, fillBuffer, lineBuffer, startX, z, guideY, color);
+            renderChunkGuideCell(poseStack, fillBuffer, lineBuffer, endX, z, guideY, color);
+        }
     }
 
-    private static void renderFlatChunkLineZ(
+    private static void renderChunkGuideCell(
             PoseStack poseStack,
+            VertexConsumer fillBuffer,
             VertexConsumer lineBuffer,
-            double z,
-            double y,
-            double xMin,
-            double xMax) {
-        double halfWidth = 0.018D;
-        double halfHeight = 0.035D;
+            int x,
+            int z,
+            int guideY,
+            ChunkGuideColor color) {
+        double inset = 0.04D;
+        double minX = x + inset;
+        double minY = guideY + inset;
+        double minZ = z + inset;
+        double maxX = x + 1.0D - inset;
+        double maxY = guideY + 1.0D - inset;
+        double maxZ = z + 1.0D - inset;
+        LevelRenderer.addChainedFilledBoxVertices(
+                poseStack,
+                fillBuffer,
+                minX,
+                minY,
+                minZ,
+                maxX,
+                maxY,
+                maxZ,
+                color.r(),
+                color.g(),
+                color.b(),
+                color.a());
         LevelRenderer.renderLineBox(
                 poseStack,
                 lineBuffer,
-                xMin,
-                y - halfHeight,
-                z - halfWidth,
-                xMax,
-                y + halfHeight,
-                z + halfWidth,
-                0.18F,
-                0.96F,
-                1.0F,
-                0.95F);
+                minX,
+                minY,
+                minZ,
+                maxX,
+                maxY,
+                maxZ,
+                Math.min(1.0F, color.r() + 0.18F),
+                Math.min(1.0F, color.g() + 0.18F),
+                Math.min(1.0F, color.b() + 0.18F),
+                0.92F);
+    }
+
+    private static ChunkGuideColor chunkGuideColor(int chunkX, int chunkZ) {
+        return ((chunkX ^ chunkZ) & 1) == 0
+                ? new ChunkGuideColor(0.16F, 0.78F, 1.0F, 0.24F)
+                : new ChunkGuideColor(1.0F, 0.88F, 0.16F, 0.22F);
+    }
+
+    private record ChunkGuideColor(float r, float g, float b, float a) {
     }
 
     private static void renderLinkedStorages(Minecraft minecraft, ClientRtsController controller, PoseStack poseStack,

@@ -195,7 +195,7 @@ public final class RtsProgressionScreen extends Screen {
 
     private void layoutNodes(int x, int y, int w, int h) {
         int minX = 0;
-        int maxX = 4;
+        int maxX = 5;
         int minY = -1;
         int maxY = 3;
         int cardW = cardW();
@@ -219,9 +219,9 @@ public final class RtsProgressionScreen extends Screen {
         int cardH = cardH();
         int contentW = Math.max(1, this.viewportW - 32);
         int contentH = Math.max(1, this.viewportH - 28);
-        double colGap = ((double) Math.max(1, contentW - cardW) / 4.0D) * this.zoom;
+        double colGap = ((double) Math.max(1, contentW - cardW) / 5.0D) * this.zoom;
         double rowGap = ((double) Math.max(1, contentH - cardH) / 4.0D) * this.zoom;
-        int fullW = (int) Math.round(4 * colGap + cardW);
+        int fullW = (int) Math.round(5 * colGap + cardW);
         int fullH = (int) Math.round(4 * rowGap + cardH);
         clampPan(contentW, contentH, fullW, fullH);
     }
