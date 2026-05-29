@@ -5,9 +5,9 @@
 
 Join the Discord to chat and provide feedback: https://discord.gg/9Pw6vZfAm
 
-License: GPL-3.0-only for the current source tree and releases starting with
-1.0.3-beta / 0.0.3Beta. Earlier public releases remain under the license terms
-that accompanied those releases.
+License: LGPL-3.0-only for the current source tree and releases starting with
+1.0.3-beta / 0.0.3Beta. Copyright (C) 2026 JerryLunar. Earlier public
+releases remain under the license terms that accompanied those releases.
 
 ---
 
