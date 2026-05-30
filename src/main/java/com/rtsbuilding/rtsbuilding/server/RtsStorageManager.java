@@ -934,6 +934,85 @@ public final class RtsStorageManager {
         return total;
     }
 
+    public static boolean canAccessBlueprintTarget(ServerPlayer player, BlockPos pos) {
+        return canAccessWorldTarget(player, pos);
+    }
+
+    public static long countBlueprintMaterial(ServerPlayer player, Item item) {
+        if (player == null || item == null || item == Items.AIR) {
+            return 0L;
+        }
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) {
+            return 0L;
+        }
+
+        long total = 0L;
+        for (LinkedHandler linkedHandler : resolveLinkedHandlers(player, session)) {
+            IItemHandler handler = linkedHandler.handler();
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack stack = handler.getStackInSlot(slot);
+                if (!stack.isEmpty() && stack.getItem() == item) {
+                    total = saturatedAdd(total, getHandlerReportedCount(handler, slot, stack));
+                }
+            }
+        }
+
+        int start = getPlayerMainInventoryStart(player);
+        int end = getPlayerMainInventoryEndExclusive(player);
+        for (int slot = start; slot < end; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (!stack.isEmpty() && stack.getItem() == item) {
+                total = saturatedAdd(total, stack.getCount());
+            }
+        }
+        return total;
+    }
+
+    public static ItemStack extractBlueprintMaterial(ServerPlayer player, Item item, int count) {
+        if (player == null || item == null || item == Items.AIR || count <= 0) {
+            return ItemStack.EMPTY;
+        }
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) {
+            return ItemStack.EMPTY;
+        }
+        List<LinkedHandler> activeLinked = resolveLinkedHandlers(player, session);
+        List<IItemHandler> handlers = activeLinked.stream().map(LinkedHandler::handler).toList();
+        return extractMatchingFromNetwork(handlers, player, item, count);
+    }
+
+    public static void refundBlueprintMaterial(ServerPlayer player, ItemStack stack) {
+        if (player == null || stack == null || stack.isEmpty()) {
+            return;
+        }
+        Session session = SESSIONS.get(player.getUUID());
+        List<IItemHandler> handlers = session == null
+                ? List.of()
+                : resolveLinkedHandlers(player, session).stream().map(LinkedHandler::handler).toList();
+        refundToLinked(handlers, player, stack);
+    }
+
+    public static void noteBlueprintBlockPlaced(ServerPlayer player, BlockPos pos, String itemId) {
+        if (player == null || pos == null) {
+            return;
+        }
+        Session session = SESSIONS.get(player.getUUID());
+        if (session == null) {
+            return;
+        }
+        playRemotePlacedBlockSound(player, player.serverLevel(), session, pos, true);
+        recordRecentItem(session, itemId, S2CRtsStoragePagePayload.RECENT_ITEM_PLACED, 1L);
+    }
+
+    public static void refreshBlueprintStoragePage(ServerPlayer player) {
+        Session session = player == null ? null : SESSIONS.get(player.getUUID());
+        if (session == null) {
+            return;
+        }
+        requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
+    }
+
     private static boolean currentPinyinSearchEnabled(ServerPlayer player) {
         Session session = player == null ? null : SESSIONS.get(player.getUUID());
         return session != null && session.pinyinSearchEnabled;

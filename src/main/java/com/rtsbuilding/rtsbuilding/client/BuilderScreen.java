@@ -13,6 +13,7 @@ import java.util.Set;
 
 import org.lwjgl.glfw.GLFW;
 
+import com.rtsbuilding.rtsbuilding.blueprint.client.BlueprintPanel;
 import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2Compat;
 import com.rtsbuilding.rtsbuilding.common.BuilderMode;
 import com.rtsbuilding.rtsbuilding.network.C2SRtsInteractPayload;
@@ -156,6 +157,7 @@ public final class BuilderScreen extends Screen {
     private int categoryScroll = 0;
     private final Set<String> expandedCategoryMods = new HashSet<>();
     private int bottomPanelHeight = DEFAULT_BOTTOM_H;
+    private BottomPanelTab bottomPanelTab = BottomPanelTab.STORAGE;
     private boolean rightPressActive = false;
     private int rightPressButton = -1;
     private boolean rightPressCanPrimary = false;
@@ -858,6 +860,16 @@ public final class BuilderScreen extends Screen {
         if (tryConfirmPendingShapeBuild(forcePlace)) {
             return true;
         }
+        if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS && BlueprintPanel.hasSelectedBlueprint()) {
+            InteractionTarget blueprintTarget = pickInteractionTarget(false);
+            if (blueprintTarget != null && blueprintTarget.blockHit() != null) {
+                BlockPos anchor = resolveBlueprintAnchor(blueprintTarget.blockHit());
+                if (anchor != null) {
+                    BlueprintPanel.placeSelected(anchor, currentBlueprintRotationSteps());
+                }
+            }
+            return true;
+        }
         InteractionTarget target = pickInteractionTarget(false);
         if (target == null) {
             return true;
@@ -944,6 +956,20 @@ public final class BuilderScreen extends Screen {
         return true;
     }
 
+    private BlockPos resolveBlueprintAnchor(BlockHitResult hit) {
+        if (hit == null || this.minecraft == null || this.minecraft.level == null) {
+            return null;
+        }
+        BlockPos clicked = hit.getBlockPos();
+        return this.minecraft.level.getBlockState(clicked).canBeReplaced()
+                ? clicked
+                : clicked.relative(hit.getDirection());
+    }
+
+    private int currentBlueprintRotationSteps() {
+        return Math.floorMod((this.shapeRotateDegrees + 45) / 90, 4);
+    }
+
     private boolean tryPickHoveredBlockForPlacement() {
         if (this.minecraft == null || this.minecraft.level == null) {
             return false;
@@ -1025,6 +1051,14 @@ public final class BuilderScreen extends Screen {
 
         if (isInsideBottomPanel(mouseX, mouseY)) {
             BottomPanelLayout layout = resolveBottomPanelLayout();
+            if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS) {
+                int contentX = layout.panelX() + BOTTOM_PANEL_PADDING;
+                int contentY = layout.panelY() + BOTTOM_PANEL_HEADER_H + 4;
+                int contentW = Math.max(80, layout.panelW() - BOTTOM_PANEL_PADDING * 2);
+                int contentH = Math.max(24, layout.panelH() - BOTTOM_PANEL_HEADER_H - 8);
+                BlueprintPanel.mouseScrolled(mouseX, mouseY, scrollY, contentX, contentY, contentW, contentH);
+                return true;
+            }
             if (inside(mouseX, mouseY, layout.craftPanelX(), layout.craftPanelY(), CRAFT_PANEL_W, layout.craftPanelH())) {
                 int visibleRows = layout.storageRows();
                 int totalRows = Math.max(1, (int) Math.ceil(this.controller.getCraftableEntries().size() / (double) CRAFT_PANEL_COLS));
@@ -1059,6 +1093,9 @@ public final class BuilderScreen extends Screen {
             boolean handled = this.craftQuantityDialog.keyPressed(keyCode, scanCode, modifiers);
             submitCraftQuantityDialogIfReady();
             return handled;
+        }
+        if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS && BlueprintPanel.keyPressed(keyCode)) {
+            return true;
         }
 
         if (this.controller.isHomeSelectionMode()) {
@@ -1340,6 +1377,9 @@ public final class BuilderScreen extends Screen {
     public boolean charTyped(char codePoint, int modifiers) {
         if (this.craftQuantityDialog.isOpen()) {
             return this.craftQuantityDialog.charTyped(codePoint, modifiers);
+        }
+        if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS && BlueprintPanel.charTyped(codePoint)) {
+            return true;
         }
 
         if (this.searchBox != null && this.searchBox.isFocused()) {
@@ -3017,7 +3057,7 @@ public final class BuilderScreen extends Screen {
 
         drawPanelFrame(g, layout.panelX(), layout.panelY(), layout.panelW(), layout.panelH(), 0xD014151A, 0xFF64788E, 0xFF0D1015);
         g.fill(layout.panelX() + 1, layout.panelY() + 1, layout.panelX() + layout.panelW() - 1, layout.panelY() + BOTTOM_PANEL_HEADER_H, 0xCC1C242F);
-        g.drawString(this.font, Component.translatable("screen.rtsbuilding.storage.title"), layout.panelX() + 8, layout.panelY() + 5, 0xF2F6FB);
+        renderBottomPanelTabs(g, layout, mouseX, mouseY);
         int refreshX = bottomRefreshButtonX(layout);
         int refreshY = bottomGuideButtonY(layout);
         boolean refreshHover = inside(mouseX, mouseY, refreshX, refreshY, 12, 12);
@@ -3031,6 +3071,15 @@ public final class BuilderScreen extends Screen {
         boolean guideHover = inside(mouseX, mouseY, guideX, guideY, 12, 12);
         g.fill(guideX, guideY, guideX + 12, guideY + 12, guideHover ? 0xCC41576F : 0xAA2B3542);
         g.drawCenteredString(this.font, "i", guideX + 6, guideY + 2, 0xEAF4FF);
+
+        if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS) {
+            int contentX = layout.panelX() + BOTTOM_PANEL_PADDING;
+            int contentY = layout.panelY() + BOTTOM_PANEL_HEADER_H + 4;
+            int contentW = Math.max(80, layout.panelW() - BOTTOM_PANEL_PADDING * 2);
+            int contentH = Math.max(24, layout.panelH() - BOTTOM_PANEL_HEADER_H - 8);
+            BlueprintPanel.render(g, this.font, this.controller, contentX, contentY, contentW, contentH, mouseX, mouseY);
+            return;
+        }
 
         drawSortButton(g, sortX, sortY, "S");
         drawSortButton(g, sortX, sortY + SORT_BUTTON_SIZE + 4, this.controller.isStorageSortAscending() ? "A" : "D");
@@ -3086,6 +3135,64 @@ public final class BuilderScreen extends Screen {
         drawStorageGrid(g, mouseX, mouseY, itemGridX, gridY, storageGridW, gridH);
         drawRecentGrid(g, mouseX, mouseY, recentGridX, gridY, recentGridW, gridH);
         renderCraftablesPanel(g, mouseX, mouseY, craftPanelX, craftPanelY, CRAFT_PANEL_W, craftPanelH, partialTick);
+    }
+
+    private void renderBottomPanelTabs(GuiGraphics g, BottomPanelLayout layout, int mouseX, int mouseY) {
+        int labelX = layout.panelX() + 8;
+        int labelY = layout.panelY() + 5;
+        g.drawString(this.font, "RTS", labelX, labelY, 0xF2F6FB);
+        drawBottomPanelTab(
+                g,
+                layout,
+                BottomPanelTab.STORAGE,
+                Component.translatable("screen.rtsbuilding.storage.tab").getString(),
+                mouseX,
+                mouseY);
+        drawBottomPanelTab(
+                g,
+                layout,
+                BottomPanelTab.BLUEPRINTS,
+                Component.translatable("screen.rtsbuilding.blueprints.tab").getString(),
+                mouseX,
+                mouseY);
+    }
+
+    private void drawBottomPanelTab(
+            GuiGraphics g,
+            BottomPanelLayout layout,
+            BottomPanelTab tab,
+            String label,
+            int mouseX,
+            int mouseY) {
+        int x = bottomPanelTabX(layout, tab);
+        int y = layout.panelY() + 2;
+        int w = bottomPanelTabW(tab);
+        boolean active = this.bottomPanelTab == tab;
+        boolean hover = inside(mouseX, mouseY, x, y, w, BOTTOM_PANEL_HEADER_H - 3);
+        int fill = active ? 0xCC355B4C : hover ? 0xAA334052 : 0x8826303B;
+        drawPanelFrame(g, x, y, w, BOTTOM_PANEL_HEADER_H - 3, fill, active ? 0xFF7CCB93 : 0xFF536679, 0xFF0D1015);
+        g.drawCenteredString(this.font, trimToWidth(label, w - 8), x + w / 2, y + 4, active ? 0xFFFFFFFF : 0xFFD8E2EE);
+    }
+
+    private int bottomPanelTabX(BottomPanelLayout layout, BottomPanelTab tab) {
+        int storageX = layout.panelX() + 38;
+        if (tab == BottomPanelTab.STORAGE) {
+            return storageX;
+        }
+        return storageX + bottomPanelTabW(BottomPanelTab.STORAGE) + 4;
+    }
+
+    private int bottomPanelTabW(BottomPanelTab tab) {
+        return tab == BottomPanelTab.STORAGE ? 76 : 86;
+    }
+
+    private BottomPanelTab resolveBottomPanelTabClick(BottomPanelLayout layout, double mouseX, double mouseY) {
+        for (BottomPanelTab tab : BottomPanelTab.values()) {
+            if (inside(mouseX, mouseY, bottomPanelTabX(layout, tab), layout.panelY() + 2, bottomPanelTabW(tab), BOTTOM_PANEL_HEADER_H - 3)) {
+                return tab;
+            }
+        }
+        return null;
     }
 
     private void renderToolArea(GuiGraphics g, int mouseX, int mouseY, int storageX, int rowY, int storageW) {
@@ -3754,8 +3861,19 @@ public final class BuilderScreen extends Screen {
             return false;
         }
 
+        BottomPanelTab clickedTab = resolveBottomPanelTabClick(layout, mouseX, mouseY);
+        if (clickedTab != null) {
+            this.bottomPanelTab = clickedTab;
+            blurSearchFocus();
+            this.gearMenuOpen = false;
+            return true;
+        }
         if (inside(mouseX, mouseY, bottomRefreshButtonX(layout), bottomGuideButtonY(layout), 12, 12)) {
-            this.controller.refreshStoragePage();
+            if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS) {
+                BlueprintPanel.reload();
+            } else {
+                this.controller.refreshStoragePage();
+            }
             this.gearMenuOpen = false;
             return true;
         }
@@ -3766,6 +3884,13 @@ public final class BuilderScreen extends Screen {
         }
         if (layout.isInsideHeader(mouseX, mouseY)) {
             return true;
+        }
+        if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS) {
+            int contentX = layout.panelX() + BOTTOM_PANEL_PADDING;
+            int contentY = layout.panelY() + BOTTOM_PANEL_HEADER_H + 4;
+            int contentW = Math.max(80, layout.panelW() - BOTTOM_PANEL_PADDING * 2);
+            int contentH = Math.max(24, layout.panelH() - BOTTOM_PANEL_HEADER_H - 8);
+            return BlueprintPanel.mouseClicked(mouseX, mouseY, contentX, contentY, contentW, contentH);
         }
 
         int sortX = layout.sortX();
@@ -3888,6 +4013,9 @@ public final class BuilderScreen extends Screen {
             return false;
         }
         if (layout.isInsideHeader(mouseX, mouseY)) {
+            return true;
+        }
+        if (this.bottomPanelTab == BottomPanelTab.BLUEPRINTS) {
             return true;
         }
 
@@ -4523,6 +4651,11 @@ public final class BuilderScreen extends Screen {
             return mouseX >= this.panelX && mouseX <= this.panelX + this.panelW
                     && mouseY >= this.panelY && mouseY <= this.panelY + BOTTOM_PANEL_HEADER_H;
         }
+    }
+
+    private enum BottomPanelTab {
+        STORAGE,
+        BLUEPRINTS
     }
 
     private record QuickBuildPanelLayout(int x, int y, int w, int h) {

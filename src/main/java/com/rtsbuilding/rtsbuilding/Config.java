@@ -49,6 +49,10 @@ public class Config {
             .comment("Maximum RTS action radius in blocks. Used directly when survival progression is disabled, and by the Radius Max skill when survival progression is enabled.")
             .defineInRange("maxActionRadiusBlocks", 128, 48, 512);
 
+    public static final ModConfigSpec.BooleanValue ENABLE_BLUEPRINTS = BUILDER
+            .comment("Enable the RTS blueprint library tab, local blueprint upload, and server-side blueprint placement.")
+            .define("enableBlueprints", true);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> PROGRESSION_COST_OVERRIDES = BUILDER
             .comment("Skill material overrides. Format: node_path=minecraft:item:count,minecraft:item2:count. Example: ultimine=minecraft:diamond_pickaxe:1,minecraft:redstone_block:1")
             .defineListAllowEmpty("progressionCostOverrides", List.of(), () -> "", obj -> obj instanceof String);
@@ -73,11 +77,16 @@ public class Config {
         SPEC.save();
     }
 
+    public static boolean areBlueprintsEnabled() {
+        return ENABLE_BLUEPRINTS.getAsBoolean();
+    }
+
     public static void saveProgressionSettings(boolean survivalEnabled, boolean shareWithTeams, int radiusBlocks,
-            Map<String, String> costOverrides) {
+            boolean blueprintsEnabled, Map<String, String> costOverrides) {
         ENABLE_SURVIVAL_PROGRESSION.set(survivalEnabled);
         SHARE_SURVIVAL_PROGRESSION_WITH_TEAMS.set(shareWithTeams);
         MAX_ACTION_RADIUS_BLOCKS.set(Math.max(48, Math.min(512, radiusBlocks)));
+        ENABLE_BLUEPRINTS.set(blueprintsEnabled);
         setProgressionCostOverrides(costOverrides);
         SPEC.save();
     }

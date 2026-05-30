@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.network;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
+import com.rtsbuilding.rtsbuilding.blueprint.network.BlueprintPayloadRegistrar;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -250,5 +251,7 @@ public final class RtsPayloadRegistrar {
                 S2CRtsProgressionStatePayload.TYPE,
                 S2CRtsProgressionStatePayload.STREAM_CODEC,
                 RtsClientPayloadBridge::handleProgressionState);
+
+        BlueprintPayloadRegistrar.register(registrar);
     }
 }
