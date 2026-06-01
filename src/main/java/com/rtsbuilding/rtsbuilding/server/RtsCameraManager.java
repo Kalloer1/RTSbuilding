@@ -1,14 +1,9 @@
 package com.rtsbuilding.rtsbuilding.server;
 
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
 import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.network.S2CRtsCameraStatePayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
-
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -18,11 +13,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 public final class RtsCameraManager {
-    private static final double MAX_RADIUS = 48.0D; // 3 chunks
     private static final double MIN_HEIGHT = -35.0D;
     private static final double MAX_HEIGHT = 110.0D;
-    private static final double MAX_HORIZONTAL_DIST = 72.0D;
     private static final float MIN_PITCH = -90.0F;
     private static final float MAX_PITCH = 90.0F;
 
@@ -36,10 +33,6 @@ public final class RtsCameraManager {
     private static final Map<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
 
     private RtsCameraManager() {
-    }
-
-    public static void toggle(ServerPlayer player) {
-        toggle(player, false);
     }
 
     public static void toggle(ServerPlayer player, boolean startAtPlayerHead) {
@@ -74,7 +67,9 @@ public final class RtsCameraManager {
         cleanupOrphanCameras(player.getServer());
         discardOwnedCameras(player, null);
         ServerLevel level = player.serverLevel();
-        Vec3 anchor = player.position();
+        // 将锚点对齐到方块中心（整数坐标 + 0.5），使相机移动范围与放置限制红线完全一致
+        Vec3 playerPos = player.position();
+        Vec3 anchor = new Vec3(Math.floor(playerPos.x) + 0.5D, playerPos.y, Math.floor(playerPos.z) + 0.5D);
         double maxRadius = RtsProgressionManager.getActionRadius(player);
 
         float yaw = snapQuarter(player.getYRot());
@@ -283,16 +278,7 @@ public final class RtsCameraManager {
 
         targetY = Mth.clamp(targetY, session.anchor().y + MIN_HEIGHT, session.anchor().y + MAX_HEIGHT);
 
-        double horizontalDx = targetX - session.anchor().x;
-        double horizontalDz = targetZ - session.anchor().z;
-        double horizontalDist = Math.sqrt(horizontalDx * horizontalDx + horizontalDz * horizontalDz);
-        if (horizontalDist > MAX_HORIZONTAL_DIST) {
-            double scale = MAX_HORIZONTAL_DIST / horizontalDist;
-            targetX = session.anchor().x + (horizontalDx * scale);
-            targetZ = session.anchor().z + (horizontalDz * scale);
-        }
-
-        targetY = Mth.clamp(targetY, session.anchor().y + MIN_HEIGHT, session.anchor().y + MAX_HEIGHT);
+        // Keep movement bounds square so they match the visible build boundary.
 
         camera.snapTo(targetX, targetY, targetZ, yaw, pitch);
 
@@ -411,7 +397,7 @@ public final class RtsCameraManager {
     }
 
     private static double actionHalfExtent(ServerPlayer player, Session session) {
-        return maxRadius(player, session) + 8.0D;
+        return maxRadius(player, session);
     }
 
     private static float snapQuarter(float yaw) {
