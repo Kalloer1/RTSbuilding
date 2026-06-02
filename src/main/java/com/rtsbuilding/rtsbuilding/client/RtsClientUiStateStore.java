@@ -65,11 +65,11 @@ public final class RtsClientUiStateStore {
         save(state);
     }
 
-    static synchronized boolean isOverlayShiftImportEnabled() {
+    public static synchronized boolean isOverlayShiftImportEnabled() {
         return load().overlayShiftImportEnabled;
     }
 
-    static synchronized void setOverlayShiftImportEnabled(boolean enabled) {
+    public static synchronized void setOverlayShiftImportEnabled(boolean enabled) {
         UiState state = load();
         state.overlayShiftImportEnabled = enabled;
         save(state);
@@ -93,7 +93,7 @@ public final class RtsClientUiStateStore {
         boolean damageSoundEnabled = true;
         boolean damageAutoReturnEnabled = true;
         boolean debugButtonVisible = false;
-        boolean containerOverlayEnabled = true;
+        boolean containerOverlayEnabled = false;
         boolean overlayShiftImportEnabled = false;
         List<String> dismissedIntroReminderKeys = new ArrayList<>();
 

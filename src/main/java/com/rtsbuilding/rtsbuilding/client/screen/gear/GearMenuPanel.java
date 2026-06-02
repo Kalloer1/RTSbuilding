@@ -163,37 +163,43 @@ public final class GearMenuPanel {
                 "screen.rtsbuilding.settings.container_overlay.hint",
                 RtsClientUiStateStore.isContainerOverlayEnabled());
 
-        int panDragXToggleY = controlsY + 276;
+        int shiftImportToggleY = controlsY + 276;
+        drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, shiftImportToggleY,
+                "screen.rtsbuilding.settings.shift_import",
+                "screen.rtsbuilding.settings.shift_import.hint",
+                RtsClientUiStateStore.isOverlayShiftImportEnabled());
+
+        int panDragXToggleY = controlsY + 312;
         drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, panDragXToggleY,
                 "screen.rtsbuilding.settings.pan_drag_x_invert",
                 "screen.rtsbuilding.settings.pan_drag_x_invert.hint",
                 this.controller.isInvertPanDragX());
 
-        int panDragYToggleY = controlsY + 312;
+        int panDragYToggleY = controlsY + 348;
         drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, panDragYToggleY,
                 "screen.rtsbuilding.settings.pan_drag_y_invert",
                 "screen.rtsbuilding.settings.pan_drag_y_invert.hint",
                 this.controller.isInvertPanDragY());
 
-        int smoothCameraToggleY = controlsY + 348;
+        int smoothCameraToggleY = controlsY + 384;
         drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, smoothCameraToggleY,
                 "screen.rtsbuilding.settings.smooth_camera",
                 "screen.rtsbuilding.settings.smooth_camera.hint",
                 this.controller.isSmoothCamera());
 
-        int damageSoundToggleY = controlsY + 384;
+        int damageSoundToggleY = controlsY + 420;
         drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, damageSoundToggleY,
                 "screen.rtsbuilding.settings.damage_sound",
                 "screen.rtsbuilding.settings.damage_sound.hint",
                 this.controller.isDamageSoundEnabled());
 
-        int damageAutoReturnToggleY = controlsY + 420;
+        int damageAutoReturnToggleY = controlsY + 456;
         drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, damageAutoReturnToggleY,
                 "screen.rtsbuilding.settings.damage_auto_return",
                 "screen.rtsbuilding.settings.damage_auto_return.hint",
                 this.controller.isDamageAutoReturnEnabled());
 
-        int bdNetworkToggleY = controlsY + 456;
+        int bdNetworkToggleY = controlsY + 492;
         drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, bdNetworkToggleY,
                 "screen.rtsbuilding.settings.bd_network",
                 "screen.rtsbuilding.settings.bd_network.hint",
@@ -275,31 +281,35 @@ public final class GearMenuPanel {
             return true;
         }
         if (inside(mouseX, contentMouseY, x + 12, controlsY + 272, w - 24, 34)) {
+            RtsClientUiStateStore.setOverlayShiftImportEnabled(!RtsClientUiStateStore.isOverlayShiftImportEnabled());
+            return true;
+        }
+        if (inside(mouseX, contentMouseY, x + 12, controlsY + 308, w - 24, 34)) {
             this.controller.toggleInvertPanDragX();
             screen.persistUiState();
             return true;
         }
-        if (inside(mouseX, contentMouseY, x + 12, controlsY + 308, w - 24, 34)) {
+        if (inside(mouseX, contentMouseY, x + 12, controlsY + 344, w - 24, 34)) {
             this.controller.toggleInvertPanDragY();
             screen.persistUiState();
             return true;
         }
-        if (inside(mouseX, contentMouseY, x + 12, controlsY + 344, w - 24, 34)) {
+        if (inside(mouseX, contentMouseY, x + 12, controlsY + 380, w - 24, 34)) {
             this.controller.toggleSmoothCamera();
             screen.persistUiState();
             return true;
         }
-        if (inside(mouseX, contentMouseY, x + 12, controlsY + 380, w - 24, 34)) {
+        if (inside(mouseX, contentMouseY, x + 12, controlsY + 416, w - 24, 34)) {
             this.controller.toggleDamageSoundEnabled();
             screen.persistUiState();
             return true;
         }
-        if (inside(mouseX, contentMouseY, x + 12, controlsY + 416, w - 24, 34)) {
+        if (inside(mouseX, contentMouseY, x + 12, controlsY + 452, w - 24, 34)) {
             this.controller.toggleDamageAutoReturnEnabled();
             screen.persistUiState();
             return true;
         }
-        if (inside(mouseX, contentMouseY, x + 12, controlsY + 452, w - 24, 34)) {
+        if (inside(mouseX, contentMouseY, x + 12, controlsY + 488, w - 24, 34)) {
             this.controller.toggleBdNetworkEnabled();
             return true;
         }

@@ -1025,7 +1025,9 @@ public final class BottomPanel {
                         return true;
                     }
                     var stack = Minecraft.getInstance().player.getInventory().getItem(index);
-                    if (net.minecraft.client.gui.screens.Screen.hasShiftDown() && !stack.isEmpty()) {
+                    if (net.minecraft.client.gui.screens.Screen.hasShiftDown()
+                            && RtsClientUiStateStore.isOverlayShiftImportEnabled()
+                            && !stack.isEmpty()) {
                         this.controller.storeHotbarSlotToLinked(index);
                         return true;
                     }
