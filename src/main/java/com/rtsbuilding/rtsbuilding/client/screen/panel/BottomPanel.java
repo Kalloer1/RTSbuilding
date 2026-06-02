@@ -431,6 +431,7 @@ public final class BottomPanel {
         int cols = Math.max(1, width / SLOT);
         int rows = Math.max(1, height / SLOT);
         int maxSlots = cols * rows;
+        this.controller.updateStoragePageSize(maxSlots);
         List<ClientRtsController.StorageEntry> entries = this.controller.getStorageEntries();
 
         for (int i = 0; i < maxSlots; i++) {
