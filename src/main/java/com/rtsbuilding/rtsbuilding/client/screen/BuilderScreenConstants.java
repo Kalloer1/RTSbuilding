@@ -214,43 +214,6 @@ public final class BuilderScreenConstants {
     public static final String CATEGORY_TAB_PREFIX = "tab|";
 
     // ======================== 纹理资源 ========================
-    /** 形状纹理：方块（非活跃） */
-    public static final ResourceLocation SHAPE_BLOCK_INACTIVE = quickBuildTexture("shape_block_inactive");
-    /** 形状纹理：方块（悬停） */
-    public static final ResourceLocation SHAPE_BLOCK_HOVER = quickBuildTexture("shape_block_hover");
-    /** 形状纹理：方块（活跃） */
-    public static final ResourceLocation SHAPE_BLOCK_ACTIVE = quickBuildTexture("shape_block_active");
-    /** 形状纹理：线条（非活跃） */
-    public static final ResourceLocation SHAPE_LINE_INACTIVE = quickBuildTexture("shape_line_inactive");
-    /** 形状纹理：线条（悬停） */
-    public static final ResourceLocation SHAPE_LINE_HOVER = quickBuildTexture("shape_line_hover");
-    /** 形状纹理：线条（活跃） */
-    public static final ResourceLocation SHAPE_LINE_ACTIVE = quickBuildTexture("shape_line_active");
-    /** 形状纹理：正方形（非活跃） */
-    public static final ResourceLocation SHAPE_SQUARE_INACTIVE = quickBuildTexture("shape_square_inactive");
-    /** 形状纹理：正方形（悬停） */
-    public static final ResourceLocation SHAPE_SQUARE_HOVER = quickBuildTexture("shape_square_hover");
-    /** 形状纹理：正方形（活跃） */
-    public static final ResourceLocation SHAPE_SQUARE_ACTIVE = quickBuildTexture("shape_square_active");
-    /** 形状纹理：墙壁（非活跃） */
-    public static final ResourceLocation SHAPE_WALL_INACTIVE = quickBuildTexture("shape_wall_inactive");
-    /** 形状纹理：墙壁（悬停） */
-    public static final ResourceLocation SHAPE_WALL_HOVER = quickBuildTexture("shape_wall_hover");
-    /** 形状纹理：墙壁（活跃） */
-    public static final ResourceLocation SHAPE_WALL_ACTIVE = quickBuildTexture("shape_wall_active");
-    /** 形状纹理：圆（非活跃） */
-    public static final ResourceLocation SHAPE_CIRCLE_INACTIVE = quickBuildTexture("shape_circle_inactive");
-    /** 形状纹理：圆（悬停） */
-    public static final ResourceLocation SHAPE_CIRCLE_HOVER = quickBuildTexture("shape_circle_hover");
-    /** 形状纹理：圆（活跃） */
-    public static final ResourceLocation SHAPE_CIRCLE_ACTIVE = quickBuildTexture("shape_circle_active");
-    /** 形状纹理：立方体（非活跃） */
-    public static final ResourceLocation SHAPE_BOX_INACTIVE = quickBuildTexture("shape_box_inactive");
-    /** 形状纹理：立方体（悬停） */
-    public static final ResourceLocation SHAPE_BOX_HOVER = quickBuildTexture("shape_box_hover");
-    /** 形状纹理：立方体（活跃） */
-    public static final ResourceLocation SHAPE_BOX_ACTIVE = quickBuildTexture("shape_box_active");
-
     /** PR #71 QuickBuild shape sheet: single block. */
     public static final ResourceLocation QUICK_BUILD_SINGLE_BLOCK = quickBuildTexture("single_block");
     /** PR #71 QuickBuild shape sheet: line. */

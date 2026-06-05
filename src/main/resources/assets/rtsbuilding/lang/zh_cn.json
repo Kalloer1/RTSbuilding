@@ -558,5 +558,12 @@
   "screen.rtsbuilding.blueprints.status.rename_cancelled": "已取消重命名。",
   "screen.rtsbuilding.blueprints.status.deleted": "已删除蓝图 %s。",
   "screen.rtsbuilding.blueprints.status.delete_failed": "删除失败：%s",
-  "screen.rtsbuilding.blueprints.status.delete_cancelled": "已取消删除。"
+  "screen.rtsbuilding.blueprints.status.delete_cancelled": "已取消删除。",
+  "screen.rtsbuilding.quick_build.missing_blocks": "§7| §c缺少 x %s",
+  "screen.rtsbuilding.tooltip.shape_block": "单",
+  "screen.rtsbuilding.tooltip.shape_line": "线",
+  "screen.rtsbuilding.tooltip.shape_square": "面",
+  "screen.rtsbuilding.tooltip.shape_wall": "墙",
+  "screen.rtsbuilding.tooltip.shape_circle": "圆",
+  "screen.rtsbuilding.tooltip.shape_box": "体"
 }

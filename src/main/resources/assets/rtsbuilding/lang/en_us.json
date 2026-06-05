@@ -558,5 +558,6 @@
   "screen.rtsbuilding.blueprints.status.rename_cancelled": "Rename cancelled.",
   "screen.rtsbuilding.blueprints.status.deleted": "Deleted blueprint %s.",
   "screen.rtsbuilding.blueprints.status.delete_failed": "Delete failed: %s",
-  "screen.rtsbuilding.blueprints.status.delete_cancelled": "Delete cancelled."
+  "screen.rtsbuilding.blueprints.status.delete_cancelled": "Delete cancelled.",
+  "screen.rtsbuilding.quick_build.missing_blocks": "§7| §cMissing x %s"
 }

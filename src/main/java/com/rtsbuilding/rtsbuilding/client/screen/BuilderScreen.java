@@ -1188,9 +1188,9 @@ public final class BuilderScreen extends Screen {
         }
         this.topBarPanel.render(guiGraphics, mouseX, mouseY);
         this.bottomPanel.render(guiGraphics, mouseX, mouseY, partialTick);
-        this.quickBuildPanel.render(guiGraphics, mouseX, mouseY);
-        this.ultiminePanel.render(guiGraphics, mouseX, mouseY);
+        this.floatingWindowLayer.renderFloatingWindows(guiGraphics, mouseX, mouseY);
         this.funnelBufferPanel.render(guiGraphics, mouseX, mouseY);
+        this.floatingWindowLayer.renderFloatingWindowOverlays(guiGraphics, mouseX, mouseY);
         this.overlayRenderer.renderQuestDetectPopup(guiGraphics);
         this.overlayRenderer.renderStorageScanPopup(guiGraphics);
         if (this.bottomPanel.bottomPanelTab == BottomPanelLayoutTypes.BottomPanelTab.BLUEPRINTS && BlueprintPanel.isCaptureModeActive()) {
@@ -1689,12 +1689,6 @@ public final class BuilderScreen extends Screen {
                 return;
             }
         }
-        if (this.quickBuildPanel.isQuickBuildOpen() && hasProgressionNode(RtsProgressionNodes.REMOTE_PLACE)) {
-            PanelLayouts.QuickBuildPanelLayout layout = resolveQuickBuildPanelLayout();
-            if (layout != null && layout.contains(mouseX, mouseY)) {
-                g.renderTooltip(this.font, Component.translatable("screen.rtsbuilding.tooltip.quick_build_cancel"), mouseX, mouseY);
-            }
-        }
     }
 
     /**
@@ -2155,6 +2149,10 @@ public final class BuilderScreen extends Screen {
             case MOD -> "Mod";
             case NAME -> "Name";
         };
+    }
+    /** Exposes the shape controller for direct access by sub-panels. */
+    public ScreenShapeController getShapeController() {
+        return this.shapeController;
     }
     /** Returns the localized label for the given shape fill mode. */
     public String fillModeLabel(ShapeBuildTypes.ShapeFillMode mode) {

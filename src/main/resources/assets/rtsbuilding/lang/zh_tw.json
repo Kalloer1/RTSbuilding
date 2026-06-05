@@ -558,5 +558,6 @@
   "screen.rtsbuilding.blueprints.status.rename_cancelled": "已取消重新命名。",
   "screen.rtsbuilding.blueprints.status.deleted": "已刪除藍圖 %s。",
   "screen.rtsbuilding.blueprints.status.delete_failed": "刪除失敗：%s",
-  "screen.rtsbuilding.blueprints.status.delete_cancelled": "已取消刪除。"
+  "screen.rtsbuilding.blueprints.status.delete_cancelled": "已取消刪除。",
+  "screen.rtsbuilding.quick_build.missing_blocks": "| 缺少 x %s"
 }
