@@ -6,6 +6,7 @@ import com.rtsbuilding.rtsbuilding.client.screen.layout.PanelLayouts;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeBuildTypes;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeGeometryUtil;
+import com.rtsbuilding.rtsbuilding.client.util.RtsTextureRenderer;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowButton;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 
@@ -43,10 +44,17 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     /** 底部提示文字区域额外高度 */
     private static final int BOTTOM_INFO_H = 30;
 
+    /** 选择指示器贴图 */
+    private static final ResourceLocation SELECTION_DOT_TEXTURE =
+            ResourceLocation.tryParse("rtsbuilding:textures/gui/general/mode_button.png");
+
     // ======================== 精灵图参数 ========================
     private static final int SHEET_W = 450;
     private static final int SHEET_H = 900;
     private static final int STATE_H = 450;
+
+    /** 模式按钮贴图：450×1350，3 行状态，每行 450px */
+    private static final int MODE_BUTTON_H = STATE_H * 3;
 
     // ======================== 形状定义 ========================
     private static final ClientRtsController.BuildShape[] SHAPES = {
@@ -142,7 +150,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
         fillModeButtons = new WindowButton[modes.size()];
         for (int i = 0; i < modes.size(); i++) {
             final int idx = i;
-            fillModeButtons[i] = new WindowButton(0, 0, 84, 16,
+            fillModeButtons[i] = new WindowButton(0, 0, 84, 20,
                     Component.literal(screen.fillModeLabel(modes.get(i))), btn -> {
                 screen.setShapeFillMode(modes.get(idx));
                 screen.persistUiState();
@@ -211,17 +219,21 @@ public final class QuickBuildPanel extends RtsWindowPanel {
         List<ShapeBuildTypes.ShapeFillMode> modes =
                 ShapeGeometryUtil.availableFillModes(this.controller.getBuildShape());
         for (int i = 0; i < fillModeButtons.length; i++) {
-            int rowY = bodyY + 28 + (i * SHAPE_ROW_PITCH); // 垂直居中对齐对应行的形状按钮
+            int rowY = bodyY + 20 + (i * 38); // 垂直居中对齐对应行的形状按钮
             fillModeButtons[i].setX(rightX);
             fillModeButtons[i].setY(rowY);
             fillModeButtons[i].render(g, mouseX, mouseY, partialTick);
 
-            // 选中圆点
             boolean selected = screen.getShapeFillMode() == modes.get(i);
-            g.fill(rightX + 4, rowY + 4, rightX + 12, rowY + 12, 0xAA111820);
-            if (selected) {
-                g.fill(rightX + 6, rowY + 6, rightX + 10, rowY + 10, 0xFF78B28C);
-            }
+            boolean hovered = fillModeButtons[i].isHoveredOrFocused();
+            int vOffset = selected ? STATE_H * 2 : (hovered ? STATE_H : 0);
+            RtsTextureRenderer.drawTextureHighPrecision(
+                    g, SELECTION_DOT_TEXTURE,
+                    rightX + 2, rowY + 2, 16, 16,
+                    0, vOffset, SHEET_W, STATE_H,
+                    SHEET_W, MODE_BUTTON_H,
+                    0, 0xFFFFFFFF
+            );
         }
 
         // --- 底部提示文字（仅在选中物品时显示，使用面板扩展区域） ---
