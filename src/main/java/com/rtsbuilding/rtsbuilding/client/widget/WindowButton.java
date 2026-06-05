@@ -91,9 +91,12 @@ public class WindowButton extends AbstractButton {
     private void renderWithTexture(GuiGraphics g) {
         int currentV = this.isHoveredOrFocused() ? this.hoverTextureV : this.textureV;
         int currentHeight = this.isHoveredOrFocused() ? this.hoverTextureHeight : this.textureHeight;
-        g.blit(this.textureLocation, getX(), getY(), this.textureU, currentV,
-                this.width, this.height, this.textureWidth, currentHeight,
-                this.fullTextureWidth, this.fullTextureHeight);
+        g.pose().pushPose();
+        g.pose().translate(getX(), getY(), 0.0F);
+        g.pose().scale((float) this.width / this.textureWidth, (float) this.height / currentHeight, 1.0F);
+        g.blit(this.textureLocation, 0, 0, this.textureU, currentV,
+                this.textureWidth, currentHeight, this.fullTextureWidth, this.fullTextureHeight);
+        g.pose().popPose();
     }
 
     private void renderWithSolidColor(GuiGraphics g) {

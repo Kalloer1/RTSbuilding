@@ -19,6 +19,9 @@ import java.util.List;
 import static com.rtsbuilding.rtsbuilding.client.screen.BuilderScreenConstants.*;
 
 public final class QuickBuildPanel extends RtsWindowPanel {
+    private static final int QUICK_BUILD_SHEET_SIZE = 450;
+    private static final int QUICK_BUILD_SHEET_HEIGHT = QUICK_BUILD_SHEET_SIZE * 2;
+
     private static final ClientRtsController.BuildShape[] SHAPES = {
             ClientRtsController.BuildShape.BLOCK,
             ClientRtsController.BuildShape.LINE,
@@ -202,7 +205,23 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     }
 
     private void drawShapeTexture(GuiGraphics g, ClientRtsController.BuildShape shape, String state, int x, int y) {
-        ResourceLocation texture = switch (shape) {
+        if (hasQuickBuildSheet(shape)) {
+            drawQuickBuildSheet(g, quickBuildSheetTexture(shape), state, x, y);
+            return;
+        }
+        ResourceLocation texture = legacyShapeTexture(shape, state);
+        g.blit(texture, x, y, 0, 0,
+                QUICK_BUILD_SHAPE_SLOT, QUICK_BUILD_SHAPE_SLOT,
+                QUICK_BUILD_SHAPE_SLOT, QUICK_BUILD_SHAPE_SLOT);
+    }
+
+    private static boolean hasQuickBuildSheet(ClientRtsController.BuildShape shape) {
+        return shape == ClientRtsController.BuildShape.BLOCK
+                || shape == ClientRtsController.BuildShape.LINE;
+    }
+
+    private static ResourceLocation quickBuildSheetTexture(ClientRtsController.BuildShape shape) {
+        return switch (shape) {
             case BLOCK -> QUICK_BUILD_SINGLE_BLOCK;
             case LINE -> QUICK_BUILD_LINE_BLOCK;
             case SQUARE -> QUICK_BUILD_SQUARE_BLOCK;
@@ -210,8 +229,31 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             case CIRCLE -> QUICK_BUILD_CIRCLE_BLOCK;
             case BOX -> QUICK_BUILD_BOX_BLOCK;
         };
-        int sourceV = "inactive".equals(state) ? 0 : 450;
-        g.blit(texture, x + 2, y + 2, 0, sourceV, 28, 28, 450, 450, 450, 900);
+    }
+
+    private static void drawQuickBuildSheet(GuiGraphics g, ResourceLocation texture, String state, int x, int y) {
+        int sourceV = "inactive".equals(state) ? 0 : QUICK_BUILD_SHEET_SIZE;
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0.0F);
+        float scale = (float) QUICK_BUILD_SHAPE_SLOT / QUICK_BUILD_SHEET_SIZE;
+        g.pose().scale(scale, scale, 1.0F);
+        g.blit(texture, 0, 0, 0, sourceV,
+                QUICK_BUILD_SHEET_SIZE, QUICK_BUILD_SHEET_SIZE,
+                QUICK_BUILD_SHEET_SIZE, QUICK_BUILD_SHEET_HEIGHT);
+        g.pose().popPose();
+    }
+
+    private static ResourceLocation legacyShapeTexture(ClientRtsController.BuildShape shape, String state) {
+        boolean active = "active".equals(state);
+        boolean hover = "hover".equals(state);
+        return switch (shape) {
+            case BLOCK -> active ? SHAPE_BLOCK_ACTIVE : hover ? SHAPE_BLOCK_HOVER : SHAPE_BLOCK_INACTIVE;
+            case LINE -> active ? SHAPE_LINE_ACTIVE : hover ? SHAPE_LINE_HOVER : SHAPE_LINE_INACTIVE;
+            case SQUARE -> active ? SHAPE_SQUARE_ACTIVE : hover ? SHAPE_SQUARE_HOVER : SHAPE_SQUARE_INACTIVE;
+            case WALL -> active ? SHAPE_WALL_ACTIVE : hover ? SHAPE_WALL_HOVER : SHAPE_WALL_INACTIVE;
+            case CIRCLE -> active ? SHAPE_CIRCLE_ACTIVE : hover ? SHAPE_CIRCLE_HOVER : SHAPE_CIRCLE_INACTIVE;
+            case BOX -> active ? SHAPE_BOX_ACTIVE : hover ? SHAPE_BOX_HOVER : SHAPE_BOX_INACTIVE;
+        };
     }
 
     private static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
