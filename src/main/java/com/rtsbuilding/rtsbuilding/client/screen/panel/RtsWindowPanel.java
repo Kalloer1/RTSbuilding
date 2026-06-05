@@ -28,7 +28,9 @@ public abstract class RtsWindowPanel implements RtsPanel {
     private static final int DEFAULT_RESIZE_BORDER = 5;
     private static final int SCREEN_MARGIN = 4;
     private static final int CLOSE_BUTTON_SIZE = 14;
-    private static final int CLOSE_BUTTON_MARGIN = 4;
+    private static final int CLOSE_SHEET_W = 450;
+    private static final int CLOSE_SHEET_H = 900;
+    private static final int CLOSE_STATE_H = 450;
     private static final ResourceLocation CLOSE_BUTTON_TEXTURE = ResourceLocation.tryParse(
             "rtsbuilding:textures/gui/general/close_button.png");
 
@@ -47,6 +49,7 @@ public abstract class RtsWindowPanel implements RtsPanel {
     private int defaultWidth;
     private int defaultHeight;
     private boolean positionInitialized;
+    private long lastClickTime = System.nanoTime();
     private boolean dragging;
     private double dragOffsetX;
     private double dragOffsetY;
@@ -59,6 +62,14 @@ public abstract class RtsWindowPanel implements RtsPanel {
     private int resizeStartWindowX;
     private int resizeStartWindowY;
     private WindowButton closeButton;
+
+    /**
+     * When set, the render() method skips hover detection so the
+     * window frame and content do NOT show hover effects. This is
+     * used by {@link RtsFloatingWindowLayer} to suppress hover on
+     * windows that are covered by a higher overlapping window.
+     */
+    private boolean skipHoverDetection;
 
     protected enum ResizeEdge {
         NONE,
@@ -102,9 +113,7 @@ public abstract class RtsWindowPanel implements RtsPanel {
         this.controller = controller;
         this.defaultWidth = Math.max(getMinWindowWidth(), getDefaultWidth());
         this.defaultHeight = Math.max(getMinWindowHeight(), getDefaultHeight());
-        this.closeButton = new WindowButton(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE,
-                Component.empty(), CLOSE_BUTTON_TEXTURE, 0, 0, 450, 450, 450, 450, 450, 900,
-                button -> setOpen(false));
+        this.closeButton = createCloseButton();
     }
 
     @Override
@@ -115,14 +124,23 @@ public abstract class RtsWindowPanel implements RtsPanel {
         }
         initializePosition();
         clampWindowToScreen();
-        this.mouseHovering = isInsideWindow(mouseX, mouseY);
-        renderWindowFrame(g, mouseX, mouseY);
-        if (shouldClipContent()) {
-            enableContentScissor(g);
+        this.mouseHovering = !this.skipHoverDetection && isInsideWindow(mouseX, mouseY);
+
+        // 当窗口被覆盖时，全局抑制所有子按钮的悬浮效果
+        // 必须在 renderWindowFrame 之前设置，因为关闭按钮在其中渲染
+        if (this.skipHoverDetection) {
+            WindowButton.setGlobalSkipHover(true);
         }
         try {
+            renderWindowFrame(g, mouseX, mouseY);
+            if (shouldClipContent()) {
+                enableContentScissor(g);
+            }
             renderContent(g, mouseX, mouseY, partialTick);
         } finally {
+            if (this.skipHoverDetection) {
+                WindowButton.setGlobalSkipHover(false);
+            }
             if (shouldClipContent()) {
                 g.disableScissor();
             }
@@ -166,6 +184,14 @@ public abstract class RtsWindowPanel implements RtsPanel {
 
     public int getWindowHeight() {
         return this.windowHeight;
+    }
+
+    public long getLastClickTime() {
+        return lastClickTime;
+    }
+
+    public void markBroughtToFront() {
+        this.lastClickTime = System.nanoTime();
     }
 
     public boolean hasInitializedBounds() {
@@ -215,6 +241,15 @@ public abstract class RtsWindowPanel implements RtsPanel {
     public boolean isInsideWindow(double mouseX, double mouseY) {
         return mouseX >= this.windowX && mouseX < this.windowX + this.windowWidth
                 && mouseY >= this.windowY && mouseY < this.windowY + this.windowHeight;
+    }
+
+    /**
+     * Suppresses hover detection so the window frame and buttons
+     * do not show hover effects during the next render call.
+     * Used by {@link RtsFloatingWindowLayer} for covered windows.
+     */
+    void setSkipHoverDetection(boolean skip) {
+        this.skipHoverDetection = skip;
     }
 
     public boolean isInsideWindowOrResizeBorder(double mouseX, double mouseY) {
@@ -354,7 +389,7 @@ public abstract class RtsWindowPanel implements RtsPanel {
     }
 
     protected int getBackgroundColor() {
-        return 0xEE161C24;
+        return 0xFF161C24;
     }
 
     protected int getBorderLightColor() {
@@ -415,6 +450,16 @@ public abstract class RtsWindowPanel implements RtsPanel {
 
     protected boolean handleWindowCharTyped(char codePoint, int modifiers) {
         return false;
+    }
+
+    private WindowButton createCloseButton() {
+        return new WindowButton(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE,
+                Component.empty(), CLOSE_BUTTON_TEXTURE,
+                0, 0,
+                CLOSE_SHEET_W, CLOSE_STATE_H,
+                CLOSE_STATE_H, CLOSE_STATE_H,
+                CLOSE_SHEET_W, CLOSE_SHEET_H,
+                button -> setOpen(false));
     }
 
     protected void onClose() {
@@ -589,10 +634,10 @@ public abstract class RtsWindowPanel implements RtsPanel {
     }
 
     private int closeButtonX() {
-        return this.windowX + this.windowWidth - CLOSE_BUTTON_SIZE - CLOSE_BUTTON_MARGIN;
+        return this.windowX + this.windowWidth - CLOSE_BUTTON_SIZE - 3;
     }
 
     private int closeButtonY() {
-        return this.windowY + Math.max(1, (getTitleBarHeight() - CLOSE_BUTTON_SIZE) / 2);
+        return this.windowY + 3;
     }
 }
