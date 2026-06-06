@@ -212,15 +212,17 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     private void renderModeToggle(GuiGraphics g, int x, int y, int w, QuickBuildMode mode,
             Component label, int mouseX, int mouseY) {
-        boolean active = this.quickBuildMode == mode;
+        boolean enabled = mode != QuickBuildMode.DESTROY || canUseRangeDestroy();
+        boolean active = this.quickBuildMode == mode && enabled;
         boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + MODE_TOGGLE_H;
-        int border = active ? 0xFF5FE36C : (hovered ? 0xFF7B91A6 : 0xFF647B92);
-        int bg = active ? 0xFF29583E : (hovered ? 0xFF223040 : 0xFF141C26);
+        int border = !enabled ? 0xFF3A4652 : (active ? 0xFF5FE36C : (hovered ? 0xFF7B91A6 : 0xFF647B92));
+        int bg = !enabled ? 0xFF111720 : (active ? 0xFF29583E : (hovered ? 0xFF223040 : 0xFF141C26));
         g.fill(x, y, x + w, y + MODE_TOGGLE_H, border);
         g.fill(x + 1, y + 1, x + w - 1, y + MODE_TOGGLE_H - 1, bg);
         int labelX = x + Math.max(2, (w - screen.font().width(label)) / 2);
         int labelY = y + (MODE_TOGGLE_H - screen.font().lineHeight) / 2;
-        g.drawString(screen.font(), label, labelX, labelY, active ? 0xFFD8FFE0 : 0xFFD8E3EE, false);
+        int color = !enabled ? 0xFF7B8794 : (active ? 0xFFD8FFE0 : 0xFFD8E3EE);
+        g.drawString(screen.font(), label, labelX, labelY, color, false);
     }
 
     @Override
@@ -285,7 +287,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             int textY = centerY - screen.font().lineHeight / 2;
             int itemY = centerY - 8;
 
-            if (this.quickBuildMode == QuickBuildMode.DESTROY) {
+            if (effectiveMode() == QuickBuildMode.DESTROY) {
                 g.drawString(screen.font(), screen.text("screen.rtsbuilding.quick_build.destroy_hint"),
                         x + 8, textY, 0xFFB8B8, false);
                 return;
@@ -373,6 +375,9 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             return true;
         }
         if (mouseX >= destroyX && mouseX < destroyX + buttonW) {
+            if (!canUseRangeDestroy()) {
+                return true;
+            }
             setMode(QuickBuildMode.DESTROY);
             return true;
         }
@@ -437,6 +442,9 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     public void setMode(QuickBuildMode mode) {
         QuickBuildMode next = mode == null ? QuickBuildMode.BUILD : mode;
+        if (next == QuickBuildMode.DESTROY && !canUseRangeDestroy()) {
+            next = QuickBuildMode.BUILD;
+        }
         if (this.quickBuildMode == next) {
             syncAreaMineShapeFromBuildShape();
             return;
@@ -452,7 +460,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     }
 
     public boolean isRangeDestroyMode() {
-        return this.quickBuildMode == QuickBuildMode.DESTROY;
+        return effectiveMode() == QuickBuildMode.DESTROY;
     }
 
     public static AreaMineShape toAreaMineShape(BuildShape shape) {
@@ -500,11 +508,21 @@ public final class QuickBuildPanel extends RtsWindowPanel {
      * 仅在玩家选中了可放置的方块物品时扩展面板并显示。
      */
     private boolean shouldShowBottomInfo() {
-        if (this.quickBuildMode == QuickBuildMode.DESTROY) {
+        if (effectiveMode() == QuickBuildMode.DESTROY) {
             return true;
         }
         ItemStack preview = resolveShapeBuildItem();
         return !preview.isEmpty() && preview.getItem() instanceof BlockItem;
+    }
+
+    private QuickBuildMode effectiveMode() {
+        return this.quickBuildMode == QuickBuildMode.DESTROY && !canUseRangeDestroy()
+                ? QuickBuildMode.BUILD
+                : this.quickBuildMode;
+    }
+
+    private boolean canUseRangeDestroy() {
+        return screen == null || screen.hasProgressionNode(RtsProgressionNodes.AREA_DESTROY);
     }
 
     private void syncAreaMineShapeFromBuildShape() {

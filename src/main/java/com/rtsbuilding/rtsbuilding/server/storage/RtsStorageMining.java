@@ -2,6 +2,7 @@ package com.rtsbuilding.rtsbuilding.server.storage;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
 import com.rtsbuilding.rtsbuilding.common.RtsUltimineCollector;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsBreakAnimationPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsMineProgressPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsUltimineProgressPayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
@@ -9,6 +10,7 @@ import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 import com.rtsbuilding.rtsbuilding.server.data.PlacedBlockTrackerData;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -76,6 +78,8 @@ public final class RtsStorageMining {
     private static final int ULTIMINE_MAX_BLOCKS = 256;
     /** Max blocks per dimension for area mine (X, Y, Z). */
     private static final int AREA_MINE_MAX_SIZE = 12;
+    /** Maximum explicit shape-destroy targets accepted from Quick Build. */
+    private static final int AREA_DESTROY_MAX_TARGETS = 32768;
 
     /** How many ultimine targets are processed in a single tick. */
     private static final int ULTIMINE_BLOCKS_PER_TICK = 8;
@@ -403,6 +407,77 @@ public final class RtsStorageMining {
         beginRemoteMining(player, session, targets.peekFirst(), null, slot);
     }
 
+    public static void areaDestroy(ServerPlayer player, RtsStorageSession session, List<BlockPos> positions,
+            byte toolSlot, String toolItemId, ItemStack toolPrototype) {
+        if (!RtsProgressionManager.canUse(player, RtsFeature.AREA_DESTROY)) {
+            return;
+        }
+        if (session == null || positions == null || positions.isEmpty()) {
+            return;
+        }
+        RtsLinkedStorageResolver.sanitizeSessionDimension(player, session);
+
+        int slot = clampHotbarSlot(toolSlot);
+        if (player.isCreative()) {
+            Deque<BlockPos> targets = collectAreaDestroyTargets(player, positions, slot, ItemStack.EMPTY, true);
+            if (targets.isEmpty()) {
+                stopActiveMining(player, session);
+                return;
+            }
+            stopActiveMining(player, session);
+            breakCreativeUltimineTargets(player, session, targets, slot);
+            RtsStorageManager.requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
+            return;
+        }
+
+        stopActiveMining(player, session);
+        RtsToolLease toolLease = borrowMiningTool(player, session, toolItemId, toolPrototype, slot);
+        Deque<BlockPos> targets = collectAreaDestroyTargets(player, positions, slot, toolLease.stack(), false);
+        if (targets.isEmpty()) {
+            returnMiningTool(player, session, toolLease);
+            return;
+        }
+
+        session.miningToolLease = toolLease;
+        session.ultimineTargets.clear();
+        session.ultimineTargets.addAll(targets);
+        session.ultimineProgressPos = targets.peekFirst();
+        session.ultimineTotalTargets = targets.size();
+        session.ultimineProcessedTargets = 0;
+        session.ultimineAbsorbedDrops = false;
+        session.miningFace = Direction.DOWN;
+        session.miningToolSlot = slot;
+        sendUltimineProgress(player, 0, targets.size());
+        beginRemoteMining(player, session, targets.peekFirst(), null, slot);
+    }
+
+    private static Deque<BlockPos> collectAreaDestroyTargets(ServerPlayer player, List<BlockPos> positions,
+            int toolSlot, ItemStack linkedTool, boolean creative) {
+        if (player == null || positions == null || positions.isEmpty()) {
+            return new ArrayDeque<>();
+        }
+        ServerLevel level = player.serverLevel();
+        LinkedHashSet<BlockPos> unique = new LinkedHashSet<>();
+        for (BlockPos raw : positions) {
+            if (raw == null || unique.size() >= AREA_DESTROY_MAX_TARGETS) {
+                continue;
+            }
+            BlockPos pos = raw.immutable();
+            if (!RtsLinkedStorageResolver.canAccessWorldTarget(player, pos)) {
+                continue;
+            }
+            BlockState state = level.getBlockState(pos);
+            if (state.isAir() || state.getDestroySpeed(level, pos) < 0.0F) {
+                continue;
+            }
+            if (!creative && computeRemoteDestroyStep(player, state, pos, toolSlot, linkedTool) <= 0.0F) {
+                continue;
+            }
+            unique.add(pos);
+        }
+        return new ArrayDeque<>(unique);
+    }
+
     private static boolean includeAreaMineFillCell(byte shapeType, byte fillType,
             int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
             int x, int y, int z, double cx, double cz, double radiusSq) {
@@ -608,13 +683,19 @@ public final class RtsStorageMining {
      * @return {@code true} if the block was successfully broken
      */
     private static boolean destroyMinedBlock(ServerPlayer player, RtsStorageSession session, BlockPos pos, int toolSlot) {
+        boolean broken;
         if (session != null && session.miningToolLease != null && !session.miningToolLease.isEmpty()) {
             RtsToolLease lease = session.miningToolLease;
             MiningDestroyOutcome outcome = destroyBlockWithTemporaryMainHand(player, pos, lease.stack());
             session.miningToolLease = lease.withStack(protectBorrowedToolRemainder(player, lease, outcome.remainder()));
-            return outcome.broken();
+            broken = outcome.broken();
+        } else {
+            broken = withTemporarySelectedSlot(player, toolSlot, () -> player.gameMode.destroyBlock(pos));
         }
-        return withTemporarySelectedSlot(player, toolSlot, () -> player.gameMode.destroyBlock(pos));
+        if (broken) {
+            sendBreakAnimation(player, pos);
+        }
+        return broken;
     }
 
     /**
@@ -1163,6 +1244,13 @@ public final class RtsStorageMining {
 
     private static void sendMineProgress(ServerPlayer player, BlockPos pos, int stage) {
         PacketDistributor.sendToPlayer(player, new S2CRtsMineProgressPayload(pos, (byte) stage));
+    }
+
+    private static void sendBreakAnimation(ServerPlayer player, BlockPos pos) {
+        if (player == null || pos == null) {
+            return;
+        }
+        PacketDistributor.sendToPlayer(player, new S2CRtsBreakAnimationPayload(pos.immutable()));
     }
 
     private static void sendUltimineProgress(ServerPlayer player, int processed, int total) {

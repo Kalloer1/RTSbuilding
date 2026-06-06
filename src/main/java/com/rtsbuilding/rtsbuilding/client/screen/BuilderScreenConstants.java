@@ -95,16 +95,6 @@ public final class BuilderScreenConstants {
     /** 分类文字缩放比例 */
     public static final float CATEGORY_TEXT_SCALE = 0.84F;
 
-    // ======================== 交互轮盘 ========================
-    /** 交互轮盘单页大小 */
-    public static final int INTERACT_WHEEL_PAGE_SIZE = 10;
-    /** 交互轮盘半径 */
-    public static final int INTERACT_WHEEL_RADIUS = 68;
-    /** 交互轮盘槽位大小 */
-    public static final int INTERACT_WHEEL_SLOT = 18;
-    /** 交互轮盘槽位半长 */
-    public static final int INTERACT_WHEEL_SLOT_HALF = INTERACT_WHEEL_SLOT / 2;
-
     // ======================== 快速建造面板 ========================
     /** 快速建造面板宽度 */
     public static final int QUICK_BUILD_PANEL_W = 188;

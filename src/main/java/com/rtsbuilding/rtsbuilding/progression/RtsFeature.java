@@ -15,5 +15,6 @@ public enum RtsFeature {
     JEI_TRANSFER,
     FLUID_HANDLING,
     ULTIMINE,
+    AREA_DESTROY,
     BLUEPRINTS
 }

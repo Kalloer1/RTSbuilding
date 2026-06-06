@@ -763,6 +763,9 @@ public final class BuilderScreen extends Screen {
             return true;
         }
         boolean forcePlace = hasShiftDown();
+        if (this.shapeController.tryConfirmPendingRangeDestroy()) {
+            return true;
+        }
         if (this.shapeController.tryConfirmPendingShapeBuild(forcePlace)) {
             return true;
         }
@@ -782,6 +785,10 @@ public final class BuilderScreen extends Screen {
         }
         InteractionTypes.InteractionTarget target = this.cursorPicker.pickInteractionTarget(false);
         if (target == null) {
+            return true;
+        }
+        if (isQuickBuildRangeDestroyMode() && target.blockHit() != null) {
+            this.shapeController.selectRangeDestroyShape(target.blockHit(), mouseY, target.rayDir());
             return true;
         }
         if (this.controller.hasSelectedFluid()) {
@@ -898,6 +905,9 @@ public final class BuilderScreen extends Screen {
         if (isInsideBottomPanel(mouseX, mouseY)) {
             return this.bottomPanel.handleMouseScrolled(mouseX, mouseY, scrollY);
         }
+        if (!isSearchFocused() && this.shapeController.handleShapeHeightMouseScrolled(scrollY)) {
+            return true;
+        }
         // 范围破坏选区中：NEED_HEIGHT阶段滚轮调整高度，其他阶段阻止
         if (this.controller.getAreaMinePhase() != ClientRtsController.AREA_MINE_PHASE_NONE) {
             if (this.controller.getAreaMinePhase() == ClientRtsController.AREA_MINE_PHASE_NEED_HEIGHT) {
@@ -907,9 +917,6 @@ public final class BuilderScreen extends Screen {
                 }
                 this.controller.adjustAreaMineHeightOffset(delta);
             }
-            return true;
-        }
-        if (!isSearchFocused() && this.shapeController.handleShapeHeightMouseScrolled(scrollY)) {
             return true;
         }
         if (this.controller.getMode() == BuilderMode.ROTATE) {

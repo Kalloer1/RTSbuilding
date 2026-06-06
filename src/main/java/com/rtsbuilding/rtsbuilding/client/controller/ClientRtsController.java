@@ -2327,6 +2327,12 @@ public final class ClientRtsController {
 
     public void placeSelectedBatch(List<BlockHitResult> hits, boolean forcePlace, Vec3 rayOrigin, Vec3 rayDir,
             boolean skipIfOccupied) {
+        placeSelectedBatch(hits, hits == null || hits.isEmpty() ? null : hits.get(0), forcePlace, rayOrigin, rayDir,
+                skipIfOccupied);
+    }
+
+    public void placeSelectedBatch(List<BlockHitResult> hits, BlockHitResult templateHit, boolean forcePlace,
+            Vec3 rayOrigin, Vec3 rayDir, boolean skipIfOccupied) {
         beginRemoteMenuOpenGrace();
         String itemId = this.selectedItemId == null ? "" : this.selectedItemId;
         long selectedCount = getSelectedItemCountForPlacement(itemId);
@@ -2341,6 +2347,7 @@ public final class ClientRtsController {
                 && selectedCount <= Math.max(1, attemptedPlacements);
         RtsClientPacketGateway.sendPlaceBatch(
                 hits,
+                templateHit,
                 forcePlace,
                 skipIfOccupied,
                 itemId,
@@ -2692,6 +2699,24 @@ public final class ClientRtsController {
                 (byte) this.areaMineShape.ordinal(),
                 (byte) (fillMode == null ? ShapeFillMode.FILL : fillMode).ordinal());
 
+        clearAreaMineSession();
+    }
+
+    public void confirmShapeAreaDestroy(List<BlockPos> targets, int toolSlot) {
+        if (targets == null || targets.isEmpty()) {
+            return;
+        }
+        BlockPos first = targets.get(0).immutable();
+        this.activeMinePos = first;
+        this.activeMineFace = Direction.UP.get3DDataValue();
+        this.activeMineToolSlot = Mth.clamp(toolSlot, 0, 8);
+        this.mineRenderPos = first;
+        this.mineRenderStage = 0;
+        RtsClientPacketGateway.sendAreaDestroy(
+                targets,
+                this.activeMineToolSlot,
+                selectedMiningToolItemId(),
+                selectedMiningToolPrototype());
         clearAreaMineSession();
     }
 

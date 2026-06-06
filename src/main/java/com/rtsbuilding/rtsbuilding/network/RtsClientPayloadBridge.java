@@ -2,7 +2,9 @@ package com.rtsbuilding.rtsbuilding.network;
 
 
 import com.rtsbuilding.rtsbuilding.client.network.RtsClientNetworkHandlers;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsBreakAnimationPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsMineProgressPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsPlaceAnimationPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsUltimineProgressPayload;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraStatePayload;
 import com.rtsbuilding.rtsbuilding.network.craft.S2CRtsCraftFeedbackPayload;
@@ -74,6 +76,18 @@ public final class RtsClientPayloadBridge {
     public static void handleMineProgress(S2CRtsMineProgressPayload payload, IPayloadContext context) {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             com.rtsbuilding.rtsbuilding.client.network.RtsClientNetworkHandlers.handleMineProgress(payload, context);
+        }
+    }
+
+    public static void handlePlaceAnimation(S2CRtsPlaceAnimationPayload payload, IPayloadContext context) {
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            com.rtsbuilding.rtsbuilding.client.network.RtsClientNetworkHandlers.handlePlaceAnimation(payload, context);
+        }
+    }
+
+    public static void handleBreakAnimation(S2CRtsBreakAnimationPayload payload, IPayloadContext context) {
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            com.rtsbuilding.rtsbuilding.client.network.RtsClientNetworkHandlers.handleBreakAnimation(payload, context);
         }
     }
 

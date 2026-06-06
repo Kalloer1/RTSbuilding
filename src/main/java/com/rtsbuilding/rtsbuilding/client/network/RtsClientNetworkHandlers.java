@@ -2,11 +2,14 @@ package com.rtsbuilding.rtsbuilding.client.network;
 
 
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
+import com.rtsbuilding.rtsbuilding.client.rendering.builder.PlacementAnimationRenderer;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraStatePayload;
 import com.rtsbuilding.rtsbuilding.network.feedback.S2CRtsDamageFeedbackPayload;
 import com.rtsbuilding.rtsbuilding.network.craft.S2CRtsCraftFeedbackPayload;
 import com.rtsbuilding.rtsbuilding.network.craft.S2CRtsCraftablesPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsBreakAnimationPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsMineProgressPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsPlaceAnimationPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsUltimineProgressPayload;
 import com.rtsbuilding.rtsbuilding.network.progression.S2CRtsProgressionStatePayload;
 import com.rtsbuilding.rtsbuilding.network.progression.S2CRtsQuestDetectStatusPayload;
@@ -49,6 +52,14 @@ public final class RtsClientNetworkHandlers {
 
     public static void handleMineProgress(S2CRtsMineProgressPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientRtsController.get().applyMineProgress(payload));
+    }
+
+    public static void handlePlaceAnimation(S2CRtsPlaceAnimationPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> PlacementAnimationRenderer.add(payload.pos()));
+    }
+
+    public static void handleBreakAnimation(S2CRtsBreakAnimationPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> PlacementAnimationRenderer.addDestroy(payload.pos()));
     }
 
     public static void handleUltimineProgress(S2CRtsUltimineProgressPayload payload, IPayloadContext context) {

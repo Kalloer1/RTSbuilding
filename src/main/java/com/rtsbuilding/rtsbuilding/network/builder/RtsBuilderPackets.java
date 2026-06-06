@@ -75,10 +75,25 @@ public final class RtsBuilderPackets {
                 C2SRtsAreaMinePayload.STREAM_CODEC,
                 RtsBuilderNetworkHandlers::handleAreaMine);
 
+        registrar.playToServer(
+                C2SRtsAreaDestroyPayload.TYPE,
+                C2SRtsAreaDestroyPayload.STREAM_CODEC,
+                RtsBuilderNetworkHandlers::handleAreaDestroy);
+
         registrar.playToClient(
                 S2CRtsMineProgressPayload.TYPE,
                 S2CRtsMineProgressPayload.STREAM_CODEC,
                 RtsClientPayloadBridge::handleMineProgress);
+
+        registrar.playToClient(
+                S2CRtsPlaceAnimationPayload.TYPE,
+                S2CRtsPlaceAnimationPayload.STREAM_CODEC,
+                RtsClientPayloadBridge::handlePlaceAnimation);
+
+        registrar.playToClient(
+                S2CRtsBreakAnimationPayload.TYPE,
+                S2CRtsBreakAnimationPayload.STREAM_CODEC,
+                RtsClientPayloadBridge::handleBreakAnimation);
 
         registrar.playToClient(
                 S2CRtsUltimineProgressPayload.TYPE,
