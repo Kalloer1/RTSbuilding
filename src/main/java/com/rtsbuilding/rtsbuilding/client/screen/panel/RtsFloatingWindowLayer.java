@@ -1,5 +1,6 @@
 package com.rtsbuilding.rtsbuilding.client.screen.panel;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.ArrayList;
@@ -59,14 +60,11 @@ public record RtsFloatingWindowLayer(List<RtsWindowPanel> frontToBackWindows) {
             window.setSkipHoverDetection(shouldSuppress);
             window.render(g, mouseX, mouseY, 0.0F);
             window.setSkipHoverDetection(false);
-            // 强制刷新 GuiGraphics 内部缓冲区，将所有 RenderType（含 gui 和 guiText）
-            // 的待处理顶点刷新到帧缓冲，确保当前窗口的内容已实际渲染到屏幕。
-            // 必须为每个窗口（包含最后一个）都 flush()，否则最后一个窗口的
-            // guiText 会与后续绘制混入同一 batch，因 Minecraft RenderType 执行顺序
-            // （gui 先 -> guiText 后）导致文字穿透到所有后续面板之上。
-            // 使用 g.flush() 而非 Minecraft.renderBuffers().bufferSource().endBatch()，
-            // 因为 GuiGraphics 有自己的内部缓冲区，仅 endBatch() 无法刷新。
+            // 安全冲刷：RtsWindowPanel.render() 已在 scissor 内 flush 了内容，
+            // 此处额外冲刷共享渲染缓冲区，确保 item 渲染这类立即提交的数据
+            // 已经在 scissor 完成时被放入帧缓冲区。
             g.flush();
+            Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
         }
     }
 

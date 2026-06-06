@@ -280,7 +280,8 @@ public final class RtsStorageMining {
      */
     public static void areaMine(ServerPlayer player, RtsStorageSession session,
             int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
-            byte toolSlot, String toolItemId, ItemStack toolPrototype) {
+            byte toolSlot, String toolItemId, ItemStack toolPrototype,
+            byte shapeType) {
         // --- 1. 前置检查 ---
         if (!RtsProgressionManager.canUse(player, RtsFeature.ULTIMINE)) {
             return;
@@ -303,13 +304,55 @@ public final class RtsStorageMining {
         int clampedMinY = minY;
         int clampedMaxY = Math.min(clampedMinY + AREA_MINE_MAX_SIZE - 1, maxY);
 
-        // --- 3. 三重循环扫描立方体范围（最大 12×12×12 = 1728 格），独立于连锁挖掘数量限制 ---
-        //     每个方块依次检查：世界访问权限 → 非空气 → 可破坏
+        // --- 3. 计算形状中心与半径 ---
+        double cx = (clampedMinX + clampedMaxX + 1) / 2.0D;
+        double cz = (clampedMinZ + clampedMaxZ + 1) / 2.0D;
+        double rx = (clampedMaxX - clampedMinX + 1) / 2.0D;
+        double rz = (clampedMaxZ - clampedMinZ + 1) / 2.0D;
+        double cylRadiusSq = Math.max(rx, rz) * Math.max(rx, rz);
+
+        int boxDx = clampedMaxX - clampedMinX;
+        int boxDy = clampedMaxY - clampedMinY;
+        int boxDz = clampedMaxZ - clampedMinZ;
+
+        // --- 4. 三重循环扫描范围，按形状过滤（最大 12×12×12 = 1728 格）---
+        //     每个方块依次检查：形状过滤 → 世界访问权限 → 非空气 → 可破坏
         ServerLevel level = player.serverLevel();
         Deque<BlockPos> targets = new ArrayDeque<>();
         for (int y = clampedMinY; y <= clampedMaxY; y++) {
             for (int x = clampedMinX; x <= clampedMaxX; x++) {
                 for (int z = clampedMinZ; z <= clampedMaxZ; z++) {
+                    // 形状过滤（枚举 ordinal: 0=BLOCK, 1=LINE, 2=SQUARE, 3=WALL, 4=CIRCLE, 5=BOX）
+                    if (shapeType == 0) {
+                        // BLOCK：仅中心方块
+                        int cxBlock = clampedMinX + boxDx / 2;
+                        int cyBlock = clampedMinY + boxDy / 2;
+                        int czBlock = clampedMinZ + boxDz / 2;
+                        if (x != cxBlock || y != cyBlock || z != czBlock) continue;
+                    } else if (shapeType == 1) {
+                        // LINE：沿最长轴延伸的直线
+                        if (boxDx >= boxDy && boxDx >= boxDz) {
+                            if (y != clampedMinY || z != clampedMinZ) continue;
+                        } else if (boxDy >= boxDx && boxDy >= boxDz) {
+                            if (x != clampedMinX || z != clampedMinZ) continue;
+                        } else {
+                            if (x != clampedMinX || y != clampedMinY) continue;
+                        }
+                    } else if (shapeType == 2) {
+                        // SQUARE：仅底面一层
+                        if (y != clampedMinY) continue;
+                    } else if (shapeType == 3) {
+                        // WALL：垂直外壁（XZ 平面边界）
+                        boolean onWall = (x == clampedMinX || x == clampedMaxX)
+                                || (z == clampedMinZ || z == clampedMaxZ);
+                        if (!onWall) continue;
+                    } else if (shapeType == 4) {
+                        // CIRCLE：XZ 平面圆形（等同旧 CYLINDER）
+                        double ddx = (x + 0.5D) - cx;
+                        double ddz = (z + 0.5D) - cz;
+                        if ((ddx * ddx + ddz * ddz) > cylRadiusSq + 0.5D) continue;
+                    }
+                    // BOX (shapeType == 5): 不过滤，全部加入
                     BlockPos pos = new BlockPos(x, y, z);
                     if (!RtsLinkedStorageResolver.canAccessWorldTarget(player, pos)) {
                         continue;

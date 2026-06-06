@@ -2,9 +2,10 @@ package com.rtsbuilding.rtsbuilding.client.screen.quickbuild;
 
 import com.rtsbuilding.rtsbuilding.client.screen.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.client.screen.layout.PanelLayouts;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
-import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeBuildTypes;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeGeometryUtil;
 import com.rtsbuilding.rtsbuilding.client.util.RtsTextureRenderer;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowButton;
@@ -57,13 +58,13 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     private static final int MODE_BUTTON_H = STATE_H * 3;
 
     // ======================== 形状定义 ========================
-    private static final ClientRtsController.BuildShape[] SHAPES = {
-            ClientRtsController.BuildShape.BLOCK,
-            ClientRtsController.BuildShape.LINE,
-            ClientRtsController.BuildShape.SQUARE,
-            ClientRtsController.BuildShape.WALL,
-            ClientRtsController.BuildShape.CIRCLE,
-            ClientRtsController.BuildShape.BOX
+    private static final BuildShape[] SHAPES = {
+            BuildShape.BLOCK,
+            BuildShape.LINE,
+            BuildShape.SQUARE,
+            BuildShape.WALL,
+            BuildShape.CIRCLE,
+            BuildShape.BOX
     };
 
     /** 各形状按钮对应的悬浮提示翻译键 */
@@ -91,7 +92,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     private WindowButton[] fillModeButtons;
 
     /** 缓存的形状，用于检测 fill mode 是否需要重建 */
-    private ClientRtsController.BuildShape lastFillShape;
+    private BuildShape lastFillShape;
 
     // ======================== 初始化 ========================
 
@@ -145,7 +146,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     private void rebuildFillModeButtons() {
         this.lastFillShape = controller.getBuildShape();
-        List<ShapeBuildTypes.ShapeFillMode> modes =
+        List<ShapeFillMode> modes =
                 ShapeGeometryUtil.availableFillModes(controller.getBuildShape());
         fillModeButtons = new WindowButton[modes.size()];
         for (int i = 0; i < modes.size(); i++) {
@@ -216,7 +217,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
         if (fillModeButtons == null || controller.getBuildShape() != lastFillShape) {
             rebuildFillModeButtons();
         }
-        List<ShapeBuildTypes.ShapeFillMode> modes =
+        List<ShapeFillMode> modes =
                 ShapeGeometryUtil.availableFillModes(controller.getBuildShape());
         for (int i = 0; i < fillModeButtons.length; i++) {
             int rowY = bodyY + 20 + (i * 38); // 垂直居中对齐对应行的形状按钮
@@ -257,6 +258,8 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             if (!preview.isEmpty()) {
                 int itemX = x + 8 + textWidth + 4;
                 g.renderItem(preview, itemX, itemY);
+                // 立即 flush 物品渲染，确保在 scissor 仍生效时提交到帧缓冲区
+                g.flush();
                 rightEdge = itemX + 16;
             }
 
@@ -277,6 +280,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
                             if (!preview.isEmpty()) {
                                 int missIconX = missTextX + screen.font().width(missText) + 4;
                                 g.renderItem(preview, missIconX, itemY);
+                                g.flush();
                             }
                         }
                     } catch (NumberFormatException ignored) {

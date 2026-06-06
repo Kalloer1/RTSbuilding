@@ -8,6 +8,8 @@ import com.rtsbuilding.rtsbuilding.client.screen.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.RtsCraftTerminalScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.RtsHomeScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.RtsProgressionScreen;
+import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
 import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
@@ -230,6 +232,7 @@ public final class ClientRtsController {
     public record AreaMineBounds(int minX, int maxX, int minY, int maxY, int minZ, int maxZ) {
     }
     private BuildShape buildShape = BuildShape.BLOCK;
+    private AreaMineShape areaMineShape = AreaMineShape.BOX;
     private boolean pendingCraftTerminalOpen;
     private int pendingCraftTerminalOpenTicks;
     private int pendingRemoteMenuOpenTicks;
@@ -676,6 +679,14 @@ public final class ClientRtsController {
 
     public void toggleBdNetworkEnabled() {
         setBdNetworkEnabled(!this.bdNetworkEnabled);
+    }
+
+    public AreaMineShape getAreaMineShape() {
+        return this.areaMineShape;
+    }
+
+    public void setAreaMineShape(AreaMineShape shape) {
+        this.areaMineShape = shape == null ? AreaMineShape.BOX : shape;
     }
 
     public BuildShape getBuildShape() {
@@ -2676,7 +2687,8 @@ public final class ClientRtsController {
                 bounds.minZ(), bounds.maxZ(),
                 this.activeMineToolSlot,
                 selectedMiningToolItemId(),
-                selectedMiningToolPrototype());
+                selectedMiningToolPrototype(),
+                (byte) this.areaMineShape.ordinal());
 
         clearAreaMineSession();
     }
@@ -3060,14 +3072,7 @@ public final class ClientRtsController {
             List<CraftRecipeOption> recipeOptions) {
     }
 
-    public enum BuildShape {
-        BLOCK,
-        LINE,
-        SQUARE,
-        WALL,
-        CIRCLE,
-        BOX
-    }
+
 
     private static final class CameraInput {
         private static final CameraInput NONE = new CameraInput(0.0F, 0.0F, 0.0F, false);

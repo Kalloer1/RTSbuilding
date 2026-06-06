@@ -144,10 +144,17 @@ public abstract class RtsWindowPanel implements RtsPanel {
         }
         try {
             renderWindowFrame(g, mouseX, mouseY);
+            // 先 flush 窗口边框（无 scissor），确保边框不会被后续内容 scissor 裁剪掉
+            // 必须与内容分开 flush，因为窗口边框在内容裁剪区域之外。
+            g.flush();
+
             if (shouldClipContent()) {
                 enableContentScissor(g);
             }
             renderContent(g, mouseX, mouseY, partialTick);
+            // 在 scissor 仍生效时 flush 内容，确保物品图标（renderItem）和文字等
+            // 批处理顶点在光栅化时受到内容裁剪区域的限制，防止穿透到相邻面板。
+            g.flush();
         } finally {
             if (this.skipHoverDetection) {
                 WindowButton.setGlobalSkipHover(false);

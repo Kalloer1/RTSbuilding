@@ -6,7 +6,9 @@ import com.rtsbuilding.rtsbuilding.client.screen.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.ScreenShapeController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildPanel;
-import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeBuildTypes;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.ShapeFillMode;
+import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.UltimineMode;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.UltiminePanel;
 import net.minecraft.util.Mth;
@@ -163,6 +165,7 @@ public final class RtsScreenUiStateManager {
         state.ultimineOpen = this.ultiminePanel.isOpen();
         state.ultimineLimit = this.ultiminePanel.getLimit();
         state.ultimineMode = this.ultiminePanel.getMode().name();
+        state.areaMineShape = this.ultiminePanel.getAreaMineShape().name();
         state.chunkCurtainVisible = this.controller.isChunkCurtainVisible();
         state.rtsGuiScale = sanitizeRtsGuiScale(this.fixedRtsGuiScale);
         state.inputSensitivityIndex = this.controller.getInputSensitivityIndex();
@@ -189,6 +192,11 @@ public final class RtsScreenUiStateManager {
             this.ultiminePanel.setMode(UltimineMode.valueOf(state.ultimineMode));
         } catch (IllegalArgumentException ignored) {
             this.ultiminePanel.setMode(UltimineMode.CHAIN);
+        }
+        try {
+            this.ultiminePanel.setAreaMineShape(AreaMineShape.valueOf(state.areaMineShape));
+        } catch (IllegalArgumentException ignored) {
+            this.ultiminePanel.setAreaMineShape(AreaMineShape.BOX);
         }
     }
 
@@ -241,9 +249,9 @@ public final class RtsScreenUiStateManager {
      */
     private void parseAndSetBuildShape(String name) {
         try {
-            this.controller.setBuildShape(ClientRtsController.BuildShape.valueOf(name));
+            this.controller.setBuildShape(BuildShape.valueOf(name));
         } catch (IllegalArgumentException ignored) {
-            this.controller.setBuildShape(ClientRtsController.BuildShape.BLOCK);
+            this.controller.setBuildShape(BuildShape.BLOCK);
         }
     }
 
@@ -254,9 +262,9 @@ public final class RtsScreenUiStateManager {
      */
     private void parseAndSetFillMode(String name) {
         try {
-            this.shapeController.setShapeFillMode(ShapeBuildTypes.ShapeFillMode.valueOf(name));
+            this.shapeController.setShapeFillMode(ShapeFillMode.valueOf(name));
         } catch (IllegalArgumentException ignored) {
-            this.shapeController.setShapeFillMode(ShapeBuildTypes.ShapeFillMode.FILL);
+            this.shapeController.setShapeFillMode(ShapeFillMode.FILL);
         }
     }
 

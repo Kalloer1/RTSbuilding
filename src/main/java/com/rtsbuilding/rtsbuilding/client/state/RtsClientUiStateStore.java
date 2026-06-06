@@ -2,6 +2,7 @@ package com.rtsbuilding.rtsbuilding.client.state;
 
 
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.neoforged.fml.loading.FMLPaths;
@@ -141,13 +142,14 @@ public final class RtsClientUiStateStore {
      * 而非直接操作原始字段。
      */
     public static final class UiState {
-        public String buildShape = ClientRtsController.BuildShape.BLOCK.name();
+        public String buildShape = BuildShape.BLOCK.name();
         public String fillMode = "FILL";
         public int rotationDegrees = 0;
         public boolean quickBuildOpen = true;
         public boolean ultimineOpen = false;
         public int ultimineLimit = 64;
         public String ultimineMode = "CHAIN";
+        public String areaMineShape = "BOX";
         public boolean chunkCurtainVisible = false;
         public double rtsGuiScale = 2.0D;
         public int inputSensitivityIndex = 2;
@@ -196,13 +198,14 @@ public final class RtsClientUiStateStore {
          */
         UiState sanitized() {
             UiState clean = new UiState();
-            clean.buildShape = sanitizeEnum(this.buildShape, ClientRtsController.BuildShape.BLOCK.name());
+            clean.buildShape = sanitizeEnum(this.buildShape, BuildShape.BLOCK.name());
             clean.fillMode = sanitizeEnum(this.fillMode, "FILL");
             clean.rotationDegrees = Math.floorMod(this.rotationDegrees, 360);
             clean.quickBuildOpen = this.quickBuildOpen;
             clean.ultimineOpen = this.ultimineOpen;
             clean.ultimineLimit = Math.max(1, Math.min(256, this.ultimineLimit));
             clean.ultimineMode = sanitizeEnum(this.ultimineMode, "CHAIN");
+            clean.areaMineShape = sanitizeEnum(this.areaMineShape, "BOX");
             clean.chunkCurtainVisible = this.chunkCurtainVisible;
             clean.rtsGuiScale = sanitizeScale(this.rtsGuiScale);
             clean.inputSensitivityIndex = Math.max(0, Math.min(32, this.inputSensitivityIndex));

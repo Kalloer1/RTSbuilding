@@ -5,6 +5,7 @@ import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.client.screen.layout.PanelLayouts;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
+import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -26,8 +27,8 @@ public final class UltiminePanel extends RtsWindowPanel {
     /** 连锁挖掘面板宽度 */
     private static final int ULTIMINE_PANEL_W = 178;
     /** 连锁挖掘面板高度 */
-    private static final int ULTIMINE_PANEL_H = 156;
-    private static final int ULTIMINE_PANEL_MIN_H = 156;
+    private static final int ULTIMINE_PANEL_H = 180;
+    private static final int ULTIMINE_PANEL_MIN_H = 180;
     /** 连锁挖掘最小限制 */
     private static final int ULTIMINE_MIN_LIMIT = 1;
     /** 连锁挖掘最大限制 */
@@ -43,6 +44,8 @@ public final class UltiminePanel extends RtsWindowPanel {
     private final StringBuilder limitInputText = new StringBuilder();
     /** Current ultimine mode: CHAIN (connected same-type) or AREA (volume break). */
     private UltimineMode ultimineMode = UltimineMode.CHAIN;
+    /** Current area mine shape (used when mode is AREA). */
+    private AreaMineShape areaMineShape = AreaMineShape.BOX;
 
     @Override
     public void init(BuilderScreen screen, ClientRtsController controller) {
@@ -76,6 +79,14 @@ public final class UltiminePanel extends RtsWindowPanel {
 
     public void setMode(UltimineMode mode) {
         this.ultimineMode = mode;
+    }
+
+    public AreaMineShape getAreaMineShape() {
+        return this.areaMineShape;
+    }
+
+    public void setAreaMineShape(AreaMineShape shape) {
+        this.areaMineShape = shape == null ? AreaMineShape.BOX : shape;
     }
 
     @Override
@@ -178,8 +189,35 @@ public final class UltiminePanel extends RtsWindowPanel {
         int areaLabelX = areaBtnX + (modeBtnW - screen.font().width(screen.text("screen.rtsbuilding.ultimine.mode_area"))) / 2;
         g.drawString(screen.font(), screen.text("screen.rtsbuilding.ultimine.mode_area"), areaLabelX, modeBtnY + 3,
                 chainActive ? 0xB5C1CE : 0xFF0D1117, false);
-    }
 
+        // ---- 形状选择（仅在 AREA 模式下显示）----
+        if (this.ultimineMode == UltimineMode.AREA) {
+            int shapeBtnY = contentY() + 112;
+            int shapeBtnW = (ULTIMINE_PANEL_W - 28) / 3;
+            int shapeGap = 4;
+            int shapeStartX = x + 8;
+
+            AreaMineShape[] shapes = AreaMineShape.values();
+            for (int i = 0; i < shapes.length; i++) {
+                int bx = shapeStartX + i * (shapeBtnW + shapeGap);
+                boolean active = this.areaMineShape == shapes[i];
+                boolean hover = mouseY >= shapeBtnY && mouseY <= shapeBtnY + 14
+                        && mouseX >= bx && mouseX <= bx + shapeBtnW;
+
+                int bg = active ? 0xFF5FE36C : (hover ? 0xFF2A3A4A : 0xFF1A2330);
+                int border = active ? 0xFF5FE36C : (hover ? 0xFF647B92 : 0xFF313946);
+                g.fill(bx, shapeBtnY, bx + shapeBtnW, shapeBtnY + 14, border);
+                g.fill(bx + 1, shapeBtnY + 1, bx + shapeBtnW - 1, shapeBtnY + 13, bg);
+
+                String labelKey = "screen.rtsbuilding.ultimine.shape_" + shapes[i].name().toLowerCase(java.util.Locale.ROOT);
+                String label = screen.text(labelKey);
+                int labelX = bx + (shapeBtnW - screen.font().width(label)) / 2;
+                g.drawString(screen.font(), label, labelX, shapeBtnY + 3,
+                        active ? 0xFF0D1117 : 0xB5C1CE, false);
+            }
+        }
+    }
+    
     @Override
     protected void handleContentClick(double mouseX, double mouseY, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -228,6 +266,26 @@ public final class UltiminePanel extends RtsWindowPanel {
                 this.ultimineMode = UltimineMode.AREA;
                 screen.persistUiState();
                 return;
+            }
+        }
+
+        // ---- 形状选择点击（仅 AREA 模式下响应）----
+        if (this.ultimineMode == UltimineMode.AREA) {
+            int shapeBtnY = contentY() + 112;
+            int shapeBtnW = (ULTIMINE_PANEL_W - 28) / 3;
+            int shapeGap = 4;
+            int shapeStartX = this.windowX + 8;
+            if (mouseY >= shapeBtnY && mouseY <= shapeBtnY + 14) {
+                AreaMineShape[] shapes = AreaMineShape.values();
+                for (int i = 0; i < shapes.length; i++) {
+                    int bx = shapeStartX + i * (shapeBtnW + shapeGap);
+                    if (mouseX >= bx && mouseX <= bx + shapeBtnW && this.areaMineShape != shapes[i]) {
+                        this.areaMineShape = shapes[i];
+                        this.controller.setAreaMineShape(shapes[i]);
+                        screen.persistUiState();
+                        return;
+                    }
+                }
             }
         }
     }

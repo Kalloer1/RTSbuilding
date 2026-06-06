@@ -18,12 +18,14 @@ import com.rtsbuilding.rtsbuilding.client.screen.layout.PanelLayouts;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.BottomPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsFloatingWindowLayer;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildPanel;
-import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeBuildTypes;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeDataRecords;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeGeometryUtil;
 import com.rtsbuilding.rtsbuilding.client.screen.storage.LinkedStoragePanel;
 import com.rtsbuilding.rtsbuilding.client.screen.topbar.TopBarPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.topbar.TopBarTypes;
+import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.UltimineMode;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.UltiminePanel;
 import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
@@ -205,11 +207,11 @@ public final class BuilderScreen extends Screen {
         return this.draggingInputSensitivity;
     }
     /** Returns the current shape fill mode (e.g. FILL, HOLLOW, WIREFRAME). Delegates to the shape controller. */
-    public ShapeBuildTypes.ShapeFillMode getShapeFillMode() {
+    public ShapeFillMode getShapeFillMode() {
         return this.shapeController.getShapeFillMode();
     }
     /** Sets the shape fill mode via the shape controller. */
-    public void setShapeFillMode(ShapeBuildTypes.ShapeFillMode mode) {
+    public void setShapeFillMode(ShapeFillMode mode) {
         this.shapeController.setShapeFillMode(mode);
     }
     /** Returns the current shape rotation in degrees. Delegates to the shape controller. */
@@ -229,7 +231,7 @@ public final class BuilderScreen extends Screen {
         return this.shapeController.getShapeGhostPreview();
     }
     /** Ensures the current fill mode is compatible with the given shape type, adjusting if necessary. */
-    public void ensureFillModeForShape(ClientRtsController.BuildShape shape) {
+    public void ensureFillModeForShape(BuildShape shape) {
         this.shapeController.ensureFillModeForShape(shape);
     }
     /** Returns whether the quick-build panel is currently open. */
@@ -847,7 +849,7 @@ public final class BuilderScreen extends Screen {
             return true;
         }
         if (target.blockHit() != null
-                && this.controller.getBuildShape() != ClientRtsController.BuildShape.BLOCK
+                && this.controller.getBuildShape() != BuildShape.BLOCK
                 && canUseToolSlotShapeSource()) {
             this.shapeController.placeWithShape(
                     target.blockHit(),
@@ -2079,15 +2081,9 @@ public final class BuilderScreen extends Screen {
                 BlockHitResult cursorHit = this.cursorPicker.pickBlockHit();
                 BlockPos cursorPos = cursorHit != null ? cursorHit.getBlockPos() : seed;
                 if (cursorPos != null && pointA != null && !cursorPos.equals(pointA)) {
-                    // 使用共享边界计算方法，heightOffset=0 表示仅底面单层
                     ClientRtsController.AreaMineBounds bounds = ClientRtsController.computeAreaMineBounds(pointA, cursorPos, 0);
                     Set<BlockPos> targets = new HashSet<>();
-                    ShapeGeometryUtil.addBoxTargets(
-                            targets,
-                            new BlockPos(bounds.minX(), pointA.getY(), bounds.minZ()),
-                            new BlockPos(bounds.maxX(), pointA.getY(), bounds.maxZ()),
-                            0,  // 单层底面
-                            ShapeBuildTypes.ShapeFillMode.FILL);
+                    addAreaMineShapeTargets(targets, bounds, this.controller.getAreaMineShape(), 0);
                     return new ArrayList<>(targets);
                 }
                 return List.of(cursorPos != null ? cursorPos : seed);
@@ -2096,12 +2092,8 @@ public final class BuilderScreen extends Screen {
             ClientRtsController.AreaMineBounds bounds = ClientRtsController.computeAreaMineBounds(
                     pointA, pointB, this.controller.getAreaMineHeightOffset());
             Set<BlockPos> targets = new HashSet<>();
-            ShapeGeometryUtil.addBoxTargets(
-                    targets,
-                    new BlockPos(bounds.minX(), bounds.minY(), bounds.minZ()),
-                    new BlockPos(bounds.maxX(), bounds.maxY(), bounds.maxZ()),
-                    bounds.maxY() - bounds.minY(),
-                    ShapeBuildTypes.ShapeFillMode.FILL);
+            addAreaMineShapeTargets(targets, bounds, this.controller.getAreaMineShape(),
+                    bounds.maxY() - bounds.minY());
             return new ArrayList<>(targets);
         }
         return RtsUltimineCollector.collect(
@@ -2114,6 +2106,66 @@ public final class BuilderScreen extends Screen {
                     }
                     return state.getBlock() == originalState.getBlock();
                 });
+    }
+
+    /**
+     * 根据范围破坏的形状类型向集合中添加目标方块位置。
+     *
+     * @param targets  目标集合
+     * @param bounds   三维边界
+     * @param shape    形状类型
+     * @param height   高度（未使用，保留接口兼容）
+     */
+    private void addAreaMineShapeTargets(Set<BlockPos> targets, ClientRtsController.AreaMineBounds bounds,
+            AreaMineShape shape, int height) {
+        // 计算形状中心与半径
+        double cx = (bounds.minX() + bounds.maxX() + 1) / 2.0D;
+        double cz = (bounds.minZ() + bounds.maxZ() + 1) / 2.0D;
+        double rx = (bounds.maxX() - bounds.minX() + 1) / 2.0D;
+        double rz = (bounds.maxZ() - bounds.minZ() + 1) / 2.0D;
+        double cylRadiusSq = Math.max(rx, rz) * Math.max(rx, rz);
+
+        int dx = bounds.maxX() - bounds.minX();
+        int dy = bounds.maxY() - bounds.minY();
+        int dz = bounds.maxZ() - bounds.minZ();
+
+        for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+            for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    if (shape == AreaMineShape.BLOCK) {
+                        // 仅中心方块
+                        int cxBlock = bounds.minX() + dx / 2;
+                        int cyBlock = bounds.minY() + dy / 2;
+                        int czBlock = bounds.minZ() + dz / 2;
+                        if (x != cxBlock || y != cyBlock || z != czBlock) continue;
+                    } else if (shape == AreaMineShape.LINE) {
+                        // 沿最长轴延伸的直线
+                        if (dx >= dy && dx >= dz) {
+                            if (y != bounds.minY() || z != bounds.minZ()) continue;
+                        } else if (dy >= dx && dy >= dz) {
+                            if (x != bounds.minX() || z != bounds.minZ()) continue;
+                        } else {
+                            if (x != bounds.minX() || y != bounds.minY()) continue;
+                        }
+                    } else if (shape == AreaMineShape.SQUARE) {
+                        // 仅底面一层
+                        if (y != bounds.minY()) continue;
+                    } else if (shape == AreaMineShape.WALL) {
+                        // 垂直外壁（XZ 平面边界）
+                        boolean onWall = (x == bounds.minX() || x == bounds.maxX())
+                                || (z == bounds.minZ() || z == bounds.maxZ());
+                        if (!onWall) continue;
+                    } else if (shape == AreaMineShape.CIRCLE) {
+                        // XZ 平面圆形（等同旧 CYLINDER）
+                        double ddx = (x + 0.5D) - cx;
+                        double ddz = (z + 0.5D) - cz;
+                        if ((ddx * ddx + ddz * ddz) > cylRadiusSq + 0.5D) continue;
+                    }
+                    // BOX: 不过滤，全部加入
+                    targets.add(new BlockPos(x, y, z));
+                }
+            }
+        }
     }
 
     /**
@@ -2333,11 +2385,11 @@ public final class BuilderScreen extends Screen {
         return this.shapeController;
     }
     /** Returns the localized label for the given shape fill mode. */
-    public String fillModeLabel(ShapeBuildTypes.ShapeFillMode mode) {
+    public String fillModeLabel(ShapeFillMode mode) {
         return this.shapeController.fillModeLabel(mode);
     }
     /** Returns the localized dimension label (e.g. "3x3x3") for the given build shape. */
-    public static String shapeDimensionLabel(ClientRtsController.BuildShape shape) {
+    public static String shapeDimensionLabel(BuildShape shape) {
         return ScreenShapeController.shapeDimensionLabel(shape);
     }
     /** Returns a text description of the current shape's dimensions (e.g. "5x3x5"). */
@@ -2353,7 +2405,7 @@ public final class BuilderScreen extends Screen {
         return this.shapeController.pendingShapeStatusText();
     }
     /** Returns the localized display label for the given build shape. */
-    public String shapeLabel(ClientRtsController.BuildShape shape) {
+    public String shapeLabel(BuildShape shape) {
         return this.shapeController.shapeLabel(shape);
     }
 
