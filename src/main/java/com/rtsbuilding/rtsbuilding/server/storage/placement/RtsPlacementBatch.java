@@ -1,8 +1,8 @@
 package com.rtsbuilding.rtsbuilding.server.storage.placement;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsPlaceBatchPayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
@@ -99,6 +99,10 @@ public final class RtsPlacementBatch {
         if (positions.isEmpty()) {
             return;
         }
+        // 按 Y 层升序排序，实现从底层到顶层逐层建造
+        positions.sort(Comparator.<BlockPos>comparingInt(pos -> pos.getY())
+                .thenComparingInt(pos -> pos.getX())
+                .thenComparingInt(pos -> pos.getZ()));
         while (session.placeBatchJobs.size() >= BUILD_BATCH_MAX_QUEUED_JOBS) {
             session.placeBatchJobs.removeFirst();
         }
