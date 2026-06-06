@@ -1162,8 +1162,25 @@ public final class BottomPanel {
         }
         if (isInsideCategoryList(mouseX, mouseY)) {
             shiftCategoryScroll(scrollY > 0.0D ? -1 : 1);
+            return true;
+        }
+        if (isInsideStorageBrowseScrollArea(mouseX, mouseY, layout)) {
+            if (scrollY > 0.0D) {
+                this.controller.prevPage();
+            } else if (scrollY < 0.0D) {
+                this.controller.nextPage();
+            }
         }
         return true;
+    }
+
+    private boolean isInsideStorageBrowseScrollArea(double mouseX, double mouseY,
+            BottomPanelLayoutTypes.BottomPanelLayout layout) {
+        int left = layout.storageX();
+        int top = layout.storageY();
+        int right = layout.storageX() + layout.mainStorageW();
+        int bottom = layout.gridY() + layout.gridH();
+        return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
     }
 
     // ── 内部点击处理 ──

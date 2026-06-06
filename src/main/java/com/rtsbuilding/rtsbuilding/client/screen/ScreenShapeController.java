@@ -379,6 +379,17 @@ public final class ScreenShapeController {
         return true;
     }
 
+    public boolean handleShapeHeightMouseScrolled(double scrollY) {
+        if (scrollY == 0.0D || !canAdjustCurrentShapeHeight()) {
+            return false;
+        }
+        int delta = scrollY > 0.0D ? 1 : -1;
+        if (isAltDown()) {
+            delta *= 4;
+        }
+        return adjustShapeHeightNudge(delta);
+    }
+
     // ===== Label / status helpers =====
 
     public String fillModeLabel(ShapeBuildTypes.ShapeFillMode mode) {

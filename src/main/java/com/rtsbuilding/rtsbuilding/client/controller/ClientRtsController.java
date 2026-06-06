@@ -146,6 +146,7 @@ public final class ClientRtsController {
     private boolean bdNetworkEnabled = true;
     private String linkedStorageName = "No Storage";
     private final List<BlockPos> linkedStoragePositions = new ArrayList<>();
+    private final List<LinkedStorageEntry> linkedStorageEntries = new ArrayList<>();
     private int storagePage;
     private int storagePageSize = DEFAULT_STORAGE_PAGE_SIZE;
     private int storageTotalPages = 1;
@@ -415,6 +416,10 @@ public final class ClientRtsController {
 
     public List<BlockPos> getLinkedStoragePositions() {
         return Collections.unmodifiableList(this.linkedStoragePositions);
+    }
+
+    public List<LinkedStorageEntry> getLinkedStorageEntries() {
+        return Collections.unmodifiableList(this.linkedStorageEntries);
     }
 
     public int getStoragePage() {
@@ -1529,6 +1534,10 @@ public final class ClientRtsController {
         RtsClientPacketGateway.sendFillInventory();
     }
 
+    public void unlinkLinkedStorage(BlockPos pos) {
+        RtsClientPacketGateway.sendUnlinkStorage(pos);
+    }
+
     private boolean shouldUseRtsCraftTerminalScreen(CraftingScreen craftingScreen) {
         if (this.pendingCraftTerminalOpen) {
             return true;
@@ -1551,11 +1560,15 @@ public final class ClientRtsController {
         this.autoStoreMinedDrops = payload.autoStoreMinedDrops();
         this.bdNetworkEnabled = payload.useBdNetwork();
         this.linkedStoragePositions.clear();
-        for (Long packed : payload.linkedPositions()) {
+        this.linkedStorageEntries.clear();
+        for (int i = 0; i < payload.linkedPositions().size(); i++) {
+            Long packed = payload.linkedPositions().get(i);
             if (packed == null) {
                 continue;
             }
-            this.linkedStoragePositions.add(BlockPos.of(packed.longValue()));
+            BlockPos pos = BlockPos.of(packed.longValue());
+            this.linkedStoragePositions.add(pos);
+            this.linkedStorageEntries.add(decodeLinkedStorageEntry(payload, i, pos));
         }
         this.storagePage = payload.page();
         this.storageTotalPages = Math.max(1, payload.totalPages());
@@ -1667,6 +1680,27 @@ public final class ClientRtsController {
         if (!this.storageLinked && this.linkedStoragePositions.isEmpty()) {
             clearCraftablesState();
         }
+    }
+
+    private LinkedStorageEntry decodeLinkedStorageEntry(S2CRtsStoragePagePayload payload, int index, BlockPos pos) {
+        String label = index >= 0 && index < payload.linkedNames().size()
+                ? payload.linkedNames().get(index)
+                : this.linkedStorageName;
+        if (label == null || label.isBlank()) {
+            label = "Linked Storage";
+        }
+        byte mode = index >= 0 && index < payload.linkedModes().size()
+                ? payload.linkedModes().get(index)
+                : C2SRtsLinkStoragePayload.MODE_BIDIRECTIONAL;
+        ItemStack preview = ItemStack.EMPTY;
+        String iconItemId = index >= 0 && index < payload.linkedIconItemIds().size()
+                ? payload.linkedIconItemIds().get(index)
+                : "";
+        ResourceLocation iconKey = ResourceLocation.tryParse(iconItemId);
+        if (iconKey != null && BuiltInRegistries.ITEM.containsKey(iconKey)) {
+            preview = new ItemStack(BuiltInRegistries.ITEM.get(iconKey));
+        }
+        return new LinkedStorageEntry(pos, label, mode, preview);
     }
 
     private void markStorageScanStarted() {
@@ -2772,6 +2806,18 @@ public final class ClientRtsController {
     }
 
     public record StorageEntry(ItemStack stack, String itemId, long count, String mod, String name) {
+    }
+
+    /**
+     * Client display row for one linked storage block.
+     *
+     * <p>The row is decoded from the server storage-page payload and is used by
+     * the issue #41 detail window only. It deliberately carries enough data to
+     * render icon/name/position/mode, but it does not decide whether a block is
+     * still valid storage or whether unlink is allowed; those rules stay on the
+     * server.
+     */
+    public record LinkedStorageEntry(BlockPos pos, String label, byte mode, ItemStack preview) {
     }
 
     public record FluidEntry(

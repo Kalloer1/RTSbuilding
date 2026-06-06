@@ -21,6 +21,7 @@ import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeBuildTypes;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeDataRecords;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeGeometryUtil;
+import com.rtsbuilding.rtsbuilding.client.screen.storage.LinkedStoragePanel;
 import com.rtsbuilding.rtsbuilding.client.screen.topbar.TopBarPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.topbar.TopBarTypes;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.UltimineMode;
@@ -98,6 +99,8 @@ public final class BuilderScreen extends Screen {
     private final QuickBuildPanel quickBuildPanel = new QuickBuildPanel();
     /** Panel for configuring and triggering vein-mining (ultimine) operations. */
     private final UltiminePanel ultiminePanel = new UltiminePanel();
+    /** Windowed view for inspecting and unlinking bound storage blocks. */
+    private final LinkedStoragePanel linkedStoragePanel = new LinkedStoragePanel();
     /** Top bar panel with mode buttons, shape selection, and action controls. */
     private final TopBarPanel topBarPanel = new TopBarPanel();
     /** Bottom panel containing storage grid, crafting, blueprints, and pin slots. */
@@ -136,6 +139,7 @@ public final class BuilderScreen extends Screen {
     private static final int LEFT_TOOLTIP_X_OFFSET = 8;
     private static final int LEFT_TOOLTIP_Y_OFFSET = 24;
     private static final int LEFT_TOOLTIP_DETAIL_Y_OFFSET = 18;
+    private static final int STORAGE_LINK_DETAIL_ACTION_H = 16;
     /** Last recorded mouse X position, updated each render frame for input consistency. */
     private int lastMouseX = 0;
     /** Last recorded mouse Y position, updated each render frame for input consistency. */
@@ -155,13 +159,14 @@ public final class BuilderScreen extends Screen {
         this.controller = controller;
         this.uiStateManager = new RtsScreenUiStateManager(this.controller, this.shapeController, this.quickBuildPanel, this.ultiminePanel);
         this.overlayRenderer = new RtsScreenOverlayRenderer(this, this.controller, this.cursorPicker, this.bottomPanel);
-        this.floatingWindowLayer = new RtsFloatingWindowLayer(this.ultiminePanel, this.quickBuildPanel);
+        this.floatingWindowLayer = new RtsFloatingWindowLayer(this.linkedStoragePanel, this.ultiminePanel, this.quickBuildPanel);
         this.guidePanel.init(this, this.controller);
         this.gearMenuPanel.init(this, this.controller);
         this.interactionWheelPanel.init(this, this.controller);
         this.funnelBufferPanel.init(this, this.controller);
         this.quickBuildPanel.init(this, this.controller);
         this.ultiminePanel.init(this, this.controller);
+        this.linkedStoragePanel.init(this, this.controller);
         this.topBarPanel.init(this, this.controller);
         this.bottomPanel.init(this, this.controller);
         this.shapeController.init(this, this.controller);
@@ -459,6 +464,9 @@ public final class BuilderScreen extends Screen {
                 return true;
             }
             if (handleFloatingWindowClick(mouseX, mouseY, button)) {
+                return true;
+            }
+            if (handleStorageLinkDetailActionClick(mouseX, mouseY)) {
                 return true;
             }
             if (this.topBarPanel.handleClick(mouseX, mouseY)) {
@@ -846,8 +854,8 @@ public final class BuilderScreen extends Screen {
     @Override
     /**
      * Handles mouse scroll with RTS GUI scale remapping. Routes scroll to open
-     * dialogs, gear menu, wheel panels, guide panel, bottom panel, rotation mode,
-     * and item slot scrolling.
+     * dialogs, gear menu, wheel panels, guide panel, bottom panel, shape height
+     * previews, rotation mode, and item slot scrolling.
      */
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (!this.fixedRtsScaleInputPass) {
@@ -888,6 +896,9 @@ public final class BuilderScreen extends Screen {
         }
         if (isInsideBottomPanel(mouseX, mouseY)) {
             return this.bottomPanel.handleMouseScrolled(mouseX, mouseY, scrollY);
+        }
+        if (!isSearchFocused() && this.shapeController.handleShapeHeightMouseScrolled(scrollY)) {
+            return true;
         }
         if (this.controller.getMode() == BuilderMode.ROTATE) {
             if (scrollY > 0.0D) {
@@ -1185,6 +1196,7 @@ public final class BuilderScreen extends Screen {
             return;
         }
         this.topBarPanel.render(guiGraphics, mouseX, mouseY);
+        renderStorageLinkDetailAction(guiGraphics, mouseX, mouseY);
         this.bottomPanel.render(guiGraphics, mouseX, mouseY, partialTick);
         this.floatingWindowLayer.renderFloatingWindows(guiGraphics, mouseX, mouseY);
         this.funnelBufferPanel.render(guiGraphics, mouseX, mouseY);
@@ -1676,6 +1688,9 @@ public final class BuilderScreen extends Screen {
         if (this.guidePanel.isOpen() || this.interactionWheelPanel.isOpen()) {
             return;
         }
+        if (renderStorageLinkStatusTooltip(g, mouseX, mouseY)) {
+            return;
+        }
         if (mouseY >= 42 && mouseY <= 56) {
             g.renderTooltip(this.font, Component.translatable("screen.rtsbuilding.tooltip.undo_redo_keys"), mouseX, mouseY);
             return;
@@ -1687,6 +1702,101 @@ public final class BuilderScreen extends Screen {
                 return;
             }
         }
+    }
+
+    private void renderStorageLinkDetailAction(GuiGraphics g, int mouseX, int mouseY) {
+        if (this.guidePanel.isOpen() || this.interactionWheelPanel.isOpen()) {
+            return;
+        }
+        TopBarTypes.TopBarButtonLayout linkButton = findTopBarButton(TopBarTypes.TopBarButtonId.LINK);
+        if (linkButton == null || !isStorageLinkDetailActionVisible(mouseX, mouseY, linkButton)) {
+            return;
+        }
+        String label = text("screen.rtsbuilding.storage_links.action");
+        int w = storageLinkDetailActionW(linkButton, label);
+        int x = storageLinkDetailActionX(linkButton, label);
+        int y = storageLinkDetailActionY();
+        boolean hovered = inside(mouseX, mouseY, x, y, w, STORAGE_LINK_DETAIL_ACTION_H);
+        RtsClientUiUtil.drawPanelFrame(g, x, y, w, STORAGE_LINK_DETAIL_ACTION_H,
+                hovered ? 0xEE26394A : 0xCC17212D,
+                hovered ? 0xFFB7D2EC : 0xFF6C839A,
+                0xFF0D1117);
+        g.drawCenteredString(this.font, trimToWidth(label, Math.max(8, w - 8)),
+                x + w / 2, y + 4, 0xFFF4FAFF);
+    }
+
+    private boolean handleStorageLinkDetailActionClick(double mouseX, double mouseY) {
+        TopBarTypes.TopBarButtonLayout linkButton = findTopBarButton(TopBarTypes.TopBarButtonId.LINK);
+        if (linkButton == null) {
+            return false;
+        }
+        String label = text("screen.rtsbuilding.storage_links.action");
+        int w = storageLinkDetailActionW(linkButton, label);
+        int x = storageLinkDetailActionX(linkButton, label);
+        int y = storageLinkDetailActionY();
+        if (!inside(mouseX, mouseY, x, y, w, STORAGE_LINK_DETAIL_ACTION_H)) {
+            return false;
+        }
+        closeGearMenu();
+        this.linkedStoragePanel.openNear(x, y + STORAGE_LINK_DETAIL_ACTION_H + 2);
+        return true;
+    }
+
+    private boolean isStorageLinkDetailActionVisible(int mouseX, int mouseY, TopBarTypes.TopBarButtonLayout linkButton) {
+        String label = text("screen.rtsbuilding.storage_links.action");
+        int w = storageLinkDetailActionW(linkButton, label);
+        int x = storageLinkDetailActionX(linkButton, label);
+        int y = storageLinkDetailActionY();
+        return inside(mouseX, mouseY, linkButton.x(), 4, linkButton.width(), TOP_BUTTON_H)
+                || inside(mouseX, mouseY, x, y, w, STORAGE_LINK_DETAIL_ACTION_H);
+    }
+
+    private TopBarTypes.TopBarButtonLayout findTopBarButton(TopBarTypes.TopBarButtonId id) {
+        for (TopBarTypes.TopBarButtonLayout button : this.topBarPanel.buildTopBarButtonLayouts()) {
+            if (button.id() == id) {
+                return button;
+            }
+        }
+        return null;
+    }
+
+    private int storageLinkDetailActionX(TopBarTypes.TopBarButtonLayout linkButton, String label) {
+        int w = storageLinkDetailActionW(linkButton, label);
+        int centered = linkButton.x() + linkButton.width() / 2 - w / 2;
+        return Mth.clamp(centered, 4, Math.max(4, this.width - w - 4));
+    }
+
+    private int storageLinkDetailActionY() {
+        return 4 + TOP_BUTTON_H + 3;
+    }
+
+    private int storageLinkDetailActionW(TopBarTypes.TopBarButtonLayout linkButton, String label) {
+        int desired = Math.max(linkButton.width(), this.font.width(label) + 12);
+        return Math.min(desired, Math.max(40, this.width - 8));
+    }
+
+    private boolean renderStorageLinkStatusTooltip(GuiGraphics g, int mouseX, int mouseY) {
+        if (mouseY < 42 || mouseY > 56) {
+            return false;
+        }
+        String linkedText = this.controller.isStorageLinked()
+                ? text("screen.rtsbuilding.status.storage_linked", this.controller.getLinkedStorageName())
+                : text("screen.rtsbuilding.status.storage_not_linked");
+        int linkedW = Math.min(this.font.width(linkedText), Math.max(20, this.width - 16));
+        if (!inside(mouseX, mouseY, 8, 42, linkedW, 14)) {
+            return false;
+        }
+        int linkedCount = this.controller.getLinkedStoragePositions().size();
+        if (this.controller.isStorageLinked()) {
+            g.renderComponentTooltip(this.font, List.of(
+                    Component.translatable("screen.rtsbuilding.tooltip.storage_linked_short",
+                            this.controller.getLinkedStorageName(), linkedCount),
+                    Component.translatable("screen.rtsbuilding.tooltip.storage_unbind_short")),
+                    mouseX, mouseY);
+        } else {
+            g.renderTooltip(this.font, Component.translatable("screen.rtsbuilding.tooltip.storage_unlinked_short"), mouseX, mouseY);
+        }
+        return true;
     }
 
     /**

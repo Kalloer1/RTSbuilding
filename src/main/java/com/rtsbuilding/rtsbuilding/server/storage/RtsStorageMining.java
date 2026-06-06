@@ -315,7 +315,7 @@ public final class RtsStorageMining {
             removeUltimineTarget(session, pos);
             session.ultimineProcessedTargets = Math.max(session.ultimineProcessedTargets, 1);
             if (canAutoStoreDrops(player, session)) {
-                session.ultimineAbsorbedDrops |= absorbNearbyDropsIntoLinked(player, pos, session);
+                session.ultimineAbsorbedDrops |= absorbNearbyMinedDrops(player, pos, session);
             }
             session.miningPos = null;
             session.miningProgress = 0.0F;
@@ -326,7 +326,7 @@ public final class RtsStorageMining {
 
         clearMineProgress(player, pos);
         if (broken && canAutoStoreDrops(player, session)) {
-            boolean absorbed = absorbNearbyDropsIntoLinked(player, pos, session);
+            boolean absorbed = absorbNearbyMinedDrops(player, pos, session);
             if (absorbed) {
                 RtsStorageManager.runQuestDetect(player, session, false);
             }
@@ -542,7 +542,7 @@ public final class RtsStorageMining {
             }
             boolean targetBroken = destroyMinedBlock(player, session, target, session.miningToolSlot);
             if (targetBroken && canAutoStoreDrops(player, session)) {
-                session.ultimineAbsorbedDrops |= absorbNearbyDropsIntoLinked(player, target, session);
+                session.ultimineAbsorbedDrops |= absorbNearbyMinedDrops(player, target, session);
             }
         }
 
@@ -929,27 +929,23 @@ public final class RtsStorageMining {
     // =========================================================================
     //  SECTION 6 — DROP ABSORPTION
     // =========================================================================
-    //  Collects item entities near the mined block and stores them directly
-    //  into linked storage when autoStoreMinedDrops is enabled.
+    //  Collects item entities near the mined block and stores them into linked
+    //  storage first, then the player's inventory when autoStoreMinedDrops is enabled.
     // =========================================================================
 
     /**
      * Scans for {@link ItemEntity}s within a 1.25-block radius of the mined
-     * position and stores each matching drop into linked storage.
+     * position and stores each matching drop into linked storage first, then the
+     * player's inventory. If both destinations are full, the remaining item
+     * stays in the world.
      *
      * @param player   the server player
      * @param pos      the mined block position
      * @param session  the player's storage session
      * @return {@code true} if at least one drop was absorbed
      */
-    private static boolean absorbNearbyDropsIntoLinked(ServerPlayer player, BlockPos pos, RtsStorageSession session) {
-        if (!RtsLinkedStorageResolver.hasAnyStorage(player, session)) {
-            return false;
-        }
+    private static boolean absorbNearbyMinedDrops(ServerPlayer player, BlockPos pos, RtsStorageSession session) {
         List<LinkedHandler> linked = RtsLinkedStorageResolver.resolveLinkedHandlers(player, session);
-        if (linked.isEmpty()) {
-            return false;
-        }
         List<IItemHandler> handlers = new ArrayList<>(linked.size());
         for (LinkedHandler handler : linked) {
             handlers.add(handler.handler());
@@ -966,7 +962,12 @@ public final class RtsStorageMining {
             if (original.isEmpty()) {
                 continue;
             }
-            ItemStack remain = RtsStorageTransfers.storeToLinkedOnly(handlers, original);
+            ItemStack remain = handlers.isEmpty()
+                    ? original.copy()
+                    : RtsStorageTransfers.storeToLinkedOnly(handlers, original);
+            if (!remain.isEmpty()) {
+                remain = RtsStorageTransfers.moveToPlayerInventoryOnly(player, remain);
+            }
             if (remain.getCount() != original.getCount()) {
                 changed = true;
             }

@@ -47,6 +47,14 @@ public final class RtsStorageNetworkHandlers {
         });
     }
 
+    public static void handleUnlinkStorage(C2SRtsUnlinkStoragePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.unlinkStorage(serverPlayer, payload.pos());
+            }
+        });
+    }
+
     public static void handleStoreHotbarSlot(C2SRtsStoreHotbarSlotPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {

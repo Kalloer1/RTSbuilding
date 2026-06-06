@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.tracking;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
+import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 import com.rtsbuilding.rtsbuilding.server.data.PlacedBlockTrackerData;
 
 import net.minecraft.server.level.ServerLevel;
@@ -49,6 +50,7 @@ public final class RtsBlockTrackingEvents {
             return;
         }
         PlacedBlockTrackerData.get(serverLevel).clear(event.getPos());
+        RtsStorageManager.onLinkedStorageBlockBroken(serverLevel, event.getPos());
     }
 }
 

@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
 import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2Compat;
 import com.rtsbuilding.rtsbuilding.compat.bd.RtsBdCompat;
+import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsLinkStoragePayload;
 import com.rtsbuilding.rtsbuilding.network.storage.RtsStorageSort;
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
 import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
@@ -22,6 +23,7 @@ import com.rtsbuilding.rtsbuilding.server.menu.RtsCraftTerminalMenu;
 import com.rtsbuilding.rtsbuilding.util.RtsCountUtil;
 import com.rtsbuilding.rtsbuilding.util.RtsPinyinSearch;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -76,7 +78,8 @@ public final class RtsStoragePageBuilder {
         List<LinkedHandler> itemHandlers = activeHandlers == null ? List.of() : activeHandlers;
         List<LinkedFluidHandler> fluidHandlers = activeFluidHandlers == null ? List.of() : activeFluidHandlers;
         boolean includePlayerMainInventory = shouldIncludePlayerMainInventoryInStorageView(player, session);
-        List<Long> linkedPackedPositions = toPackedPositions(player, session.linkedStorages);
+        LinkedRefPayload linkedRefs = buildLinkedRefPayload(player, session);
+        List<Long> linkedPackedPositions = linkedRefs.positions();
         if (session.linkedStorages.isEmpty()
                 && itemHandlers.isEmpty()
                 && fluidHandlers.isEmpty()
@@ -308,6 +311,9 @@ public final class RtsStoragePageBuilder {
                 RtsLinkedStorageResolver.hasAnyStorage(player, session),
                 RtsLinkedStorageResolver.buildAnyStorageSummary(player, session),
                 linkedPackedPositions,
+                linkedRefs.names(),
+                linkedRefs.modes(),
+                linkedRefs.iconItemIds(),
                 safePage,
                 totalPages,
                 totalEntries,
@@ -342,10 +348,14 @@ public final class RtsStoragePageBuilder {
     }
 
     private static S2CRtsStoragePagePayload buildEmptyPayload(ServerPlayer player, RtsStorageSession session) {
+        LinkedRefPayload linkedRefs = buildLinkedRefPayload(player, session);
         return new S2CRtsStoragePagePayload(
                 RtsLinkedStorageResolver.hasAnyStorage(player, session),
                 RtsLinkedStorageResolver.buildAnyStorageSummary(player, session),
-                toPackedPositions(player, session.linkedStorages),
+                linkedRefs.positions(),
+                linkedRefs.names(),
+                linkedRefs.modes(),
+                linkedRefs.iconItemIds(),
                 0,
                 1,
                 0,
@@ -803,6 +813,57 @@ public final class RtsStoragePageBuilder {
         return packed;
     }
 
+    /**
+     * Builds the small per-binding detail payload for the storage-link window.
+     *
+     * <p>The existing storage page already carried packed positions for top-bar
+     * status text. Issue #41 needs enough detail for a management list, so the
+     * server adds names, modes, and icon item ids here while keeping the client
+     * panel as a renderer only. The list is limited to the player's current
+     * dimension because current RTS storage browsing is dimension-local;
+     * cross-dimension refs remain persisted until a separate cross-dimension UI
+     * design exists.
+     */
+    private static LinkedRefPayload buildLinkedRefPayload(ServerPlayer player, RtsStorageSession session) {
+        if (player == null || session == null || session.linkedStorages.isEmpty()) {
+            return new LinkedRefPayload(List.of(), List.of(), List.of(), List.of());
+        }
+        ResourceKey<Level> currentDimension = player.serverLevel().dimension();
+        ServerLevel level = player.serverLevel();
+        List<Long> positions = new ArrayList<>(session.linkedStorages.size());
+        List<String> names = new ArrayList<>(session.linkedStorages.size());
+        List<Byte> modes = new ArrayList<>(session.linkedStorages.size());
+        List<String> iconItemIds = new ArrayList<>(session.linkedStorages.size());
+        for (LinkedStorageRef ref : session.linkedStorages) {
+            if (ref == null || ref.pos() == null || !currentDimension.equals(ref.dimension())) {
+                continue;
+            }
+            BlockPos pos = ref.pos();
+            positions.add(pos.asLong());
+            names.add(resolveLinkedRefName(level, session, ref));
+            modes.add(session.linkedModes.getOrDefault(ref, C2SRtsLinkStoragePayload.MODE_BIDIRECTIONAL));
+            iconItemIds.add(resolveLinkedRefIconItemId(level, pos));
+        }
+        return new LinkedRefPayload(positions, names, modes, iconItemIds);
+    }
+
+    private static String resolveLinkedRefName(ServerLevel level, RtsStorageSession session, LinkedStorageRef ref) {
+        if (level != null && ref != null && ref.pos() != null && level.hasChunkAt(ref.pos())) {
+            return RtsLinkedStorageResolver.resolveDisplayName(level, ref.pos());
+        }
+        String cached = session == null || ref == null ? "" : session.linkedNames.get(ref);
+        return cached == null || cached.isBlank() ? "Linked Storage" : cached;
+    }
+
+    private static String resolveLinkedRefIconItemId(ServerLevel level, BlockPos pos) {
+        if (level == null || pos == null || !level.hasChunkAt(pos)) {
+            return "";
+        }
+        Item item = level.getBlockState(pos).getBlock().asItem();
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        return id == null ? "" : id.toString();
+    }
+
     private static Map<String, Long> summarizeFunnelBuffer(RtsStorageSession session) {
         Map<String, Long> counts = new HashMap<>();
         for (ItemStack stack : session.funnelBuffer) {
@@ -825,6 +886,9 @@ public final class RtsStoragePageBuilder {
     }
 
     public record PageResult(S2CRtsStoragePagePayload payload, int safePage) {
+    }
+
+    private record LinkedRefPayload(List<Long> positions, List<String> names, List<Byte> modes, List<String> iconItemIds) {
     }
 
     private record Entry(ItemStack stack, String itemId, String namespace, String path, String label, long count) {

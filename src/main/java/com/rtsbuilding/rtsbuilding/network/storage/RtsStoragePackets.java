@@ -36,6 +36,11 @@ public final class RtsStoragePackets {
                 RtsStorageNetworkHandlers::handleLinkStorage);
 
         registrar.playToServer(
+                C2SRtsUnlinkStoragePayload.TYPE,
+                C2SRtsUnlinkStoragePayload.STREAM_CODEC,
+                RtsStorageNetworkHandlers::handleUnlinkStorage);
+
+        registrar.playToServer(
                 C2SRtsStoreHotbarSlotPayload.TYPE,
                 C2SRtsStoreHotbarSlotPayload.STREAM_CODEC,
                 RtsStorageNetworkHandlers::handleStoreHotbarSlot);

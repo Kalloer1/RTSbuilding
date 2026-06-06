@@ -37,6 +37,7 @@ import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsSetQuickSlotPayload;
 import com.rtsbuilding.rtsbuilding.network.progression.C2SRtsSetSurvivalProgressionPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsStoreFluidPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsStoreHotbarSlotPayload;
+import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsUnlinkStoragePayload;
 import com.rtsbuilding.rtsbuilding.network.camera.C2SRtsToggleCameraPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsUltiminePayload;
 import com.rtsbuilding.rtsbuilding.network.progression.C2SRtsUnlockProgressionNodePayload;
@@ -139,6 +140,12 @@ public final class RtsClientPacketGateway {
 
     public static void sendSetBdNetwork(boolean enabled) {
         PacketDistributor.sendToServer(new C2SRtsSetBdNetworkPayload(enabled));
+    }
+
+    public static void sendUnlinkStorage(BlockPos pos) {
+        if (pos != null) {
+            PacketDistributor.sendToServer(new C2SRtsUnlinkStoragePayload(pos));
+        }
     }
 
     public static void sendCraftRecipe(String recipeId, int craftCount) {

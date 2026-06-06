@@ -297,6 +297,37 @@ public final class RtsStorageManager {
         requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
     }
 
+    public static void onLinkedStorageBlockBroken(ServerLevel level, BlockPos pos) {
+        if (level == null || pos == null || level.getServer() == null) {
+            return;
+        }
+        ResourceKey<Level> dimension = level.dimension();
+        for (var entry : SESSIONS.entrySet()) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(entry.getKey());
+            if (player == null) {
+                continue;
+            }
+            Session session = entry.getValue();
+            if (removeLinkedStorageRef(session, dimension, pos)) {
+                saveSessionToPlayerNbt(player, session);
+                requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
+            }
+        }
+    }
+
+    private static boolean removeLinkedStorageRef(RtsStorageSession session, ResourceKey<Level> dimension, BlockPos pos) {
+        if (session == null || dimension == null || pos == null || session.linkedStorages.isEmpty()) {
+            return false;
+        }
+        boolean removed = session.linkedStorages.removeIf(ref ->
+                ref != null && dimension.equals(ref.dimension()) && pos.equals(ref.pos()));
+        if (removed) {
+            session.linkedNames.keySet().removeIf(ref -> ref == null || !session.linkedStorages.contains(ref));
+            session.linkedModes.keySet().removeIf(ref -> ref == null || !session.linkedStorages.contains(ref));
+        }
+        return removed;
+    }
+
     public static BuilderMode getMode(ServerPlayer player) {
         Session session = SESSIONS.get(player.getUUID());
         return session == null ? BuilderMode.INTERACT : session.mode;
@@ -312,6 +343,27 @@ public final class RtsStorageManager {
 
         Session session = getOrCreateSession(player);
         applyBindingUpdate(player, session, RtsStorageBindings.linkStorage(player, session, pos, linkMode));
+    }
+
+    /**
+     * Removes one storage binding from the player's own RTS storage session.
+     *
+     * <p>Unlike binding, unlink intentionally does not require the target block
+     * to still be loaded or accessible. The detail panel is also a repair tool:
+     * players need to clean up stale bindings after a chest, controller, or
+     * network terminal was moved, broken, or unloaded. This method only removes
+     * a same-dimension/same-position reference and refreshes the storage page;
+     * it does not change insertion/extraction semantics or discover new storage.
+     */
+    public static void unlinkStorage(ServerPlayer player, BlockPos pos) {
+        if (player == null || pos == null) {
+            return;
+        }
+        Session session = getOrCreateSession(player);
+        if (removeLinkedStorageRef(session, player.serverLevel().dimension(), pos)) {
+            saveSessionToPlayerNbt(player, session);
+            requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
+        }
     }
 
     public static void openCraftTerminal(ServerPlayer player) {
