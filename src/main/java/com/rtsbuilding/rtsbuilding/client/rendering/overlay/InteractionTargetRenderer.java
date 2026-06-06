@@ -3,6 +3,7 @@ package com.rtsbuilding.rtsbuilding.client.rendering.overlay;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
+import com.rtsbuilding.rtsbuilding.client.rendering.util.CornerBracketRenderer;
 import com.rtsbuilding.rtsbuilding.client.rendering.util.RaycastHelper;
 import com.rtsbuilding.rtsbuilding.client.screen.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeBuildTypes;
@@ -55,15 +56,6 @@ public final class InteractionTargetRenderer {
     /** Small outward offset applied to block brackets to prevent z-fighting. */
     private static final double LINE_OFFSET = 0.01D;
 
-    /** Base half-thickness (in world units) of each bracket quad. */
-    private static final double BRACKET_THICKNESS = 0.04D;
-
-    /**
-     * Distance threshold (in blocks) at which bracket thickness begins to scale up.
-     * Beyond this distance the thickness grows proportionally so brackets stay visible.
-     */
-    private static final double THICKNESS_SCALE_DISTANCE = 16.0D;
-
     // ──────────────────────────────────────────────
     //  Constants – Animation
     // ──────────────────────────────────────────────
@@ -94,9 +86,6 @@ public final class InteractionTargetRenderer {
     // ──────────────────────────────────────────────
     //  Internal helpers
     // ──────────────────────────────────────────────
-
-    /** Axis along which a bracket segment extends. Used to determine which quad faces to draw. */
-    private enum Axis { X, Y, Z }
 
     /** Utility constructor; class is never instantiated. */
     private InteractionTargetRenderer() {
@@ -226,7 +215,7 @@ public final class InteractionTargetRenderer {
     private static void renderEntityCornerHighlight(PoseStack poseStack, VertexConsumer lineBuffer,
             Entity entity, double distance, float breathFactor) {
         AABB bounds = entity.getBoundingBox().inflate(INFLATE);
-        renderCornerBrackets(
+        CornerBracketRenderer.renderCornerBrackets(
                 poseStack, lineBuffer,
                 bounds.minX, bounds.minY, bounds.minZ,
                 bounds.maxX, bounds.maxY, bounds.maxZ,
@@ -259,7 +248,7 @@ public final class InteractionTargetRenderer {
         }
 
         double off = LINE_OFFSET;
-        renderCornerBrackets(
+        CornerBracketRenderer.renderCornerBrackets(
                 poseStack, lineBuffer,
                 bounds.minX - off, bounds.minY - off, bounds.minZ - off,
                 bounds.maxX + off, bounds.maxY + off, bounds.maxZ + off,
@@ -424,175 +413,5 @@ public final class InteractionTargetRenderer {
         }
 
         return new AABB(minX, minY, minZ, maxX, maxY, maxZ);
-    }
-
-    // ══════════════════════════════════════════════
-    //  Corner-Bracket Rendering
-    // ══════════════════════════════════════════════
-
-    /**
-     * Renders thickened corner brackets around an AABB using quad-based geometry.
-     * <p>
-     * The bracket thickness automatically scales with distance beyond
-     * {@link #THICKNESS_SCALE_DISTANCE} so they remain clearly visible far away.
-     *
-     * @param poseStack current transformation stack
-     * @param consumer  vertex consumer for bracket quads
-     * @param minX      AABB minimum X (world space)
-     * @param minY      AABB minimum Y (world space)
-     * @param minZ      AABB minimum Z (world space)
-     * @param maxX      AABB maximum X (world space)
-     * @param maxY      AABB maximum Y (world space)
-     * @param maxZ      AABB maximum Z (world space)
-     * @param r         red   colour component [0, 1]
-     * @param g         green colour component [0, 1]
-     * @param b         blue  colour component [0, 1]
-     * @param distance  camera-to-target distance (used for thickness scaling)
-     */
-    private static void renderCornerBrackets(PoseStack poseStack, VertexConsumer consumer,
-            double minX, double minY, double minZ,
-            double maxX, double maxY, double maxZ,
-            float r, float g, float b,
-            double distance) {
-
-        double scaledThickness = BRACKET_THICKNESS * Math.max(1.0D, distance / THICKNESS_SCALE_DISTANCE);
-        double halfThick = scaledThickness * 0.5D;
-
-        // Bottom horizontal ring
-        drawHorizontalRing(consumer, poseStack, minX, minZ, maxX, maxZ, minY, r, g, b, halfThick);
-        // Top horizontal ring
-        drawHorizontalRing(consumer, poseStack, minX, minZ, maxX, maxZ, maxY, r, g, b, halfThick);
-        // Vertical edges at the four corners
-        drawVerticalEdges(consumer, poseStack, minX, minZ, maxX, maxZ, minY, maxY, r, g, b, halfThick);
-    }
-
-    /**
-     * Draws the four horizontal bracket segments at a given Y-level, forming a rectangular
-     * ring. Each segment is a thickened quad extruded along the plane's dominant axis.
-     */
-    private static void drawHorizontalRing(VertexConsumer consumer, PoseStack poseStack,
-            double minX, double minZ, double maxX, double maxZ,
-            double y, float r, float g, float b, double t) {
-        // X-aligned segment at Z = minZ  (front)
-        drawBracketSegment(consumer, poseStack, minX, y, minZ, maxX, y, minZ, r, g, b, Axis.X, t);
-        // Z-aligned segment at X = maxX  (right)
-        drawBracketSegment(consumer, poseStack, maxX, y, minZ, maxX, y, maxZ, r, g, b, Axis.Z, t);
-        // X-aligned segment at Z = maxZ  (back)
-        drawBracketSegment(consumer, poseStack, maxX, y, maxZ, minX, y, maxZ, r, g, b, Axis.X, t);
-        // Z-aligned segment at X = minX  (left)
-        drawBracketSegment(consumer, poseStack, minX, y, maxZ, minX, y, minZ, r, g, b, Axis.Z, t);
-    }
-
-    /**
-     * Draws the four vertical bracket segments at the four corners of the AABB.
-     */
-    private static void drawVerticalEdges(VertexConsumer consumer, PoseStack poseStack,
-            double minX, double minZ, double maxX, double maxZ,
-            double minY, double maxY, float r, float g, float b, double t) {
-        // Y-aligned at (minX, minZ)
-        drawBracketSegment(consumer, poseStack, minX, minY, minZ, minX, maxY, minZ, r, g, b, Axis.Y, t);
-        // Y-aligned at (maxX, minZ)
-        drawBracketSegment(consumer, poseStack, maxX, minY, minZ, maxX, maxY, minZ, r, g, b, Axis.Y, t);
-        // Y-aligned at (maxX, maxZ)
-        drawBracketSegment(consumer, poseStack, maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b, Axis.Y, t);
-        // Y-aligned at (minX, maxZ)
-        drawBracketSegment(consumer, poseStack, minX, minY, maxZ, minX, maxY, maxZ, r, g, b, Axis.Y, t);
-    }
-
-    /**
-     * Draws a single thickened bracket segment from (x1, y1, z1) to (x2, y2, z2).
-     * The segment is rendered as two perpendicular quads that form a cross-shaped cross-section,
-     * giving the line visible thickness from any viewing angle.
-     * <p>
-     * Which face pair is used depends on the dominant {@link Axis} of the segment:
-     * <ul>
-     *   <li><b>X</b>: one quad expands in Y, the other in Z</li>
-     *   <li><b>Y</b>: one quad expands in Z, the other in X</li>
-     *   <li><b>Z</b>: one quad expands in X, the other in Y</li>
-     * </ul>
-     *
-     * @param consumer vertex consumer
-     * @param poseStack current transformation stack
-     * @param x1,y1,z1  start point
-     * @param x2,y2,z2  end point
-     * @param r,g,b     colour components
-     * @param axis      dominant axis of the segment (determines which quads to draw)
-     * @param t         half-thickness of the bracket
-     */
-    private static void drawBracketSegment(VertexConsumer consumer, PoseStack poseStack,
-            double x1, double y1, double z1,
-            double x2, double y2, double z2,
-            float r, float g, float b, Axis axis,
-            double t) {
-        switch (axis) {
-            case X -> {
-                // Quad expanding in Y: faces YZ-plane
-                quad(consumer, poseStack,
-                        x1, y1 - t, z1,
-                        x1, y1 + t, z1,
-                        x2, y2 + t, z2,
-                        x2, y2 - t, z2, r, g, b);
-                // Quad expanding in Z: faces XY-plane
-                quad(consumer, poseStack,
-                        x1, y1, z1 - t,
-                        x1, y1, z1 + t,
-                        x2, y2, z2 + t,
-                        x2, y2, z2 - t, r, g, b);
-            }
-            case Y -> {
-                // Quad expanding in Z: faces XZ-plane
-                quad(consumer, poseStack,
-                        x1, y1, z1 - t,
-                        x1, y1, z1 + t,
-                        x2, y2, z2 + t,
-                        x2, y2, z2 - t, r, g, b);
-                // Quad expanding in X: faces YZ-plane
-                quad(consumer, poseStack,
-                        x1 - t, y1, z1,
-                        x1 + t, y1, z1,
-                        x2 + t, y2, z2,
-                        x2 - t, y2, z2, r, g, b);
-            }
-            case Z -> {
-                // Quad expanding in X: faces YZ-plane
-                quad(consumer, poseStack,
-                        x1 - t, y1, z1,
-                        x1 + t, y1, z1,
-                        x2 + t, y2, z2,
-                        x2 - t, y2, z2, r, g, b);
-                // Quad expanding in Y: faces XZ-plane
-                quad(consumer, poseStack,
-                        x1, y1 - t, z1,
-                        x1, y1 + t, z1,
-                        x2, y2 + t, z2,
-                        x2, y2 - t, z2, r, g, b);
-            }
-        }
-    }
-
-    /**
-     * Emits a single coloured quad to the vertex consumer.
-     * The quad is defined by four vertices in clockwise or counter-clockwise order
-     * (the winding order is irrelevant because back-face culling is disabled for this
-     * render type).
-     *
-     * @param consumer vertex consumer
-     * @param poseStack current transformation stack
-     * @param x1,y1,z1  vertex 1
-     * @param x2,y2,z2  vertex 2
-     * @param x3,y3,z3  vertex 3
-     * @param x4,y4,z4  vertex 4
-     * @param r,g,b     colour components (alpha is always 1.0)
-     */
-    private static void quad(VertexConsumer consumer, PoseStack poseStack,
-            double x1, double y1, double z1,
-            double x2, double y2, double z2,
-            double x3, double y3, double z3,
-            double x4, double y4, double z4,
-            float r, float g, float b) {
-        consumer.addVertex(poseStack.last(), (float) x1, (float) y1, (float) z1).setColor(r, g, b, 1.0F);
-        consumer.addVertex(poseStack.last(), (float) x2, (float) y2, (float) z2).setColor(r, g, b, 1.0F);
-        consumer.addVertex(poseStack.last(), (float) x3, (float) y3, (float) z3).setColor(r, g, b, 1.0F);
-        consumer.addVertex(poseStack.last(), (float) x4, (float) y4, (float) z4).setColor(r, g, b, 1.0F);
     }
 }

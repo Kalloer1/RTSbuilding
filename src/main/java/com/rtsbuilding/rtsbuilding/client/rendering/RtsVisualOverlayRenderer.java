@@ -194,8 +194,8 @@ public final class RtsVisualOverlayRenderer {
             // 2. 渲染红色建造范围边界线
             BoundaryLineRenderer.renderRedBoundary(minecraft, poseStack, lineBuffer, minX, minZ, maxX, maxZ, ay);
 
-            // 3. 渲染已链接的储存方块高亮
-            StorageRenderer.renderLinkedStorages(minecraft, controller, poseStack, lineBuffer);
+            // 3. 渲染已链接的储存方块高亮（使用 bracket quads 渲染类型，兼容 CornerBracketRenderer）
+            StorageRenderer.renderLinkedStorages(minecraft, controller, poseStack, bracketBuffer);
 
             // 4. 渲染鼠标悬停的交互目标（方块或实体）——使用 LEQUAL深度测试 + polygon offset + 交叉矩形
             InteractionTargetRenderer.renderHoveredInteractionTarget(minecraft, controller, poseStack, bracketBuffer);

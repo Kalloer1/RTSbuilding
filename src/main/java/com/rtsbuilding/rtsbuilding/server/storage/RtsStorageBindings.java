@@ -23,6 +23,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -89,10 +91,19 @@ public final class RtsStorageBindings {
                 session.linkedNames.put(ref, RtsLinkedStorageResolver.resolveDisplayName(player.serverLevel(), ref.pos()));
             }
         } else {
-            session.linkedStorages.add(ref);
-            session.linkedNames.put(ref, RtsLinkedStorageResolver.resolveDisplayName(player.serverLevel(), ref.pos()));
-            session.linkedModes.put(ref, normalizedMode);
-            session.linkedPriorities.put(ref, 0);
+            // 大箱子检查：如果点击的是双箱子中未链接的一半，且另一半已链接，则执行解绑
+            LinkedStorageRef existingRef = findDoubleChestLinkedRef(player, session, pos);
+            if (existingRef != null) {
+                session.linkedStorages.remove(existingRef);
+                session.linkedNames.remove(existingRef);
+                session.linkedModes.remove(existingRef);
+                session.linkedPriorities.remove(existingRef);
+            } else {
+                session.linkedStorages.add(ref);
+                session.linkedNames.put(ref, RtsLinkedStorageResolver.resolveDisplayName(player.serverLevel(), ref.pos()));
+                session.linkedModes.put(ref, normalizedMode);
+                session.linkedPriorities.put(ref, 0);
+            }
         }
         return UpdateResult.refreshFirst(true);
     }
@@ -413,6 +424,61 @@ public final class RtsStorageBindings {
             return dx >= 0.0D ? Direction.EAST : Direction.WEST;
         }
         return dz >= 0.0D ? Direction.SOUTH : Direction.NORTH;
+    }
+
+    /**
+     * Checks whether the given block position belongs to a double chest whose
+     * other half is already linked in the session.
+     */
+    private static boolean isDoubleChestHalfAlreadyLinked(ServerPlayer player, RtsStorageSession session, BlockPos pos) {
+        if (player == null || session == null || pos == null) {
+            return false;
+        }
+        ServerLevel level = player.serverLevel();
+        if (!level.hasChunkAt(pos)) {
+            return false;
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof ChestBlock)) {
+            return false;
+        }
+        ChestType chestType = state.getValue(ChestBlock.TYPE);
+        if (chestType == ChestType.SINGLE) {
+            return false;
+        }
+        Direction connectedDirection = ChestBlock.getConnectedDirection(state);
+        BlockPos connectedPos = pos.relative(connectedDirection);
+        LinkedStorageRef connectedRef = new LinkedStorageRef(level.dimension(), connectedPos);
+        return session.linkedStorages.contains(connectedRef);
+    }
+
+    /**
+     * Finds the already-linked ref of the connected chest half, or null if
+     * the target is not part of a double chest or the other half is not linked.
+     */
+    private static LinkedStorageRef findDoubleChestLinkedRef(ServerPlayer player, RtsStorageSession session, BlockPos pos) {
+        if (player == null || session == null || pos == null) {
+            return null;
+        }
+        ServerLevel level = player.serverLevel();
+        if (!level.hasChunkAt(pos)) {
+            return null;
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof ChestBlock)) {
+            return null;
+        }
+        ChestType chestType = state.getValue(ChestBlock.TYPE);
+        if (chestType == ChestType.SINGLE) {
+            return null;
+        }
+        Direction connectedDirection = ChestBlock.getConnectedDirection(state);
+        BlockPos connectedPos = pos.relative(connectedDirection);
+        LinkedStorageRef connectedRef = new LinkedStorageRef(level.dimension(), connectedPos);
+        if (session.linkedStorages.contains(connectedRef)) {
+            return connectedRef;
+        }
+        return null;
     }
 
     public record UpdateResult(boolean saveSession, boolean refreshPage, int page) {
