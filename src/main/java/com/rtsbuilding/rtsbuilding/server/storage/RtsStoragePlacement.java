@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsPlaceBatchPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsPlaceAnimationPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
@@ -24,18 +25,22 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.items.IItemHandler;
 
 /**
  * Executes RTS world block placement for the storage-powered builder tools.
  *
  * <p>This service owns the player-facing placement state machine: single
- * remote placement, queued quick-build batches, batch cursor progress,
+ * remote placement, queued placement batches, batch cursor progress,
  * material extraction/refund call boundaries, placed-block detection/tracking,
  * placement rotation, and quick-build placement sounds. It deliberately does
  * not build storage browser pages, resolve crafting recipes, move fluids, run
@@ -46,8 +51,8 @@ import net.neoforged.neoforge.items.IItemHandler;
  */
 public final class RtsStoragePlacement {
     private static final double REMOTE_POV_BLOCK_REACH = 4.0D;
-    private static final int QUICK_BUILD_BATCH_BLOCKS_PER_TICK = 64;
-    private static final int QUICK_BUILD_BATCH_MAX_QUEUED_JOBS = 4;
+    private static final int BUILD_BATCH_BLOCKS_PER_TICK = 64;
+    private static final int BUILD_BATCH_MAX_QUEUED_JOBS = 4;
     private static final int QUICK_BUILD_COMPLETION_SOUND_DELAY_TICKS = 3;
 
     private RtsStoragePlacement() {
@@ -57,14 +62,17 @@ public final class RtsStoragePlacement {
             double hitX, double hitY, double hitZ, byte rotateSteps, boolean forcePlace, boolean skipIfOccupied,
             String itemId, ItemStack itemPrototype, double rayOriginX, double rayOriginY, double rayOriginZ,
             double rayDirX, double rayDirY, double rayDirZ, boolean quickBuild) {
-        placeSelectedInternal(
+        double hitOffsetX = clickedPos == null ? 0.5D : hitX - clickedPos.getX();
+        double hitOffsetY = clickedPos == null ? 0.5D : hitY - clickedPos.getY();
+        double hitOffsetZ = clickedPos == null ? 0.5D : hitZ - clickedPos.getZ();
+        enqueuePlaceBatch(
                 player,
                 session,
-                clickedPos,
+                clickedPos == null ? List.of() : List.of(clickedPos),
                 face,
-                hitX,
-                hitY,
-                hitZ,
+                hitOffsetX,
+                hitOffsetY,
+                hitOffsetZ,
                 rotateSteps,
                 forcePlace,
                 skipIfOccupied,
@@ -77,14 +85,14 @@ public final class RtsStoragePlacement {
                 rayDirY,
                 rayDirZ,
                 quickBuild,
-                true,
                 true);
     }
 
     public static void enqueuePlaceBatch(ServerPlayer player, RtsStorageSession session, List<BlockPos> clickedPositions,
-            Direction face, byte rotateSteps, boolean forcePlace, boolean skipIfOccupied, String itemId,
-            ItemStack itemPrototype, double rayOriginX, double rayOriginY, double rayOriginZ, double rayDirX, double rayDirY,
-            double rayDirZ) {
+            Direction face, double hitOffsetX, double hitOffsetY, double hitOffsetZ, byte rotateSteps,
+            boolean forcePlace, boolean skipIfOccupied, String itemId, ItemStack itemPrototype,
+            double rayOriginX, double rayOriginY, double rayOriginZ, double rayDirX, double rayDirY,
+            double rayDirZ, boolean quickBuild, boolean sendRemoteHint) {
         if (!RtsProgressionManager.canUse(player, RtsFeature.REMOTE_PLACE)) {
             return;
         }
@@ -105,12 +113,15 @@ public final class RtsStoragePlacement {
         if (positions.isEmpty()) {
             return;
         }
-        while (session.placeBatchJobs.size() >= QUICK_BUILD_BATCH_MAX_QUEUED_JOBS) {
+        while (session.placeBatchJobs.size() >= BUILD_BATCH_MAX_QUEUED_JOBS) {
             session.placeBatchJobs.removeFirst();
         }
         session.placeBatchJobs.addLast(new PlaceBatchJob(
                 positions,
                 face,
+                sanitizeHitOffset(hitOffsetX, face, Direction.Axis.X),
+                sanitizeHitOffset(hitOffsetY, face, Direction.Axis.Y),
+                sanitizeHitOffset(hitOffsetZ, face, Direction.Axis.Z),
                 rotateSteps,
                 forcePlace,
                 skipIfOccupied,
@@ -121,43 +132,53 @@ public final class RtsStoragePlacement {
                 rayOriginZ,
                 rayDirX,
                 rayDirY,
-                rayDirZ));
+                rayDirZ,
+                quickBuild,
+                sendRemoteHint));
     }
 
     public static void tickPlaceBatchJobs(ServerPlayer player, RtsStorageSession session) {
         if (player == null || session == null) {
             return;
         }
-        int remaining = QUICK_BUILD_BATCH_BLOCKS_PER_TICK;
+        int remaining = BUILD_BATCH_BLOCKS_PER_TICK;
         boolean finishedJob = false;
         while (remaining > 0 && !session.placeBatchJobs.isEmpty()) {
             PlaceBatchJob job = session.placeBatchJobs.peekFirst();
             while (remaining > 0 && job.hasNext()) {
                 BlockPos clickedPos = job.next();
-                Vec3 faceNormal = Vec3.atLowerCornerOf(job.face().getNormal());
-                Vec3 hitLocation = Vec3.atCenterOf(clickedPos).add(faceNormal.scale(0.5D));
-                boolean keepGoing = placeSelectedInternal(
-                        player,
-                        session,
-                        clickedPos,
-                        job.face(),
-                        hitLocation.x,
-                        hitLocation.y,
-                        hitLocation.z,
-                        job.rotateSteps(),
-                        job.forcePlace(),
-                        job.skipIfOccupied(),
-                        job.itemId(),
-                        job.itemPrototype(),
-                        job.rayOriginX(),
-                        job.rayOriginY(),
-                        job.rayOriginZ(),
-                        job.rayDirX(),
-                        job.rayDirY(),
-                        job.rayDirZ(),
-                        true,
-                        false,
-                        false);
+                StatePlacementPlan statePlan = job.quickBuild() ? job.statePlacementPlan(player) : null;
+                boolean keepGoing;
+                if (statePlan != null) {
+                    keepGoing = placeStateBatchEntry(player, session, clickedPos, statePlan);
+                } else {
+                    Vec3 hitLocation = new Vec3(
+                            clickedPos.getX() + job.hitOffsetX(),
+                            clickedPos.getY() + job.hitOffsetY(),
+                            clickedPos.getZ() + job.hitOffsetZ());
+                    keepGoing = placeSelectedInternal(
+                            player,
+                            session,
+                            clickedPos,
+                            job.face(),
+                            hitLocation.x,
+                            hitLocation.y,
+                            hitLocation.z,
+                            job.rotateSteps(),
+                            job.forcePlace(),
+                            job.skipIfOccupied(),
+                            job.itemId(),
+                            job.itemPrototype(),
+                            job.rayOriginX(),
+                            job.rayOriginY(),
+                            job.rayOriginZ(),
+                            job.rayDirX(),
+                            job.rayDirY(),
+                            job.rayDirZ(),
+                            job.quickBuild(),
+                            false,
+                            job.sendRemoteHint());
+                }
                 remaining--;
                 if (!keepGoing) {
                     session.placeBatchJobs.removeFirst();
@@ -174,6 +195,165 @@ public final class RtsStoragePlacement {
             RtsStorageManager.saveSessionToPlayerNbt(player, session);
             RtsStorageManager.requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
         }
+    }
+
+    private static StatePlacementPlan resolveStatePlacementPlan(ServerPlayer player, PlaceBatchJob job) {
+        if (player == null || job == null || !job.quickBuild()) {
+            return null;
+        }
+
+        boolean useSelectedStorageItem = job.itemId() != null && !job.itemId().isBlank();
+        Item item;
+        ItemStack templateStack;
+        if (useSelectedStorageItem) {
+            ResourceLocation id = ResourceLocation.tryParse(job.itemId());
+            if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
+                return null;
+            }
+            item = BuiltInRegistries.ITEM.get(id);
+            templateStack = job.itemPrototype();
+            if (templateStack.isEmpty()) {
+                templateStack = new ItemStack(item);
+            }
+        } else {
+            ItemStack mainHand = player.getMainHandItem();
+            if (mainHand.isEmpty()) {
+                return null;
+            }
+            item = mainHand.getItem();
+            templateStack = mainHand.copy();
+        }
+
+        if (!(item instanceof BlockItem blockItem)) {
+            return null;
+        }
+
+        BlockPos templatePos = job.templatePosition();
+        if (templatePos == null || job.face() == null || !player.serverLevel().hasChunkAt(templatePos)) {
+            return null;
+        }
+        templateStack.setCount(1);
+        BlockPlaceContext context = new BlockPlaceContext(
+                player.serverLevel(),
+                player,
+                InteractionHand.MAIN_HAND,
+                templateStack,
+                job.templateHit(templatePos));
+        BlockState state = blockItem.getBlock().getStateForPlacement(context);
+        if (state == null) {
+            return null;
+        }
+
+        ResourceLocation sourceId = BuiltInRegistries.ITEM.getKey(item);
+        if (sourceId == null) {
+            return null;
+        }
+        return new StatePlacementPlan(
+                item,
+                templateStack,
+                rotateState(state, job.rotateSteps()),
+                useSelectedStorageItem,
+                sourceId.toString());
+    }
+
+    private static boolean placeStateBatchEntry(ServerPlayer player, RtsStorageSession session, BlockPos targetPos,
+            StatePlacementPlan plan) {
+        if (!RtsProgressionManager.canUse(player, RtsFeature.REMOTE_PLACE)) {
+            return false;
+        }
+        if (session == null || targetPos == null || plan == null) {
+            return false;
+        }
+        if (!RtsLinkedStorageResolver.canAccessWorldTarget(player, targetPos)) {
+            return false;
+        }
+        RtsLinkedStorageResolver.sanitizeSessionDimension(player, session);
+
+        ServerLevel level = player.serverLevel();
+        if (!canPlaceStateAt(level, player, targetPos, plan.state())) {
+            return true;
+        }
+
+        ItemStack placementStack = plan.templateStack();
+        ItemStack extracted = ItemStack.EMPTY;
+        boolean refundExtractedOnFailure = false;
+        List<IItemHandler> insertHandlers = List.of();
+        if (plan.selectedStorageItem()) {
+            List<LinkedHandler> activeLinked = RtsLinkedStorageResolver.resolveLinkedHandlers(player, session);
+            boolean includePlayerMainInventory = RtsStoragePageBuilder.shouldIncludePlayerMainInventoryInStorageView(player, session);
+            boolean creativeSource = player.isCreative();
+            if (activeLinked.isEmpty() && !includePlayerMainInventory && !creativeSource) {
+                return false;
+            }
+            List<IItemHandler> extractHandlers = RtsLinkedStorageResolver.itemHandlersForExtract(activeLinked);
+            insertHandlers = RtsLinkedStorageResolver.itemHandlersForInsert(activeLinked);
+            extracted = creativeSource
+                    ? creativeStack(plan.item(), plan.templateStack())
+                    : includePlayerMainInventory
+                            ? extractSelectedFromNetwork(extractHandlers, player, plan.item(), plan.templateStack())
+                            : extractSelectedFromLinked(extractHandlers, plan.item(), plan.templateStack());
+            if (extracted.isEmpty()) {
+                return false;
+            }
+            refundExtractedOnFailure = !creativeSource;
+            placementStack = extracted.copy();
+            placementStack.setCount(1);
+        } else if (!player.isCreative()) {
+            ItemStack mainHand = player.getMainHandItem();
+            if (mainHand.isEmpty() || !ItemStack.isSameItemSameComponents(mainHand, plan.templateStack())) {
+                return false;
+            }
+            placementStack = mainHand.copy();
+            placementStack.setCount(1);
+        }
+
+        boolean placed = level.setBlock(targetPos, plan.state(), 3);
+        if (!placed) {
+            if (refundExtractedOnFailure && !extracted.isEmpty()) {
+                RtsStorageTransfers.refundToLinked(insertHandlers, player, extracted);
+            }
+            return true;
+        }
+
+        BlockState placedState = level.getBlockState(targetPos);
+        if (placedState.is(plan.state().getBlock())) {
+            BlockItem.updateCustomBlockEntityTag(level, player, targetPos, placementStack);
+            BlockEntity blockEntity = level.getBlockEntity(targetPos);
+            if (blockEntity != null) {
+                blockEntity.applyComponentsFromItemStack(placementStack);
+                blockEntity.setChanged();
+            }
+            placedState.getBlock().setPlacedBy(level, targetPos, placedState, player, placementStack);
+        }
+        if (!plan.selectedStorageItem() && !player.isCreative()) {
+            player.getMainHandItem().shrink(1);
+        }
+        PlacedBlockTrackerData.get(level).mark(targetPos);
+        playRemotePlacedBlockAnimation(player, targetPos);
+        playRemotePlacedBlockSound(player, level, session, targetPos, true);
+        RtsStorageManager.recordRecentItem(session, plan.itemId(), S2CRtsStoragePagePayload.RECENT_ITEM_PLACED, 1L);
+        return true;
+    }
+
+    private static boolean canPlaceStateAt(ServerLevel level, ServerPlayer player, BlockPos targetPos, BlockState state) {
+        if (level == null || targetPos == null || state == null || !level.hasChunkAt(targetPos)) {
+            return false;
+        }
+        BlockState current = level.getBlockState(targetPos);
+        if (!current.isAir() && !current.canBeReplaced()) {
+            return false;
+        }
+        CollisionContext collision = player == null ? CollisionContext.empty() : CollisionContext.of(player);
+        return state.canSurvive(level, targetPos) && level.isUnobstructed(state, targetPos, collision);
+    }
+
+    private static BlockState rotateState(BlockState state, byte rotateSteps) {
+        int turns = rotateSteps & 3;
+        BlockState rotated = state;
+        for (int i = 0; i < turns; i++) {
+            rotated = rotated.rotate(Rotation.CLOCKWISE_90);
+        }
+        return rotated;
     }
 
     private static boolean placeSelectedInternal(ServerPlayer player, RtsStorageSession session, BlockPos clickedPos,
@@ -239,6 +419,7 @@ public final class RtsStoragePlacement {
                 if (placedPos != null) {
                     PlacedBlockTrackerData.get(level).mark(placedPos);
                     if (sourcePlacesBlock) {
+                        playRemotePlacedBlockAnimation(player, placedPos);
                         playRemotePlacedBlockSound(player, level, session, placedPos, quickBuild);
                     } else {
                         RtsStorageManager.playRemoteUseSound(player, level, null, placedPos, sourceSnapshot);
@@ -382,6 +563,7 @@ public final class RtsStoragePlacement {
             rotatePlacedBlock(level, placedPos, rotateSteps);
             PlacedBlockTrackerData.get(level).mark(placedPos);
             if (selectedPlacesBlock) {
+                playRemotePlacedBlockAnimation(player, placedPos);
                 playRemotePlacedBlockSound(player, level, session, placedPos, quickBuild);
             } else {
                 RtsStorageManager.playRemoteUseSound(player, level, null, placedPos, selectedSoundStack);
@@ -408,6 +590,17 @@ public final class RtsStoragePlacement {
         ItemStack copy = itemPrototype.copy();
         copy.setCount(1);
         return copy;
+    }
+
+    private static double sanitizeHitOffset(double offset, Direction face, Direction.Axis axis) {
+        if (Double.isFinite(offset)) {
+            return offset;
+        }
+        double fallback = 0.5D;
+        if (face != null && face.getAxis() == axis) {
+            fallback += face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 0.5D : -0.5D;
+        }
+        return fallback;
     }
 
     private static ItemStack creativeStack(Item item, ItemStack preferredStack) {
@@ -438,6 +631,13 @@ public final class RtsStoragePlacement {
         if (refreshStoragePage) {
             RtsStorageManager.requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
         }
+    }
+
+    public static void playRemotePlacedBlockAnimation(ServerPlayer player, BlockPos pos) {
+        if (player == null || pos == null) {
+            return;
+        }
+        PacketDistributor.sendToPlayer(player, new S2CRtsPlaceAnimationPayload(pos.immutable()));
     }
 
     public static void playRemotePlacedBlockSound(ServerPlayer player, ServerLevel level, RtsStorageSession session, BlockPos pos,
@@ -525,18 +725,32 @@ public final class RtsStoragePlacement {
             return;
         }
         BlockState state = level.getBlockState(pos);
-        BlockState rotated = state;
-        for (int i = 0; i < turns; i++) {
-            rotated = rotated.rotate(Rotation.CLOCKWISE_90);
-        }
+        BlockState rotated = rotateState(state, rotateSteps);
         if (rotated != state) {
             level.setBlock(pos, rotated, 3);
+        }
+    }
+
+    private record StatePlacementPlan(
+            Item item,
+            ItemStack templateStack,
+            BlockState state,
+            boolean selectedStorageItem,
+            String itemId) {
+        private StatePlacementPlan {
+            templateStack = templateStack == null ? ItemStack.EMPTY : templateStack.copy();
+            if (!templateStack.isEmpty()) {
+                templateStack.setCount(1);
+            }
         }
     }
 
     public static final class PlaceBatchJob {
         private final List<BlockPos> clickedPositions;
         private final Direction face;
+        private final double hitOffsetX;
+        private final double hitOffsetY;
+        private final double hitOffsetZ;
         private final byte rotateSteps;
         private final boolean forcePlace;
         private final boolean skipIfOccupied;
@@ -548,13 +762,21 @@ public final class RtsStoragePlacement {
         private final double rayDirX;
         private final double rayDirY;
         private final double rayDirZ;
+        private final boolean quickBuild;
+        private final boolean sendRemoteHint;
         private int index;
+        private boolean statePlanResolved;
+        private StatePlacementPlan statePlan;
 
-        private PlaceBatchJob(List<BlockPos> clickedPositions, Direction face, byte rotateSteps, boolean forcePlace,
-                boolean skipIfOccupied, String itemId, ItemStack itemPrototype, double rayOriginX, double rayOriginY,
-                double rayOriginZ, double rayDirX, double rayDirY, double rayDirZ) {
+        private PlaceBatchJob(List<BlockPos> clickedPositions, Direction face, double hitOffsetX, double hitOffsetY,
+                double hitOffsetZ, byte rotateSteps, boolean forcePlace, boolean skipIfOccupied, String itemId,
+                ItemStack itemPrototype, double rayOriginX, double rayOriginY, double rayOriginZ, double rayDirX,
+                double rayDirY, double rayDirZ, boolean quickBuild, boolean sendRemoteHint) {
             this.clickedPositions = clickedPositions;
             this.face = face;
+            this.hitOffsetX = hitOffsetX;
+            this.hitOffsetY = hitOffsetY;
+            this.hitOffsetZ = hitOffsetZ;
             this.rotateSteps = rotateSteps;
             this.forcePlace = forcePlace;
             this.skipIfOccupied = skipIfOccupied;
@@ -566,6 +788,8 @@ public final class RtsStoragePlacement {
             this.rayDirX = rayDirX;
             this.rayDirY = rayDirY;
             this.rayDirZ = rayDirZ;
+            this.quickBuild = quickBuild;
+            this.sendRemoteHint = sendRemoteHint;
         }
 
         private boolean hasNext() {
@@ -576,8 +800,43 @@ public final class RtsStoragePlacement {
             return this.clickedPositions.get(this.index++);
         }
 
+        private BlockPos templatePosition() {
+            return this.clickedPositions.isEmpty() ? null : this.clickedPositions.get(0);
+        }
+
+        private BlockHitResult templateHit(BlockPos templatePos) {
+            return new BlockHitResult(
+                    new Vec3(
+                            templatePos.getX() + this.hitOffsetX,
+                            templatePos.getY() + this.hitOffsetY,
+                            templatePos.getZ() + this.hitOffsetZ),
+                    this.face,
+                    templatePos,
+                    false);
+        }
+
+        private StatePlacementPlan statePlacementPlan(ServerPlayer player) {
+            if (!this.statePlanResolved) {
+                this.statePlan = RtsStoragePlacement.resolveStatePlacementPlan(player, this);
+                this.statePlanResolved = true;
+            }
+            return this.statePlan;
+        }
+
         private Direction face() {
             return this.face;
+        }
+
+        private double hitOffsetX() {
+            return this.hitOffsetX;
+        }
+
+        private double hitOffsetY() {
+            return this.hitOffsetY;
+        }
+
+        private double hitOffsetZ() {
+            return this.hitOffsetZ;
         }
 
         private byte rotateSteps() {
@@ -622,6 +881,14 @@ public final class RtsStoragePlacement {
 
         private double rayDirZ() {
             return this.rayDirZ;
+        }
+
+        private boolean quickBuild() {
+            return this.quickBuild;
+        }
+
+        private boolean sendRemoteHint() {
+            return this.sendRemoteHint;
         }
     }
 }

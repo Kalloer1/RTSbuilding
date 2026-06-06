@@ -73,6 +73,9 @@ public final class RtsBuilderNetworkHandlers {
                         serverPlayer,
                         payload.clickedPositions(),
                         face,
+                        payload.hitOffsetX(),
+                        payload.hitOffsetY(),
+                        payload.hitOffsetZ(),
                         payload.rotateSteps(),
                         payload.forcePlace(),
                         payload.skipIfOccupied(),
@@ -218,6 +221,19 @@ public final class RtsBuilderNetworkHandlers {
                         payload.toolPrototype(),
                         payload.shapeType(),
                         payload.fillType());
+            }
+        });
+    }
+
+    public static void handleAreaDestroy(C2SRtsAreaDestroyPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageManager.areaDestroy(
+                        serverPlayer,
+                        payload.positions(),
+                        payload.toolSlot(),
+                        payload.toolItemId(),
+                        payload.toolPrototype());
             }
         });
     }

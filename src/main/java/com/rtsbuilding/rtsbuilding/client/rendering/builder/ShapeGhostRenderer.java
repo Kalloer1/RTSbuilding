@@ -48,28 +48,74 @@ public final class ShapeGhostRenderer {
         }
 
         ShapeDataRecords.GhostPreview preview = builderScreen.getShapeGhostPreview();
-        if (preview.blocks().isEmpty()) {
+        if (preview.blocks().isEmpty() && preview.emptyBlocks().isEmpty()) {
             return;
         }
 
         // 范围破坏高度选择阶段：使用蓝图捕获风格的渲染（边界框+方块高亮）
-        if (builderScreen.isAreaMineHeightPreview()) {
-            renderAreaMineGhostPreview(poseStack, lineBuffer, fillBuffer, preview.blocks());
+        // 根据是否可以确认来选择颜色
+        // 可确认：绿色系；不可确认：青色系
+        float lineR = preview.destructive() ? 1.00F : (preview.readyConfirm() ? 0.45F : 0.30F);
+        float lineG = preview.destructive() ? 0.46F : (preview.readyConfirm() ? 0.95F : 0.75F);
+        float lineB = preview.destructive() ? 0.64F : (preview.readyConfirm() ? 0.45F : 1.00F);
+        float lineA = preview.destructive() ? 0.62F : 0.95F;
+        float fillR = preview.destructive() ? 1.00F : (preview.readyConfirm() ? 0.24F : 0.16F);
+        float fillG = preview.destructive() ? 0.25F : (preview.readyConfirm() ? 0.72F : 0.55F);
+        float fillB = preview.destructive() ? 0.44F : (preview.readyConfirm() ? 0.24F : 0.90F);
+        float fillA = preview.destructive() ? 0.07F : (preview.readyConfirm() ? 0.22F : 0.16F);
+
+        if (preview.destructive() && !preview.emptyBlocks().isEmpty()) {
+            renderGhostEnvelope(poseStack, lineBuffer, fillBuffer, preview.blocks(), preview.emptyBlocks(),
+                    1.00F, 0.86F, 0.22F, 0.72F,
+                    1.00F, 0.86F, 0.18F, 0.18F);
+        }
+
+        renderGhostCells(poseStack, lineBuffer, fillBuffer, preview.blocks(),
+                lineR, lineG, lineB, lineA,
+                fillR, fillG, fillB, fillA);
+    }
+
+    private static void renderGhostEnvelope(PoseStack poseStack, VertexConsumer lineBuffer, VertexConsumer fillBuffer,
+            List<BlockPos> primaryBlocks, List<BlockPos> envelopeBlocks,
+            float lineR, float lineG, float lineB, float lineA,
+            float fillR, float fillG, float fillB, float fillA) {
+        Bounds bounds = Bounds.from(primaryBlocks, envelopeBlocks);
+        if (bounds == null) {
             return;
         }
 
-        // 根据是否可以确认来选择颜色
-        // 可确认：绿色系；不可确认：青色系
-        float lineR = preview.readyConfirm() ? 0.45F : 0.30F;
-        float lineG = preview.readyConfirm() ? 0.95F : 0.75F;
-        float lineB = preview.readyConfirm() ? 0.45F : 1.00F;
-        float fillR = preview.readyConfirm() ? 0.24F : 0.16F;
-        float fillG = preview.readyConfirm() ? 0.72F : 0.55F;
-        float fillB = preview.readyConfirm() ? 0.24F : 0.90F;
-        float fillA = preview.readyConfirm() ? 0.22F : 0.16F;
+        double padding = 0.02D;
+        double minX = bounds.minX() - padding;
+        double minY = bounds.minY() - padding;
+        double minZ = bounds.minZ() - padding;
+        double maxX = bounds.maxX() + 1.0D + padding;
+        double maxY = bounds.maxY() + 1.0D + padding;
+        double maxZ = bounds.maxZ() + 1.0D + padding;
 
+        LevelRenderer.addChainedFilledBoxVertices(
+                poseStack,
+                fillBuffer,
+                minX, minY, minZ,
+                maxX, maxY, maxZ,
+                fillR, fillG, fillB, fillA);
+
+        LevelRenderer.renderLineBox(
+                poseStack,
+                lineBuffer,
+                minX, minY, minZ,
+                maxX, maxY, maxZ,
+                lineR, lineG, lineB,
+                lineA);
+    }
+
+    private static void renderGhostCells(PoseStack poseStack, VertexConsumer lineBuffer, VertexConsumer fillBuffer,
+            List<BlockPos> blocks, float lineR, float lineG, float lineB, float lineA,
+            float fillR, float fillG, float fillB, float fillA) {
+        if (blocks == null || blocks.isEmpty()) {
+            return;
+        }
         // 绘制所有方块的半透明填充
-        for (BlockPos pos : preview.blocks()) {
+        for (BlockPos pos : blocks) {
             double minX = pos.getX() + 0.03D;
             double minY = pos.getY() + 0.03D;
             double minZ = pos.getZ() + 0.03D;
@@ -86,7 +132,7 @@ public final class ShapeGhostRenderer {
         }
 
         // 绘制所有方块的边框线
-        for (BlockPos pos : preview.blocks()) {
+        for (BlockPos pos : blocks) {
             double minX = pos.getX() + 0.03D;
             double minY = pos.getY() + 0.03D;
             double minZ = pos.getZ() + 0.03D;
@@ -100,13 +146,57 @@ public final class ShapeGhostRenderer {
                     minX, minY, minZ,
                     maxX, maxY, maxZ,
                     lineR, lineG, lineB,
-                    0.95F);
+                    lineA);
         }
     }
 
     /**
      * 以蓝图捕获风格渲染范围破坏预览：边界框 + 方块填充高亮
      */
+    private record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        private static Bounds from(List<BlockPos> first, List<BlockPos> second) {
+            MutableBounds bounds = new MutableBounds();
+            bounds.include(first);
+            bounds.include(second);
+            return bounds.toBounds();
+        }
+    }
+
+    private static final class MutableBounds {
+        private int minX = Integer.MAX_VALUE;
+        private int minY = Integer.MAX_VALUE;
+        private int minZ = Integer.MAX_VALUE;
+        private int maxX = Integer.MIN_VALUE;
+        private int maxY = Integer.MIN_VALUE;
+        private int maxZ = Integer.MIN_VALUE;
+        private boolean hasAny;
+
+        private void include(List<BlockPos> blocks) {
+            if (blocks == null || blocks.isEmpty()) {
+                return;
+            }
+            for (BlockPos pos : blocks) {
+                if (pos == null) {
+                    continue;
+                }
+                this.minX = Math.min(this.minX, pos.getX());
+                this.minY = Math.min(this.minY, pos.getY());
+                this.minZ = Math.min(this.minZ, pos.getZ());
+                this.maxX = Math.max(this.maxX, pos.getX());
+                this.maxY = Math.max(this.maxY, pos.getY());
+                this.maxZ = Math.max(this.maxZ, pos.getZ());
+                this.hasAny = true;
+            }
+        }
+
+        private Bounds toBounds() {
+            if (!this.hasAny) {
+                return null;
+            }
+            return new Bounds(this.minX, this.minY, this.minZ, this.maxX, this.maxY, this.maxZ);
+        }
+    }
+
     private static void renderAreaMineGhostPreview(PoseStack poseStack, VertexConsumer lineBuffer,
             VertexConsumer fillBuffer, List<BlockPos> blocks) {
         // 计算包围盒

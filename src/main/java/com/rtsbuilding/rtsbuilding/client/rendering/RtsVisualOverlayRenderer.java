@@ -6,6 +6,7 @@ import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.rendering.blueprint.BlueprintCaptureRenderer;
 import com.rtsbuilding.rtsbuilding.client.rendering.blueprint.BlueprintGhostRenderer;
+import com.rtsbuilding.rtsbuilding.client.rendering.builder.PlacementAnimationRenderer;
 import com.rtsbuilding.rtsbuilding.client.rendering.builder.ShapeGhostRenderer;
 import com.rtsbuilding.rtsbuilding.client.rendering.overlay.BoundaryLineRenderer;
 import com.rtsbuilding.rtsbuilding.client.rendering.overlay.ChunkGuideRenderer;
@@ -208,6 +209,8 @@ public final class RtsVisualOverlayRenderer {
 
             // 7. 渲染蓝图幽灵预览
             BlueprintGhostRenderer.renderBlueprintGhostPreview(minecraft, poseStack, lineBuffer, fillBuffer);
+
+            PlacementAnimationRenderer.render(minecraft, poseStack, lineBuffer, fillBuffer);
 
             // 提交所有渲染缓冲区
             drawBuiltBuffer(lines, lineBuffer);

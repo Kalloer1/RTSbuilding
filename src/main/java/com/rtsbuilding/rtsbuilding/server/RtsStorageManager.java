@@ -1,6 +1,8 @@
 package com.rtsbuilding.rtsbuilding.server;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +92,8 @@ public final class RtsStorageManager {
     private static final int FUNNEL_MAX_ITEMS_PER_TICK = 48;
     private static final int FUNNEL_BUFFER_MAX_STACKS = 16;
     private static final int FUNNEL_TICK_INTERVAL = 2;
+    private static final int PLACED_RECOVERY_MAX_JOBS_PER_TICK = 4;
+    private static final int PLACED_RECOVERY_MAX_STACKS_PER_TICK = 8;
     private static final int SHIFT_IMPORT_MAX_CRAFT_ITERATIONS = 64;
     // Shared with RtsStorageSession so the extracted state object cannot drift
     // from the packet/UI limits that RtsStorageManager still owns.
@@ -234,6 +238,7 @@ public final class RtsStorageManager {
             Session session = entry.getValue();
             tickActiveMining(player, session);
             tickFunnel(player, session);
+            tickPlacedRecoveryJobs(player, session);
             tickDeferredStoragePageRefresh(player, session);
         }
     }
@@ -734,14 +739,17 @@ public final class RtsStorageManager {
             double hitZ, byte rotateSteps, boolean forcePlace, boolean skipIfOccupied, String itemId,
             ItemStack itemPrototype, double rayOriginX, double rayOriginY, double rayOriginZ,
             double rayDirX, double rayDirY, double rayDirZ, boolean quickBuild) {
-        RtsStoragePlacement.placeSelected(
+        double hitOffsetX = clickedPos == null ? 0.5D : hitX - clickedPos.getX();
+        double hitOffsetY = clickedPos == null ? 0.5D : hitY - clickedPos.getY();
+        double hitOffsetZ = clickedPos == null ? 0.5D : hitZ - clickedPos.getZ();
+        RtsStoragePlacement.enqueuePlaceBatch(
                 player,
                 player == null ? null : SESSIONS.get(player.getUUID()),
-                clickedPos,
+                clickedPos == null ? List.of() : List.of(clickedPos),
                 face,
-                hitX,
-                hitY,
-                hitZ,
+                hitOffsetX,
+                hitOffsetY,
+                hitOffsetZ,
                 rotateSteps,
                 forcePlace,
                 skipIfOccupied,
@@ -753,11 +761,13 @@ public final class RtsStorageManager {
                 rayDirX,
                 rayDirY,
                 rayDirZ,
-                quickBuild);
+                quickBuild,
+                true);
     }
 
     public static void enqueuePlaceBatch(ServerPlayer player, List<BlockPos> clickedPositions, Direction face,
-            byte rotateSteps, boolean forcePlace, boolean skipIfOccupied, String itemId,
+            double hitOffsetX, double hitOffsetY, double hitOffsetZ, byte rotateSteps,
+            boolean forcePlace, boolean skipIfOccupied, String itemId,
             ItemStack itemPrototype, double rayOriginX, double rayOriginY, double rayOriginZ,
             double rayDirX, double rayDirY, double rayDirZ) {
         RtsStoragePlacement.enqueuePlaceBatch(
@@ -765,6 +775,9 @@ public final class RtsStorageManager {
                 player == null ? null : SESSIONS.get(player.getUUID()),
                 clickedPositions,
                 face,
+                hitOffsetX,
+                hitOffsetY,
+                hitOffsetZ,
                 rotateSteps,
                 forcePlace,
                 skipIfOccupied,
@@ -775,7 +788,9 @@ public final class RtsStorageManager {
                 rayOriginZ,
                 rayDirX,
                 rayDirY,
-                rayDirZ);
+                rayDirZ,
+                true,
+                false);
     }
 
     private static BlockPos resolvePlacementTargetPos(ServerLevel level, BlockPos clickedPos, Direction face) {
@@ -914,6 +929,7 @@ public final class RtsStorageManager {
             if (placedPos != null) {
                 PlacedBlockTrackerData.get(level).mark(placedPos);
                 if (!soundStack.isEmpty() && soundStack.getItem() instanceof BlockItem) {
+                    RtsStoragePlacement.playRemotePlacedBlockAnimation(player, placedPos);
                     RtsStoragePlacement.playRemotePlacedBlockSound(player, level, session, placedPos, false);
                 } else {
                     playRemoteUseSound(player, level, targetEntity, placedPos, soundStack);
@@ -1006,20 +1022,6 @@ public final class RtsStorageManager {
             targetPos = adjacent;
         }
 
-        List<LinkedHandler> activeLinked = resolveLinkedHandlers(player, session);
-        if (!undoRecovery && activeLinked.isEmpty()) {
-            return;
-        }
-        List<IItemHandler> handlers = new ArrayList<>(activeLinked.size());
-        for (LinkedHandler linked : RtsLinkedStorageResolver.orderHandlersForInsert(activeLinked)) {
-            // Never route recovered items into the container being broken.
-            if (linked.pos().equals(targetPos)) {
-                continue;
-            }
-            handlers.add(linked.handler());
-        }
-        boolean hasLinkedRecoveryTarget = !handlers.isEmpty();
-
         BlockState state = level.getBlockState(targetPos);
         if (state.isAir()) {
             tracker.clear(targetPos);
@@ -1033,31 +1035,8 @@ public final class RtsStorageManager {
         }
 
         tracker.clear(targetPos);
-        OverflowOutcome overflow = OverflowOutcome.EMPTY;
         List<ItemEntity> droppedEntities = collectNewNearbyDrops(level, targetPos, dropIdsBeforeBreak);
-        for (ItemEntity droppedEntity : droppedEntities) {
-            ItemStack droppedStack = droppedEntity.getItem();
-            if (droppedStack.isEmpty()) {
-                continue;
-            }
-            ItemStack remain = storeToLinkedOnlyPreferExisting(handlers, droppedStack);
-            if (remain.isEmpty()) {
-                droppedEntity.discard();
-                continue;
-            }
-
-            overflow = overflow.merge(storeToLinkedWithFallback(handlers, player, remain));
-            droppedEntity.discard();
-        }
-        if (overflow.hasOverflow()) {
-            if (hasLinkedRecoveryTarget) {
-                sendStorageOverflowHint(player, "Absorb", overflow);
-            } else if (overflow.dropped() > 0) {
-                player.displayClientMessage(
-                        Component.literal("Inventory full, dropped " + overflow.dropped() + "."),
-                        true);
-            }
-        }
+        enqueuePlacedRecoveryJob(session, targetPos, droppedEntities);
 
         // If a linked storage block itself is broken, unlink it immediately.
         LinkedStorageRef targetRef = new LinkedStorageRef(player.serverLevel().dimension(), targetPos);
@@ -1069,9 +1048,100 @@ public final class RtsStorageManager {
         }
 
         RtsStorageMining.scheduleMiningStorageRefresh(player, session);
-        if (!droppedEntities.isEmpty()) {
+    }
+
+    private static void enqueuePlacedRecoveryJob(Session session, BlockPos targetPos, List<ItemEntity> droppedEntities) {
+        if (session == null || droppedEntities == null || droppedEntities.isEmpty()) {
+            return;
+        }
+        Deque<ItemStack> stacks = new ArrayDeque<>();
+        for (ItemEntity droppedEntity : droppedEntities) {
+            if (droppedEntity == null) {
+                continue;
+            }
+            ItemStack droppedStack = droppedEntity.getItem();
+            if (droppedStack.isEmpty()) {
+                continue;
+            }
+            stacks.addLast(droppedStack.copy());
+            droppedEntity.discard();
+        }
+        if (!stacks.isEmpty()) {
+            session.placedRecoveryJobs.addLast(new PlacedRecoveryJob(targetPos.immutable(), stacks));
+        }
+    }
+
+    private static void tickPlacedRecoveryJobs(ServerPlayer player, Session session) {
+        if (player == null || session == null || session.placedRecoveryJobs.isEmpty()) {
+            return;
+        }
+
+        List<LinkedHandler> orderedLinked = RtsLinkedStorageResolver.orderHandlersForInsert(resolveLinkedHandlers(player, session));
+        OverflowOutcome overflow = OverflowOutcome.EMPTY;
+        boolean hasLinkedRecoveryTarget = false;
+        boolean processedAny = false;
+        int processedJobs = 0;
+        int processedStacks = 0;
+
+        while (!session.placedRecoveryJobs.isEmpty()
+                && processedJobs < PLACED_RECOVERY_MAX_JOBS_PER_TICK
+                && processedStacks < PLACED_RECOVERY_MAX_STACKS_PER_TICK) {
+            PlacedRecoveryJob job = session.placedRecoveryJobs.peekFirst();
+            if (job == null || job.stacks.isEmpty()) {
+                session.placedRecoveryJobs.removeFirst();
+                processedJobs++;
+                continue;
+            }
+
+            List<IItemHandler> handlers = placedRecoveryHandlersExcluding(orderedLinked, job.targetPos);
+            hasLinkedRecoveryTarget |= !handlers.isEmpty();
+            while (!job.stacks.isEmpty() && processedStacks < PLACED_RECOVERY_MAX_STACKS_PER_TICK) {
+                ItemStack droppedStack = job.stacks.removeFirst();
+                if (droppedStack == null || droppedStack.isEmpty()) {
+                    continue;
+                }
+                ItemStack remain = storeToLinkedOnlyPreferExisting(handlers, droppedStack);
+                if (!remain.isEmpty()) {
+                    overflow = overflow.merge(storeToLinkedWithFallback(handlers, player, remain));
+                }
+                processedStacks++;
+                processedAny = true;
+            }
+
+            if (job.stacks.isEmpty()) {
+                session.placedRecoveryJobs.removeFirst();
+                processedJobs++;
+            }
+        }
+
+        if (overflow.hasOverflow()) {
+            if (hasLinkedRecoveryTarget) {
+                sendStorageOverflowHint(player, "Absorb", overflow);
+            } else if (overflow.dropped() > 0) {
+                player.displayClientMessage(
+                        Component.literal("Inventory full, dropped " + overflow.dropped() + "."),
+                        true);
+            }
+        }
+        if (processedAny) {
+            RtsStorageMining.scheduleMiningStorageRefresh(player, session);
             runQuestDetect(player, session, false);
         }
+    }
+
+    private static List<IItemHandler> placedRecoveryHandlersExcluding(List<LinkedHandler> orderedLinked, BlockPos targetPos) {
+        if (orderedLinked == null || orderedLinked.isEmpty()) {
+            return List.of();
+        }
+        List<IItemHandler> handlers = new ArrayList<>(orderedLinked.size());
+        for (LinkedHandler linked : orderedLinked) {
+            // Never route recovered items into the container being broken.
+            if (linked.pos().equals(targetPos)) {
+                continue;
+            }
+            handlers.add(linked.handler());
+        }
+        return handlers;
     }
 
     private static boolean breakPlacedWithSimulatedSilkTool(ServerPlayer player, ServerLevel level, BlockPos targetPos) {
@@ -1164,6 +1234,17 @@ public final class RtsStorageManager {
                 toolPrototype,
                 shapeType,
                 fillType);
+    }
+
+    public static void areaDestroy(ServerPlayer player, List<BlockPos> positions,
+            byte toolSlot, String toolItemId, ItemStack toolPrototype) {
+        RtsStorageMining.areaDestroy(
+                player,
+                SESSIONS.get(player.getUUID()),
+                positions,
+                toolSlot,
+                toolItemId,
+                toolPrototype);
     }
 
     private static void tickActiveMining(ServerPlayer player, RtsStorageSession session) {
@@ -2308,11 +2389,23 @@ public final class RtsStorageManager {
         }
     }
 
+    private static final class PlacedRecoveryJob {
+        private final BlockPos targetPos;
+        private final Deque<ItemStack> stacks;
+
+        private PlacedRecoveryJob(BlockPos targetPos, Deque<ItemStack> stacks) {
+            this.targetPos = targetPos;
+            this.stacks = stacks;
+        }
+    }
+
     // Keep the old nested name as the local owner handle while the state fields
     // live in RtsStorageSession. This makes the first split behavior-neutral:
     // call sites still ask RtsStorageManager for a Session, and later PRs can
     // move persistence, linked-handler lookup, or mining state one boundary at a time.
     private static final class Session extends RtsStorageSession {
+        private final Deque<PlacedRecoveryJob> placedRecoveryJobs = new ArrayDeque<>();
+
         private Session() {
             super();
         }

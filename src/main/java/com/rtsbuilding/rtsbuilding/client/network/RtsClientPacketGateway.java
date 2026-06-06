@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 
 import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsAreaDestroyPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsAreaMinePayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsBreakPayload;
 import com.rtsbuilding.rtsbuilding.network.progression.C2SRtsBeginHomeSelectionPayload;
@@ -331,10 +332,20 @@ public final class RtsClientPacketGateway {
 
     public static void sendPlaceBatch(List<BlockHitResult> hits, boolean forcePlace, boolean skipIfOccupied, String itemId,
             ItemStack itemPrototype, int rotateSteps, Vec3 rayOrigin, Vec3 rayDir) {
+        sendPlaceBatch(hits, hits == null || hits.isEmpty() ? null : hits.get(0), forcePlace, skipIfOccupied,
+                itemId, itemPrototype, rotateSteps, rayOrigin, rayDir);
+    }
+
+    public static void sendPlaceBatch(List<BlockHitResult> hits, BlockHitResult templateHit, boolean forcePlace,
+            boolean skipIfOccupied, String itemId, ItemStack itemPrototype, int rotateSteps, Vec3 rayOrigin, Vec3 rayDir) {
         if (hits == null || hits.isEmpty()) {
             return;
         }
         Direction face = hits.get(0).getDirection();
+        BlockHitResult placementTemplate = templateHit == null ? hits.get(0) : templateHit;
+        double hitOffsetX = placementTemplate.getLocation().x - placementTemplate.getBlockPos().getX();
+        double hitOffsetY = placementTemplate.getLocation().y - placementTemplate.getBlockPos().getY();
+        double hitOffsetZ = placementTemplate.getLocation().z - placementTemplate.getBlockPos().getZ();
         List<BlockPos> positions = new ArrayList<>(Math.min(hits.size(), C2SRtsPlaceBatchPayload.MAX_POSITIONS));
         for (BlockHitResult hit : hits) {
             if (hit == null || hit.getDirection() != face) {
@@ -355,6 +366,9 @@ public final class RtsClientPacketGateway {
         PacketDistributor.sendToServer(new C2SRtsPlaceBatchPayload(
                 positions,
                 (byte) face.get3DDataValue(),
+                hitOffsetX,
+                hitOffsetY,
+                hitOffsetZ,
                 (byte) rotateSteps,
                 forcePlace,
                 skipIfOccupied,
@@ -484,6 +498,17 @@ public final class RtsClientPacketGateway {
                 toolPrototype == null ? ItemStack.EMPTY : toolPrototype,
                 shapeType,
                 fillType));
+    }
+
+    public static void sendAreaDestroy(List<BlockPos> positions, int toolSlot, String toolItemId, ItemStack toolPrototype) {
+        if (positions == null || positions.isEmpty()) {
+            return;
+        }
+        PacketDistributor.sendToServer(new C2SRtsAreaDestroyPayload(
+                positions,
+                (byte) Mth.clamp(toolSlot, 0, 8),
+                toolItemId == null ? "" : toolItemId,
+                toolPrototype == null ? ItemStack.EMPTY : toolPrototype));
     }
 
     public static void sendMineStart(BlockPos pos, int face, int toolSlot, String toolItemId, ItemStack toolPrototype,

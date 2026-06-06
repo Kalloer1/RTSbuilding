@@ -28,6 +28,7 @@ public final class RtsProgressionNodes {
     public static final ResourceLocation CRAFT_TERMINAL = id("craft_terminal");
     public static final ResourceLocation JEI_TRANSFER = id("jei_transfer");
     public static final ResourceLocation ULTIMINE = id("ultimine");
+    public static final ResourceLocation AREA_DESTROY = id("area_destroy");
     public static final ResourceLocation BLUEPRINTS = id("blueprints");
     public static final ResourceLocation FIELD_DEPLOYMENT = id("field_deployment");
 
@@ -151,6 +152,8 @@ public final class RtsProgressionNodes {
 
         add(nodes, ULTIMINE, List.of(AUTO_STORE_MINED), cost("minecraft:diamond_pickaxe", 1, "minecraft:redstone_block", 1),
                 List.of(RtsUnlockEffect.unlock(RtsFeature.ULTIMINE), RtsUnlockEffect.ultimineLimit(64)), 3, 3);
+        add(nodes, AREA_DESTROY, List.of(ULTIMINE), cost("minecraft:beacon", 1),
+                List.of(RtsUnlockEffect.unlock(RtsFeature.AREA_DESTROY)), 4, 3);
         add(nodes, FIELD_DEPLOYMENT, List.of(RADIUS_MAX), cost("minecraft:dragon_head", 1),
                 List.of(RtsUnlockEffect.bypassHomeRadius()), 5, 0);
 

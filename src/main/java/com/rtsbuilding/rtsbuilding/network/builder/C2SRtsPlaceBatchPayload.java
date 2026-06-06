@@ -15,6 +15,9 @@ import net.minecraft.world.item.ItemStack;
 public record C2SRtsPlaceBatchPayload(
         List<BlockPos> clickedPositions,
         byte face,
+        double hitOffsetX,
+        double hitOffsetY,
+        double hitOffsetZ,
         byte rotateSteps,
         boolean forcePlace,
         boolean skipIfOccupied,
@@ -39,6 +42,9 @@ public record C2SRtsPlaceBatchPayload(
                     buf.writeBlockPos(payload.clickedPositions().get(i));
                 }
                 buf.writeByte(payload.face());
+                buf.writeDouble(payload.hitOffsetX());
+                buf.writeDouble(payload.hitOffsetY());
+                buf.writeDouble(payload.hitOffsetZ());
                 buf.writeByte(payload.rotateSteps());
                 buf.writeBoolean(payload.forcePlace());
                 buf.writeBoolean(payload.skipIfOccupied());
@@ -67,6 +73,9 @@ public record C2SRtsPlaceBatchPayload(
                 return new C2SRtsPlaceBatchPayload(
                         positions,
                         buf.readByte(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readDouble(),
                         buf.readByte(),
                         buf.readBoolean(),
                         buf.readBoolean(),
