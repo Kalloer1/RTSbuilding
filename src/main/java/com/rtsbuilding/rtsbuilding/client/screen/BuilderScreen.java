@@ -20,6 +20,7 @@ import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsFloatingWindowLayer;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
+import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildMode;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeDataRecords;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeGeometryUtil;
@@ -1544,6 +1545,14 @@ public final class BuilderScreen extends Screen {
     public boolean isUltimineOpen() {
         return this.ultiminePanel.isOpen();
     }
+    /** Returns true when quick-build is showing the range-destroy workflow. */
+    public boolean isQuickBuildRangeDestroyMode() {
+        return this.quickBuildPanel.isQuickBuildOpen() && this.quickBuildPanel.isRangeDestroyMode();
+    }
+    /** Sets the quick-build window mode and persists the UI state. */
+    public void setQuickBuildMode(QuickBuildMode mode) {
+        this.quickBuildPanel.setMode(mode);
+    }
     /** Returns the current ultimine block limit. */
     public int getUltimineLimit() {
         return this.ultiminePanel.getLimit();
@@ -1554,7 +1563,7 @@ public final class BuilderScreen extends Screen {
     }
     /** Returns true if currently in area mine height selection phase (NEED_HEIGHT). */
     public boolean isAreaMineHeightPreview() {
-        if (!isUltimineOpen() || getUltimineMode() != UltimineMode.AREA) {
+        if (!isQuickBuildRangeDestroyMode()) {
             return false;
         }
         int phase = this.controller.getAreaMinePhase();
@@ -2033,9 +2042,10 @@ public final class BuilderScreen extends Screen {
             return List.of();
         }
         boolean creative = this.minecraft.player != null && this.minecraft.player.isCreative();
+        boolean areaMode = isQuickBuildRangeDestroyMode();
         int limit = this.ultiminePanel.getLimit();
         UltimineMode mode = this.ultiminePanel.getMode();
-        if (mode == UltimineMode.AREA) {
+        if (areaMode) {
             BlockPos pointA = this.controller.getAreaMinePointA();
             if (pointA == null) {
                 return List.of();
@@ -2049,7 +2059,8 @@ public final class BuilderScreen extends Screen {
                 if (cursorPos != null && pointA != null && !cursorPos.equals(pointA)) {
                     ClientRtsController.AreaMineBounds bounds = ClientRtsController.computeAreaMineBounds(pointA, cursorPos, 0);
                     Set<BlockPos> targets = new HashSet<>();
-                    addAreaMineShapeTargets(targets, bounds, this.controller.getAreaMineShape(), 0);
+                    addAreaMineShapeTargets(targets, bounds, this.controller.getAreaMineShape(),
+                            this.shapeController.getShapeFillMode(), 0);
                     return new ArrayList<>(targets);
                 }
                 return List.of(cursorPos != null ? cursorPos : seed);
@@ -2059,8 +2070,11 @@ public final class BuilderScreen extends Screen {
                     pointA, pointB, this.controller.getAreaMineHeightOffset());
             Set<BlockPos> targets = new HashSet<>();
             addAreaMineShapeTargets(targets, bounds, this.controller.getAreaMineShape(),
-                    bounds.maxY() - bounds.minY());
+                    this.shapeController.getShapeFillMode(), bounds.maxY() - bounds.minY());
             return new ArrayList<>(targets);
+        }
+        if (!isUltimineOpen()) {
+            return List.of();
         }
         return RtsUltimineCollector.collect(
                 this.minecraft.level,
@@ -2083,7 +2097,7 @@ public final class BuilderScreen extends Screen {
      * @param height   高度（未使用，保留接口兼容）
      */
     private void addAreaMineShapeTargets(Set<BlockPos> targets, ClientRtsController.AreaMineBounds bounds,
-            AreaMineShape shape, int height) {
+            AreaMineShape shape, ShapeFillMode fillMode, int height) {
         // 计算形状中心与半径
         double cx = (bounds.minX() + bounds.maxX() + 1) / 2.0D;
         double cz = (bounds.minZ() + bounds.maxZ() + 1) / 2.0D;
@@ -2128,10 +2142,39 @@ public final class BuilderScreen extends Screen {
                         if ((ddx * ddx + ddz * ddz) > cylRadiusSq + 0.5D) continue;
                     }
                     // BOX: 不过滤，全部加入
+                    if (!includeAreaMineFillCell(shape, fillMode, bounds, x, y, z, cx, cz, cylRadiusSq)) {
+                        continue;
+                    }
                     targets.add(new BlockPos(x, y, z));
                 }
             }
         }
+    }
+
+    private static boolean includeAreaMineFillCell(AreaMineShape shape, ShapeFillMode fillMode,
+            ClientRtsController.AreaMineBounds bounds, int x, int y, int z,
+            double cx, double cz, double radiusSq) {
+        if (fillMode == ShapeFillMode.FILL || shape == AreaMineShape.BLOCK || shape == AreaMineShape.LINE) {
+            return true;
+        }
+        boolean xBoundary = x == bounds.minX() || x == bounds.maxX();
+        boolean yBoundary = y == bounds.minY() || y == bounds.maxY();
+        boolean zBoundary = z == bounds.minZ() || z == bounds.maxZ();
+        int boundaryAxes = (xBoundary ? 1 : 0) + (yBoundary ? 1 : 0) + (zBoundary ? 1 : 0);
+        if (shape == AreaMineShape.SQUARE) {
+            return xBoundary || zBoundary;
+        }
+        if (shape == AreaMineShape.CIRCLE) {
+            double radius = Math.sqrt(radiusSq);
+            double inner = Math.max(0.0D, radius - 1.0D);
+            double ddx = (x + 0.5D) - cx;
+            double ddz = (z + 0.5D) - cz;
+            return (ddx * ddx + ddz * ddz) >= inner * inner - 0.5D;
+        }
+        if (fillMode == ShapeFillMode.SKELETON) {
+            return boundaryAxes >= 2;
+        }
+        return boundaryAxes >= 1;
     }
 
     /**
