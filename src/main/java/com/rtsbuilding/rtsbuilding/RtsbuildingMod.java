@@ -72,7 +72,7 @@ public class RtsbuildingMod {
         LOGGER.info("HELLO from server starting");
     }
 
-    @EventBusSubscriber(modid = RtsbuildingMod.MODID, bus = EventBusSubscriber.Bus.GAME)
+    @EventBusSubscriber(modid = RtsbuildingMod.MODID)
     static class GameEvents {
         @SubscribeEvent
         static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {

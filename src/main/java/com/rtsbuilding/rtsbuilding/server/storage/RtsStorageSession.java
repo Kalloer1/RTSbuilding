@@ -13,11 +13,10 @@ import java.util.Map;
 import java.util.Set;
 
 import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
+import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementBatch;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 
@@ -186,7 +185,7 @@ public class RtsStorageSession {
     // ======================================================================
     // §8  快速建造音效与放置队列
     //      快速建造触发后的音效回放状态和尚未执行的方块放置批次。
-    //      PlaceBatchJob 类型定义在 RtsStoragePlacement 中。
+    //      PlaceBatchJob 类型定义在 RtsPlacementBatch 中。
     // ======================================================================
 
     /** 本次快速建造已放置的方块计数（用于音效反馈和客户端同步） */
@@ -202,7 +201,7 @@ public class RtsStorageSession {
     /** 音效播放位置 Z */
     public double quickBuildSoundZ;
     /** 待处理的放置批次作业队列 */
-    public final Deque<RtsStoragePlacement.PlaceBatchJob> placeBatchJobs = new ArrayDeque<>();
+    public final Deque<RtsPlacementBatch.PlaceBatchJob> placeBatchJobs = new ArrayDeque<>();
 
     // ======================================================================
     // §9  UI 记忆：最近条目、快捷槽与外部 GUI 绑定

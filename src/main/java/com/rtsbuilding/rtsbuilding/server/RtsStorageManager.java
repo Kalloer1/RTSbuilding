@@ -24,6 +24,9 @@ import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
 import com.rtsbuilding.rtsbuilding.server.storage.*;
+import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementBatch;
+import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementHelper;
+import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementSound;
 import com.rtsbuilding.rtsbuilding.util.RtsCountUtil;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsInteractPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsLinkStoragePayload;
@@ -172,8 +175,8 @@ public final class RtsStorageManager {
                 && (player.containerMenu == null || player.containerMenu.containerId != session.remoteMenuContainerId)) {
             clearRemoteMenuValidation(player, session);
         }
-        RtsStoragePlacement.tickQuickBuildCompletionSound(player, session);
-        RtsStoragePlacement.tickPlaceBatchJobs(player, session);
+        RtsPlacementSound.tickQuickBuildCompletionSound(player, session);
+        RtsPlacementBatch.tickPlaceBatchJobs(player, session);
     }
 
     public static void closeRemoteMenuFromClient(ServerPlayer player) {
@@ -403,7 +406,7 @@ public final class RtsStorageManager {
         if (session == null || !canAccessWorldTarget(player, pos)) {
             return;
         }
-        RtsStoragePlacement.rotatePlacedBlock(player.serverLevel(), pos, (byte) 1);
+        RtsPlacementHelper.rotatePlacedBlock(player.serverLevel(), pos, (byte) 1);
     }
 
     public static void storeHotbarSlotToLinked(ServerPlayer player, byte slotId) {
@@ -582,7 +585,7 @@ public final class RtsStorageManager {
         if (session == null) {
             return;
         }
-        RtsStoragePlacement.playRemotePlacedBlockSound(player, player.serverLevel(), session, pos, true);
+        RtsPlacementSound.playRemotePlacedBlockSound(player, player.serverLevel(), session, pos, true);
         recordRecentItem(session, itemId, S2CRtsStoragePagePayload.RECENT_ITEM_PLACED, 1L);
     }
 
@@ -742,7 +745,7 @@ public final class RtsStorageManager {
         double hitOffsetX = clickedPos == null ? 0.5D : hitX - clickedPos.getX();
         double hitOffsetY = clickedPos == null ? 0.5D : hitY - clickedPos.getY();
         double hitOffsetZ = clickedPos == null ? 0.5D : hitZ - clickedPos.getZ();
-        RtsStoragePlacement.enqueuePlaceBatch(
+        RtsPlacementBatch.enqueuePlaceBatch(
                 player,
                 player == null ? null : SESSIONS.get(player.getUUID()),
                 clickedPos == null ? List.of() : List.of(clickedPos),
@@ -770,7 +773,7 @@ public final class RtsStorageManager {
             boolean forcePlace, boolean skipIfOccupied, String itemId,
             ItemStack itemPrototype, double rayOriginX, double rayOriginY, double rayOriginZ,
             double rayDirX, double rayDirY, double rayDirZ) {
-        RtsStoragePlacement.enqueuePlaceBatch(
+        RtsPlacementBatch.enqueuePlaceBatch(
                 player,
                 player == null ? null : SESSIONS.get(player.getUUID()),
                 clickedPositions,
@@ -920,7 +923,7 @@ public final class RtsStorageManager {
 
         boolean playedSpecificSound = false;
         if (result.consumesAction() && blockHit != null && beforeClicked != null) {
-            BlockPos placedPos = RtsStoragePlacement.detectPlacedPos(
+            BlockPos placedPos = RtsPlacementHelper.detectPlacedPos(
                     level,
                     effectiveBlockPos,
                     beforeClicked,
@@ -929,8 +932,8 @@ public final class RtsStorageManager {
             if (placedPos != null) {
                 PlacedBlockTrackerData.get(level).mark(placedPos);
                 if (!soundStack.isEmpty() && soundStack.getItem() instanceof BlockItem) {
-                    RtsStoragePlacement.playRemotePlacedBlockAnimation(player, placedPos);
-                    RtsStoragePlacement.playRemotePlacedBlockSound(player, level, session, placedPos, false);
+                    RtsPlacementSound.playRemotePlacedBlockAnimation(player, placedPos);
+                    RtsPlacementSound.playRemotePlacedBlockSound(player, level, session, placedPos, false);
                 } else {
                     playRemoteUseSound(player, level, targetEntity, placedPos, soundStack);
                 }

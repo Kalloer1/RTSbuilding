@@ -11,7 +11,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.util.BlockSnapshot;
 import net.neoforged.neoforge.event.level.BlockEvent;
 
-@EventBusSubscriber(modid = RtsbuildingMod.MODID, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(modid = RtsbuildingMod.MODID)
 public final class RtsBlockTrackingEvents {
     private RtsBlockTrackingEvents() {
     }
