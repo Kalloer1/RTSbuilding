@@ -41,9 +41,9 @@ public final class RtsCraftNetworkHandlers {
     public static void handleCraftRefill(C2SRtsCraftRefillPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.refillCurrentCraftGridFromBlueprintIds(
+                RtsStorageManager.refillCurrentCraftGridFromBlueprintStacks(
                         serverPlayer,
-                        payload.blueprintItemIds(),
+                        payload.blueprintStacks(),
                         payload.craftedItemId(),
                         payload.craftedCount());
             }
@@ -61,7 +61,12 @@ public final class RtsCraftNetworkHandlers {
     public static void handleJeiTransfer(C2SRtsJeiTransferPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.applyJeiTransfer(serverPlayer, payload.recipeId(), payload.maxTransfer(), payload.clearGridFirst());
+                RtsStorageManager.applyJeiTransfer(
+                        serverPlayer,
+                        payload.recipeId(),
+                        payload.ingredientPrototypes(),
+                        payload.maxTransfer(),
+                        payload.clearGridFirst());
             }
         });
     }

@@ -1,7 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -171,7 +170,7 @@ public final class RtsStorageCrafting {
             return;
         }
 
-        Map<String, Long> availableCounts = summarizeAvailableCraftItems(player, session, activeLinked);
+        List<AvailableCraftItem> availableStacks = snapshotAvailableCraftItems(player, session, activeLinked);
         Map<String, List<CraftableCandidate>> byResultItem = new LinkedHashMap<>();
         for (RecipeHolder<CraftingRecipe> holder : player.serverLevel().getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING)) {
             if (!supportsWorkbenchCraftPanelRecipe(holder.value())) {
@@ -180,7 +179,7 @@ public final class RtsStorageCrafting {
             CraftableCandidate candidate = buildCraftableCandidate(
                     player,
                     holder,
-                    availableCounts,
+                    availableStacks,
                     session.craftSearch,
                     session.craftPinyinSearchEnabled,
                     session.craftLocalizedSearchMatches);
@@ -388,33 +387,93 @@ public final class RtsStorageCrafting {
                 List.copyOf(session.craftLocalizedSearchMatches));
     }
 
-    private static Map<String, Long> summarizeAvailableCraftItems(ServerPlayer player, RtsStorageSession session, List<LinkedHandler> activeLinked) {
-        Map<String, Long> counts = new HashMap<>();
-        for (LinkedHandler linked : activeLinked) {
-            IItemHandler handler = linked.handler();
+    private static List<AvailableCraftItem> snapshotAvailableCraftItems(
+            ServerPlayer player,
+            RtsStorageSession session,
+            List<LinkedHandler> activeLinked) {
+        boolean includePlayerMainInventory = session != null
+                && !session.linkedStorages.isEmpty()
+                && player != null
+                && !(player.containerMenu instanceof RtsCraftTerminalMenu);
+        return snapshotAvailableCraftItemsFromHandlers(
+                player,
+                RtsLinkedStorageResolver.itemHandlersForExtract(activeLinked),
+                includePlayerMainInventory);
+    }
+
+    private static List<AvailableCraftItem> snapshotAvailableCraftItemsFromHandlers(
+            ServerPlayer player,
+            List<IItemHandler> handlers,
+            boolean includePlayerMainInventory) {
+        List<AvailableCraftItem> entries = new ArrayList<>();
+        if (handlers == null) {
+            handlers = List.of();
+        }
+        for (IItemHandler handler : handlers) {
+            if (handler == null) {
+                continue;
+            }
             for (int i = 0; i < handler.getSlots(); i++) {
                 ItemStack stack = handler.getStackInSlot(i);
                 if (stack.isEmpty()) {
                     continue;
                 }
-                ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-                if (id == null) {
-                    continue;
-                }
-                RtsStoragePageBuilder.mergeCount(counts, id.toString(), RtsStoragePageBuilder.getHandlerReportedCount(handler, i, stack));
+                mergeAvailableCraftItem(entries, stack, RtsStoragePageBuilder.getHandlerReportedCount(handler, i, stack));
             }
         }
 
-        boolean includePlayerMainInventory = !session.linkedStorages.isEmpty()
-                && !(player.containerMenu instanceof RtsCraftTerminalMenu);
-        if (includePlayerMainInventory) {
-            RtsStoragePageBuilder.accumulatePlayerMainInventoryCounts(player, counts, new HashMap<>());
+        if (includePlayerMainInventory && player != null) {
+            int start = RtsStoragePageBuilder.getPlayerMainInventoryStart(player);
+            int end = RtsStoragePageBuilder.getPlayerMainInventoryEndExclusive(player);
+            for (int slot = start; slot < end; slot++) {
+                ItemStack stack = player.getInventory().getItem(slot);
+                if (!stack.isEmpty()) {
+                    mergeAvailableCraftItem(entries, stack, stack.getCount());
+                }
+            }
         }
-        return counts;
+        return entries;
+    }
+
+    private static void mergeAvailableCraftItem(List<AvailableCraftItem> entries, ItemStack stack, long count) {
+        if (entries == null || stack == null || stack.isEmpty() || count <= 0L) {
+            return;
+        }
+        ItemStack prototype = stack.copyWithCount(1);
+        for (int i = 0; i < entries.size(); i++) {
+            AvailableCraftItem existing = entries.get(i);
+            if (!ItemStack.isSameItemSameComponents(existing.prototype(), prototype)) {
+                continue;
+            }
+            entries.set(i, new AvailableCraftItem(existing.prototype(), saturatedAdd(existing.count(), count)));
+            return;
+        }
+        entries.add(new AvailableCraftItem(prototype, count));
+    }
+
+    private static long saturatedAdd(long left, long right) {
+        if (left >= Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        return left + right;
+    }
+
+    private static List<AvailableCraftItem> copyAvailableCraftItems(List<AvailableCraftItem> source) {
+        List<AvailableCraftItem> copy = new ArrayList<>();
+        if (source == null) {
+            return copy;
+        }
+        for (AvailableCraftItem item : source) {
+            if (item == null || item.prototype().isEmpty() || item.count() <= 0L) {
+                continue;
+            }
+            copy.add(new AvailableCraftItem(item.prototype(), item.count()));
+        }
+        return copy;
     }
 
     private static CraftableCandidate buildCraftableCandidate(ServerPlayer player, RecipeHolder<CraftingRecipe> holder,
-            Map<String, Long> availableCounts, String search, boolean pinyinSearchEnabled,
+            List<AvailableCraftItem> availableStacks, String search, boolean pinyinSearchEnabled,
             Set<String> localizedSearchMatches) {
         if (player == null || holder == null || holder.value() == null) {
             return null;
@@ -434,7 +493,7 @@ public final class RtsStorageCrafting {
             return null;
         }
 
-        RecipeAvailability availability = evaluateRecipeAvailability(holder.value(), availableCounts);
+        RecipeAvailability availability = evaluateRecipeAvailability(holder.value(), availableStacks);
         return new CraftableCandidate(
                 holder.id().toString(),
                 resultId.toString(),
@@ -464,7 +523,9 @@ public final class RtsStorageCrafting {
                 return false;
             }
         } else {
-            return false;
+            if (ingredients.size() > 9) {
+                return false;
+            }
         }
 
         boolean anyNonEmpty = false;
@@ -505,28 +566,133 @@ public final class RtsStorageCrafting {
         return assembled.isEmpty() ? ItemStack.EMPTY : assembled.copy();
     }
 
-    private static RecipeAvailability evaluateRecipeAvailability(CraftingRecipe recipe, Map<String, Long> availableCounts) {
+    private static RecipeAvailability evaluateRecipeAvailability(CraftingRecipe recipe, List<AvailableCraftItem> availableStacks) {
+        CraftIngredientPlan plan = resolveCraftIngredientPlan(recipe, availableStacks);
+        if (plan != null) {
+            return new RecipeAvailability(true, "", 0);
+        }
+
+        return estimateMissingIngredients(recipe, availableStacks);
+    }
+
+    private static CraftIngredientPlan resolveCraftIngredientPlan(CraftingRecipe recipe, List<AvailableCraftItem> availableStacks) {
         Ingredient[] required = mapCraftingIngredients(recipe);
-        Map<String, Long> remaining = new HashMap<>(availableCounts);
-        Map<String, ItemStack> testStackCache = new HashMap<>();
+        List<AvailableCraftItem> remaining = copyAvailableCraftItems(availableStacks);
+        ItemStack[] planned = new ItemStack[9];
+        for (int i = 0; i < planned.length; i++) {
+            planned[i] = ItemStack.EMPTY;
+        }
+        List<Integer> requiredSlots = new ArrayList<>();
+        for (int i = 0; i < required.length; i++) {
+            Ingredient ingredient = required[i];
+            if (ingredient != null && !ingredient.isEmpty()) {
+                requiredSlots.add(i);
+            }
+        }
+        requiredSlots.sort((left, right) -> Integer.compare(
+                countAvailableMatches(required[left], remaining),
+                countAvailableMatches(required[right], remaining)));
+        return assignCraftIngredients(required, requiredSlots, remaining, planned, 0)
+                ? new CraftIngredientPlan(planned)
+                : null;
+    }
+
+    private static boolean assignCraftIngredients(
+            Ingredient[] required,
+            List<Integer> requiredSlots,
+            List<AvailableCraftItem> remaining,
+            ItemStack[] planned,
+            int depth) {
+        if (depth >= requiredSlots.size()) {
+            return true;
+        }
+        int slot = requiredSlots.get(depth);
+        Ingredient ingredient = required[slot];
+        List<Integer> candidateIndexes = matchingAvailableIndexes(ingredient, remaining);
+        candidateIndexes.sort((left, right) -> Long.compare(remaining.get(right).count(), remaining.get(left).count()));
+        for (int index : candidateIndexes) {
+            AvailableCraftItem candidate = remaining.get(index);
+            if (candidate.count() <= 0L) {
+                continue;
+            }
+            planned[slot] = candidate.prototype().copyWithCount(1);
+            remaining.set(index, new AvailableCraftItem(candidate.prototype(), candidate.count() - 1L));
+            if (assignCraftIngredients(required, requiredSlots, remaining, planned, depth + 1)) {
+                return true;
+            }
+            remaining.set(index, candidate);
+            planned[slot] = ItemStack.EMPTY;
+        }
+        return false;
+    }
+
+    private static List<Integer> matchingAvailableIndexes(Ingredient ingredient, List<AvailableCraftItem> remaining) {
+        List<Integer> indexes = new ArrayList<>();
+        if (ingredient == null || ingredient.isEmpty() || remaining == null) {
+            return indexes;
+        }
+        for (int i = 0; i < remaining.size(); i++) {
+            AvailableCraftItem item = remaining.get(i);
+            if (item == null || item.count() <= 0L || item.prototype().isEmpty()) {
+                continue;
+            }
+            if (ingredient.test(item.prototype())) {
+                indexes.add(i);
+            }
+        }
+        return indexes;
+    }
+
+    private static int countAvailableMatches(Ingredient ingredient, List<AvailableCraftItem> remaining) {
+        int matches = 0;
+        if (ingredient == null || ingredient.isEmpty() || remaining == null) {
+            return matches;
+        }
+        for (AvailableCraftItem item : remaining) {
+            if (item != null && item.count() > 0L && !item.prototype().isEmpty() && ingredient.test(item.prototype())) {
+                matches++;
+            }
+        }
+        return matches;
+    }
+
+    private static RecipeAvailability estimateMissingIngredients(CraftingRecipe recipe, List<AvailableCraftItem> availableStacks) {
+        Ingredient[] required = mapCraftingIngredients(recipe);
+        List<AvailableCraftItem> remaining = copyAvailableCraftItems(availableStacks);
+        List<Integer> requiredSlots = new ArrayList<>();
+        for (int i = 0; i < required.length; i++) {
+            Ingredient ingredient = required[i];
+            if (ingredient != null && !ingredient.isEmpty()) {
+                requiredSlots.add(i);
+            }
+        }
+        requiredSlots.sort((left, right) -> Integer.compare(
+                countAvailableMatches(required[left], remaining),
+                countAvailableMatches(required[right], remaining)));
+
         Map<String, Integer> missing = new LinkedHashMap<>();
         int missingTotal = 0;
-        for (Ingredient ingredient : required) {
+        for (int slot : requiredSlots) {
+            Ingredient ingredient = required[slot];
             if (ingredient == null || ingredient.isEmpty()) {
                 continue;
             }
-            String matchedId = selectBestIngredientMatch(ingredient, remaining, testStackCache);
-            if (matchedId != null) {
-                remaining.computeIfPresent(matchedId, (id, count) -> count > 1L ? count - 1L : null);
+            List<Integer> matches = matchingAvailableIndexes(ingredient, remaining);
+            if (!matches.isEmpty()) {
+                int best = matches.get(0);
+                for (int index : matches) {
+                    if (remaining.get(index).count() > remaining.get(best).count()) {
+                        best = index;
+                    }
+                }
+                AvailableCraftItem selected = remaining.get(best);
+                remaining.set(best, new AvailableCraftItem(selected.prototype(), selected.count() - 1L));
                 continue;
             }
             missing.merge(resolveIngredientLabel(ingredient), 1, Integer::sum);
             missingTotal++;
         }
 
-        if (missingTotal <= 0) {
-            return new RecipeAvailability(true, "", 0);
-        }
         return new RecipeAvailability(false, buildMissingSummary(missing), missingTotal);
     }
 
@@ -559,46 +725,6 @@ public final class RtsStorageCrafting {
             }
         }
         return true;
-    }
-
-    private static String selectBestIngredientMatch(Ingredient ingredient, Map<String, Long> remaining, Map<String, ItemStack> testStackCache) {
-        String bestId = null;
-        long bestCount = 0L;
-        for (var entry : remaining.entrySet()) {
-            long available = entry.getValue() == null ? 0L : entry.getValue();
-            if (available <= 0L) {
-                continue;
-            }
-            ItemStack probe = resolveIngredientProbeStack(entry.getKey(), testStackCache);
-            if (probe.isEmpty() || !ingredient.test(probe)) {
-                continue;
-            }
-            if (bestId == null || available > bestCount) {
-                bestId = entry.getKey();
-                bestCount = available;
-            }
-        }
-        return bestId;
-    }
-
-    private static ItemStack resolveIngredientProbeStack(String itemId, Map<String, ItemStack> testStackCache) {
-        if (itemId == null || itemId.isBlank()) {
-            return ItemStack.EMPTY;
-        }
-        ItemStack cached = testStackCache.get(itemId);
-        if (cached != null) {
-            return cached;
-        }
-
-        ResourceLocation key = ResourceLocation.tryParse(itemId);
-        if (key == null || !BuiltInRegistries.ITEM.containsKey(key)) {
-            testStackCache.put(itemId, ItemStack.EMPTY);
-            return ItemStack.EMPTY;
-        }
-
-        ItemStack resolved = new ItemStack(BuiltInRegistries.ITEM.get(key));
-        testStackCache.put(itemId, resolved);
-        return resolved;
     }
 
     private static String resolveIngredientLabel(Ingredient ingredient) {
@@ -775,6 +901,44 @@ public final class RtsStorageCrafting {
     }
 
     /**
+     * Rehydrates the current crafting grid from exact item prototypes sent by the client.
+     *
+     * <p>This is the component-preserving path used by the remote craft terminal
+     * after a player manually takes a result stack. Slots are still treated as a
+     * one-item blueprint, but the blueprint now retains data components/NBT so
+     * upgraded backpacks, storage items, and energy items refill as the same
+     * variant the player actually used.
+     */
+    public static void refillCurrentCraftGridFromBlueprintStacks(
+            ServerPlayer player,
+            RtsStorageSession session,
+            List<ItemStack> blueprintStacks,
+            String craftedItemId,
+            int craftedCount) {
+        if (!RtsProgressionManager.canUse(player, RtsFeature.CRAFT_TERMINAL)) {
+            return;
+        }
+        if (player == null || blueprintStacks == null || blueprintStacks.size() != 9) {
+            return;
+        }
+        if (!(player.containerMenu instanceof CraftingMenu craftingMenu)) {
+            return;
+        }
+
+        if (session != null && craftedItemId != null && !craftedItemId.isBlank() && craftedCount > 0) {
+            RtsStorageRecentEntries.recordRecentItem(session, craftedItemId, S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, craftedCount);
+            RtsStorageManager.saveSessionToPlayerNbt(player, session);
+        }
+
+        ItemStack[] blueprint = new ItemStack[9];
+        for (int i = 0; i < blueprint.length; i++) {
+            ItemStack stack = blueprintStacks.get(i);
+            blueprint[i] = stack == null || stack.isEmpty() ? ItemStack.EMPTY : stack.copyWithCount(1);
+        }
+        refillCraftGridFromLinked(player, session, craftingMenu, blueprint);
+    }
+
+    /**
      * Applies a JEI recipe transfer into the current crafting grid.
      *
      * <p>The method owns only crafting-grid population and recipe-result sync.
@@ -783,7 +947,13 @@ public final class RtsStorageCrafting {
      * storage page refresh. It does not own JEI integration registration or
      * packet payload shape.
      */
-    public static void applyJeiTransfer(ServerPlayer player, RtsStorageSession session, String recipeId, boolean maxTransfer, boolean clearGridFirst) {
+    public static void applyJeiTransfer(
+            ServerPlayer player,
+            RtsStorageSession session,
+            String recipeId,
+            List<ItemStack> ingredientPrototypes,
+            boolean maxTransfer,
+            boolean clearGridFirst) {
         if (!RtsProgressionManager.canUse(player, RtsFeature.JEI_TRANSFER)) {
             return;
         }
@@ -815,6 +985,10 @@ public final class RtsStorageCrafting {
         if (required.length != 9) {
             return;
         }
+        ItemStack[] preferredPrototypes = sanitizeIngredientPrototypes(required, ingredientPrototypes);
+        CraftIngredientPlan plannedFallback = resolveCraftIngredientPlan(
+                craftingRecipe,
+                snapshotAvailableCraftItemsFromHandlers(player, extractHandlers, true));
 
         List<ItemStack> cleared = new ArrayList<>(9);
         if (clearGridFirst) {
@@ -865,7 +1039,11 @@ public final class RtsStorageCrafting {
                     continue;
                 }
 
-                ItemStack extracted = extractOneMatchingIngredientCombined(extractHandlers, player, ingredient, ItemStack.EMPTY);
+                ItemStack preferred = preferredPrototypes[i];
+                if (preferred.isEmpty() && plannedFallback != null) {
+                    preferred = plannedFallback.prototypeAt(i);
+                }
+                ItemStack extracted = extractOneMatchingIngredientCombined(extractHandlers, player, ingredient, preferred);
                 if (extracted.isEmpty()) {
                     continue;
                 }
@@ -898,11 +1076,38 @@ public final class RtsStorageCrafting {
         }
     }
 
+    private static ItemStack[] sanitizeIngredientPrototypes(Ingredient[] required, List<ItemStack> prototypes) {
+        ItemStack[] sanitized = new ItemStack[9];
+        for (int i = 0; i < sanitized.length; i++) {
+            sanitized[i] = ItemStack.EMPTY;
+        }
+        if (required == null || required.length != 9 || prototypes == null) {
+            return sanitized;
+        }
+        for (int i = 0; i < sanitized.length && i < prototypes.size(); i++) {
+            Ingredient ingredient = required[i];
+            ItemStack prototype = prototypes.get(i);
+            if (ingredient == null || ingredient.isEmpty() || prototype == null || prototype.isEmpty()) {
+                continue;
+            }
+            if (ingredient.test(prototype)) {
+                sanitized[i] = prototype.copyWithCount(1);
+            }
+        }
+        return sanitized;
+    }
+
     private static CraftExecutionResult craftSingleRecipeToLinked(ServerPlayer player,
             List<IItemHandler> extractHandlers, List<IItemHandler> insertHandlers,
             CraftingRecipe recipe, boolean includePlayerFallback) {
         Ingredient[] required = mapCraftingIngredients(recipe);
         if (required.length != 9) {
+            return CraftExecutionResult.failure(false);
+        }
+        CraftIngredientPlan plan = resolveCraftIngredientPlan(
+                recipe,
+                snapshotAvailableCraftItemsFromHandlers(player, extractHandlers, includePlayerFallback));
+        if (plan == null) {
             return CraftExecutionResult.failure(false);
         }
 
@@ -915,7 +1120,12 @@ public final class RtsStorageCrafting {
                 continue;
             }
 
-            ExtractedIngredient taken = takeIngredientForCraft(extractHandlers, player, ingredient, includePlayerFallback);
+            ExtractedIngredient taken = takePlannedIngredientForCraft(
+                    extractHandlers,
+                    player,
+                    ingredient,
+                    plan.prototypeAt(i),
+                    includePlayerFallback);
             if (taken == null || taken.stack().isEmpty()) {
                 rollbackCraftIngredients(insertHandlers, player, extracted);
                 return CraftExecutionResult.failure(false);
@@ -969,6 +1179,25 @@ public final class RtsStorageCrafting {
                 resultId == null ? "" : resultId.toString(),
                 Math.max(1, result.getCount()),
                 collectConsumedCounts(extracted));
+    }
+
+    private static ExtractedIngredient takePlannedIngredientForCraft(List<IItemHandler> handlers, ServerPlayer player,
+            Ingredient ingredient, ItemStack prototype, boolean includePlayerFallback) {
+        if (ingredient == null || ingredient.isEmpty() || prototype == null || prototype.isEmpty() || !ingredient.test(prototype)) {
+            return null;
+        }
+        ItemStack fromLinked = RtsStorageTransfers.extractOneMatchingPrototypeFromLinked(handlers, prototype);
+        if (!fromLinked.isEmpty() && ingredient.test(fromLinked)) {
+            return new ExtractedIngredient(fromLinked, false);
+        }
+        if (!includePlayerFallback) {
+            return null;
+        }
+        ItemStack fromPlayer = RtsStorageTransfers.extractOneMatchingPrototypeFromPlayer(player, prototype);
+        if (!fromPlayer.isEmpty() && ingredient.test(fromPlayer)) {
+            return new ExtractedIngredient(fromPlayer, true);
+        }
+        return null;
     }
 
     private static ExtractedIngredient takeIngredientForCraft(List<IItemHandler> handlers, ServerPlayer player,
@@ -1270,6 +1499,19 @@ public final class RtsStorageCrafting {
             type = type.getSuperclass();
         }
         return null;
+    }
+
+    private record AvailableCraftItem(ItemStack prototype, long count) {
+    }
+
+    private record CraftIngredientPlan(ItemStack[] prototypes) {
+        private ItemStack prototypeAt(int slot) {
+            if (slot < 0 || slot >= prototypes.length) {
+                return ItemStack.EMPTY;
+            }
+            ItemStack prototype = prototypes[slot];
+            return prototype == null ? ItemStack.EMPTY : prototype;
+        }
     }
 
     private record RecipeAvailability(boolean craftable, String missingSummary, int missingTotal) {

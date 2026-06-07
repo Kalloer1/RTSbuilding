@@ -986,11 +986,35 @@ public final class RtsStorageManager {
                 craftedCount);
     }
 
-    public static void applyJeiTransfer(ServerPlayer player, String recipeId, boolean maxTransfer, boolean clearGridFirst) {
+    public static void refillCurrentCraftGridFromBlueprintStacks(
+            ServerPlayer player,
+            List<ItemStack> blueprintStacks,
+            String craftedItemId,
+            int craftedCount) {
+        RtsStorageCrafting.refillCurrentCraftGridFromBlueprintStacks(
+                player,
+                SESSIONS.get(player.getUUID()),
+                blueprintStacks,
+                craftedItemId,
+                craftedCount);
+    }
+
+    public static void applyJeiTransfer(
+            ServerPlayer player,
+            String recipeId,
+            List<ItemStack> ingredientPrototypes,
+            boolean maxTransfer,
+            boolean clearGridFirst) {
         if (!RtsProgressionManager.canUse(player, RtsFeature.JEI_TRANSFER)) {
             return;
         }
-        RtsStorageCrafting.applyJeiTransfer(player, getOrCreateSession(player), recipeId, maxTransfer, clearGridFirst);
+        RtsStorageCrafting.applyJeiTransfer(
+                player,
+                getOrCreateSession(player),
+                recipeId,
+                ingredientPrototypes,
+                maxTransfer,
+                clearGridFirst);
     }
 
     public static void breakPlaced(ServerPlayer player, BlockPos pos, Direction face, boolean allowAdjacentFallback) {
