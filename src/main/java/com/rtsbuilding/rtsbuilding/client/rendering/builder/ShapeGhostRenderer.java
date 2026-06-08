@@ -103,18 +103,18 @@ public final class ShapeGhostRenderer {
             if (visual.hidden()) {
                 return;
             }
-            if (com.rtsbuilding.rtsbuilding.Config.isRangeDestroySkeletonEnabled()) {
-                if (preview.chainDestroyPreview()) {
-                    if (visual.fading()) {
-                        MergedSkeletonRenderer.renderMergedSkeletonSnapshot(preview, poseStack, lineBuffer, fillBuffer,
-                                1.0F, 0.30F, 0.035F, visual.alpha());
-                    } else {
-                        MergedSkeletonRenderer.renderConfirmedDestroyWorkArea(preview, poseStack, lineBuffer,
-                                fillBuffer, visual.progress(), visual.alpha());
-                    }
+            if (preview.chainDestroyPreview()) {
+                if (visual.fading()) {
+                    MergedSkeletonRenderer.renderMergedSkeletonSnapshot(preview, poseStack, lineBuffer, fillBuffer,
+                            1.0F, 0.30F, 0.035F, visual.alpha());
                 } else {
-                    renderConfirmedRangeDestroyWorkArea(preview, poseStack, lineBuffer, fillBuffer, visual);
+                    MergedSkeletonRenderer.renderConfirmedDestroyWorkArea(preview, poseStack, lineBuffer,
+                            fillBuffer, visual.progress(), visual.alpha());
                 }
+                return;
+            }
+            if (com.rtsbuilding.rtsbuilding.Config.isRangeDestroySkeletonEnabled()) {
+                renderConfirmedRangeDestroyWorkArea(preview, poseStack, lineBuffer, fillBuffer, visual);
                 return;
             }
             DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer,
@@ -124,7 +124,7 @@ public final class ShapeGhostRenderer {
 
         // ── Wireframe mode (debug/config toggle) ──
         // ── Ultimine (chain-mining) ghost ──
-        if (preview.chainDestroyPreview() && com.rtsbuilding.rtsbuilding.Config.isRangeDestroySkeletonEnabled()) {
+        if (preview.chainDestroyPreview()) {
             float progress = smoothedDestroyProgress(ClientRtsController.get(), preview);
             UltimineGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer, progress);
             return;

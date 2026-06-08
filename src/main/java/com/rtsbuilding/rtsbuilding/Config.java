@@ -53,7 +53,7 @@ public class Config {
             .define("useWireframePreview", false);
 
     public static final ModConfigSpec.BooleanValue USE_RANGE_DESTROY_SKELETON = BUILDER
-            .comment("Render merged skeleton borders for chain and range destroy previews.")
+            .comment("Render merged skeleton borders for non-chain range destroy previews. Chain mining always uses the skeleton style.")
             .translation("rtsbuilding.configuration.useRangeDestroySkeleton")
             .define("useRangeDestroySkeleton", true);
 
