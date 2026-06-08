@@ -3,7 +3,6 @@ package com.rtsbuilding.rtsbuilding.client.screen.panel;
 
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.popup.RtsCraftFeedbackPopup;
-import com.rtsbuilding.rtsbuilding.client.popup.RtsCraftQuantityDialog;
 import com.rtsbuilding.rtsbuilding.client.screen.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
@@ -43,7 +42,6 @@ public final class BottomPanel {
     public int categoryScroll = 0;
     public int craftScroll = 0;
     public final Set<String> expandedCategoryMods = new HashSet<>();
-    public final RtsCraftQuantityDialog craftQuantityDialog = new RtsCraftQuantityDialog();
 
     public int hoveredEntry = -1;
     public int hoveredRecentEntry = -1;
@@ -832,11 +830,11 @@ public final class BottomPanel {
 
     public void openCraftQuantityDialog(ClientRtsController.CraftableEntry entry) {
         screen.blurSearchFocus();
-        RtsCraftablesUiHelper.openCraftQuantityDialog(this.craftQuantityDialog, entry);
+        screen.openCraftQuantityWindow(entry);
     }
 
     public void submitCraftQuantityDialogIfReady() {
-        RtsCraftablesUiHelper.submitPendingCraftRequest(this.craftQuantityDialog, this.controller);
+        screen.submitCraftQuantityWindowIfReady();
     }
 
     // ── 合成底座 ──
@@ -889,7 +887,6 @@ public final class BottomPanel {
             this.bottomPanelTab = clickedTab;
             syncSearchBoxForActiveTab();
             screen.blurSearchFocus();
-            screen.closeGearMenu();
             return true;
         }
         if (inside(mouseX, mouseY, bottomRefreshButtonX(layout), bottomGuideButtonY(layout), 12, 12)) {
@@ -900,12 +897,10 @@ public final class BottomPanel {
             } else {
                 this.controller.refreshStoragePage();
             }
-            screen.closeGearMenu();
             return true;
         }
         if (inside(mouseX, mouseY, bottomGuideButtonX(layout), bottomGuideButtonY(layout), 12, 12)) {
             screen.openBottomGuide(bottomGuideButtonX(layout) + 6, bottomGuideButtonY(layout));
-            screen.closeGearMenu();
             return true;
         }
         if (layout.isInsideHeader(mouseX, mouseY)) {

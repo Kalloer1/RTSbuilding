@@ -63,10 +63,12 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
     }
 
     public void openNear(int anchorX, int anchorY) {
+        if (!hasUserBoundsPreference()) {
+            int x = Mth.clamp(anchorX, 4, Math.max(4, this.screen.width - PANEL_W - 4));
+            int y = Mth.clamp(anchorY, TOP_H + 2, Math.max(TOP_H + 2, this.screen.getBottomY() - PANEL_H - 4));
+            setTransientBounds(x, y, PANEL_W, PANEL_H);
+        }
         setOpen(true);
-        int x = Mth.clamp(anchorX, 4, Math.max(4, this.screen.width - PANEL_W - 4));
-        int y = Mth.clamp(anchorY, TOP_H + 2, Math.max(TOP_H + 2, this.screen.getBottomY() - PANEL_H - 4));
-        setBounds(x, y, PANEL_W, PANEL_H);
         markBroughtToFront();
     }
 
