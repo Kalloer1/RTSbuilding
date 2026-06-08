@@ -98,9 +98,7 @@ public final class ShapeGhostRenderer {
                 return;
             }
             float progress = smoothedDestroyProgress(ClientRtsController.get(), preview);
-            DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer, progress, 1.0F,
-                    com.rtsbuilding.rtsbuilding.Config.isBlockGhostPreviewEnabled(),
-                    com.rtsbuilding.rtsbuilding.Config.isWireframePreviewEnabled());
+            DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer, progress, 1.0F);
             return;
         }
 
@@ -115,16 +113,15 @@ public final class ShapeGhostRenderer {
         // ── Destructive (range-destroy) ghost ──
         if (preview.destructive()) {
             float progress = preview.confirmedWorkArea() ? smoothedDestroyProgress(ClientRtsController.get(), preview) : 0.0F;
-            DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer, progress, 1.0F,
-                    com.rtsbuilding.rtsbuilding.Config.isBlockGhostPreviewEnabled(),
-                    com.rtsbuilding.rtsbuilding.Config.isWireframePreviewEnabled());
+            DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer, progress, 1.0F);
             return;
         }
 
         // ── Build mode (placement ghost) ──
+        boolean usePlacementLayerSettings = shouldUsePlacementPreviewSettings(preview);
         BuildGhostRenderer.render(minecraft, preview, poseStack, lineBuffer, fillBuffer,
-                com.rtsbuilding.rtsbuilding.Config.isBlockGhostPreviewEnabled(),
-                com.rtsbuilding.rtsbuilding.Config.isWireframePreviewEnabled());
+                usePlacementLayerSettings ? com.rtsbuilding.rtsbuilding.Config.isBlockGhostPreviewEnabled() : true,
+                usePlacementLayerSettings ? com.rtsbuilding.rtsbuilding.Config.isWireframePreviewEnabled() : true);
     }
 
     // ===== Range-destroy confirmed work area handling =====
@@ -207,6 +204,10 @@ public final class ShapeGhostRenderer {
     static boolean previewContains(ShapeDataRecords.GhostPreview preview, BlockPos pos) {
         if (preview == null || pos == null) return false;
         return RenderingUtil.contains(preview.blocks(), pos) || RenderingUtil.contains(preview.emptyBlocks(), pos);
+    }
+
+    private static boolean shouldUsePlacementPreviewSettings(ShapeDataRecords.GhostPreview preview) {
+        return preview != null && preview.readyConfirm();
     }
 
     private static int previewKey(ShapeDataRecords.GhostPreview preview) {

@@ -1,14 +1,7 @@
 package com.rtsbuilding.rtsbuilding.client.rendering.overlay;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.RenderStateShard;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.rendering.util.CornerBracketRenderer;
 import com.rtsbuilding.rtsbuilding.client.rendering.util.RaycastHelper;
@@ -71,6 +64,9 @@ public final class InteractionTargetRenderer {
     /** Small outward offset applied to the hit-face quad to prevent z-fighting. */
     private static final double FACE_FOG_OFFSET = 0.005D;
 
+    private static final float NO_DEPTH_BRACKET_ALPHA = 0.32F;
+    private static final float NO_DEPTH_FACE_FOG_ALPHA = 0.18F;
+
     // ──────────────────────────────────────────────
     //  Constants – Animation
     // ──────────────────────────────────────────────
@@ -98,22 +94,6 @@ public final class InteractionTargetRenderer {
     /** Maximum ray-cast range for cursor-based hit-testing. */
     private static final double MAX_REACH = 128.0D;
 
-    // ── Custom no-depth bracket render type ──
-
-    private static final RenderType BRACKET_NO_DEPTH = RenderType.create(
-            "rtsbuilding_target_brackets_no_depth",
-            DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 512, false, false,
-            RenderType.CompositeState.builder()
-                    .setShaderState(RenderStateShard.POSITION_COLOR_SHADER)
-                    .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
-                    .setDepthTestState(RenderStateShard.NO_DEPTH_TEST)
-                    .setOutputState(RenderStateShard.MAIN_TARGET)
-                    .setWriteMaskState(RenderStateShard.COLOR_WRITE)
-                    .setCullState(RenderStateShard.NO_CULL)
-                    .createCompositeState(false));
-
-    private static final ByteBufferBuilder BRACKET_NO_DEPTH_BACKING = new ByteBufferBuilder(BRACKET_NO_DEPTH.bufferSize());
-
     // ──────────────────────────────────────────────
     //  Internal helpers
     // ──────────────────────────────────────────────
@@ -134,10 +114,11 @@ public final class InteractionTargetRenderer {
      * @param minecraft   the Minecraft client instance
      * @param controller  the client-side RTS controller (used for rotation-capture check)
      * @param poseStack   current transformation stack (already translated to camera space)
-     * @param lineBuffer  {@link VertexConsumer} for the bracket-quad render type
+     * @param lineBuffer  {@link VertexConsumer} for normal depth-tested target geometry
+     * @param noDepthBuffer {@link VertexConsumer} for the final no-depth visibility backstop
      */
     public static void renderHoveredInteractionTarget(Minecraft minecraft, ClientRtsController controller,
-            PoseStack poseStack, VertexConsumer lineBuffer) {
+            PoseStack poseStack, VertexConsumer lineBuffer, VertexConsumer noDepthBuffer) {
         // ── Fast early-exit checks ──
         if (controller.isRotateCaptured() || minecraft.level == null || minecraft.getCameraEntity() == null) {
             return;
@@ -170,7 +151,7 @@ public final class InteractionTargetRenderer {
             // Skip entity outside RTS build boundary
             if (isWithinBounds(controller, entity.blockPosition())) {
                 double distance = camPos.distanceTo(entity.getBoundingBox().getCenter());
-                renderEntityCornerHighlight(poseStack, lineBuffer, entity, distance, breathFactor);
+                renderEntityCornerHighlight(poseStack, lineBuffer, noDepthBuffer, entity, distance, breathFactor);
             }
             return;
         }
@@ -186,7 +167,7 @@ public final class InteractionTargetRenderer {
             return;
         }
         double distance = camPos.distanceTo(Vec3.atCenterOf(pos));
-        renderBlockCornerHighlight(minecraft, poseStack, lineBuffer, pos, blockHit.getDirection(), distance, breathFactor);
+        renderBlockCornerHighlight(minecraft, poseStack, lineBuffer, noDepthBuffer, pos, blockHit.getDirection(), distance, breathFactor);
     }
 
     // ══════════════════════════════════════════════
@@ -261,7 +242,7 @@ public final class InteractionTargetRenderer {
      * @param breathFactor current breathing animation multiplier
      */
     private static void renderEntityCornerHighlight(PoseStack poseStack, VertexConsumer lineBuffer,
-            Entity entity, double distance, float breathFactor) {
+            VertexConsumer noDepthBuffer, Entity entity, double distance, float breathFactor) {
         AABB bounds = entity.getBoundingBox().inflate(INFLATE);
         float r = ENTITY_COLOR_R * breathFactor;
         float g = ENTITY_COLOR_G * breathFactor;
@@ -274,10 +255,10 @@ public final class InteractionTargetRenderer {
                 r, g, b, distance);
 
         // ── Transparent no-depth brackets (visible through terrain) ──
-        renderCornerBracketsNoDepth(poseStack,
+        renderCornerBracketsNoDepth(poseStack, noDepthBuffer,
                 bounds.minX, bounds.minY, bounds.minZ,
                 bounds.maxX, bounds.maxY, bounds.maxZ,
-                r, g, b, distance, 0.20F);
+                r, g, b, distance);
     }
 
     /**
@@ -292,7 +273,8 @@ public final class InteractionTargetRenderer {
      * @param breathFactor current breathing animation multiplier
      */
     private static void renderBlockCornerHighlight(Minecraft minecraft, PoseStack poseStack,
-            VertexConsumer lineBuffer, BlockPos pos, Direction hitFace, double distance, float breathFactor) {
+            VertexConsumer lineBuffer, VertexConsumer noDepthBuffer,
+            BlockPos pos, Direction hitFace, double distance, float breathFactor) {
         if (minecraft.level == null) {
             return;
         }
@@ -314,38 +296,32 @@ public final class InteractionTargetRenderer {
                 r, g, b, distance);
 
         // ── Transparent no-depth brackets (visible through terrain) ──
-        renderCornerBracketsNoDepth(poseStack,
+        renderCornerBracketsNoDepth(poseStack, noDepthBuffer,
                 bounds.minX - off, bounds.minY - off, bounds.minZ - off,
                 bounds.maxX + off, bounds.maxY + off, bounds.maxZ + off,
-                r, g, b, distance, 0.20F);
+                r, g, b, distance);
 
         // Render a translucent fog layer on the hit face
-        renderHitFaceFog(lineBuffer, poseStack, bounds, hitFace, r, g, b);
+        renderHitFaceFog(lineBuffer, poseStack, bounds, hitFace, r, g, b, FACE_FOG_ALPHA);
+        renderHitFaceFog(noDepthBuffer, poseStack, bounds, hitFace, r, g, b, NO_DEPTH_FACE_FOG_ALPHA);
     }
 
     // ══════════════════════════════════════════════
     //  No-depth Bracket Rendering
     // ══════════════════════════════════════════════
 
-    /** Renders transparent no-depth corner brackets (visible through world geometry). */
-    private static void renderCornerBracketsNoDepth(PoseStack poseStack,
+    /** Adds transparent no-depth corner brackets to the renderer-level backstop buffer. */
+    private static void renderCornerBracketsNoDepth(PoseStack poseStack, VertexConsumer noDepthBuffer,
             double minX, double minY, double minZ,
             double maxX, double maxY, double maxZ,
-            float r, float g, float b, double distance, float alpha) {
-        BufferBuilder ndBuffer = new BufferBuilder(BRACKET_NO_DEPTH_BACKING, VertexFormat.Mode.QUADS,
-                DefaultVertexFormat.POSITION_COLOR);
-        CornerBracketRenderer.renderCornerBrackets(
-                poseStack, ndBuffer,
-                minX, minY, minZ, maxX, maxY, maxZ,
-                r, g, b, alpha, distance);
-        var meshData = ndBuffer.build();
-        if (meshData != null) {
-            RenderSystem.disableDepthTest();
-            RenderSystem.depthMask(false);
-            BRACKET_NO_DEPTH.draw(meshData);
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
+            float r, float g, float b, double distance) {
+        if (noDepthBuffer == null) {
+            return;
         }
+        CornerBracketRenderer.renderCornerBrackets(
+                poseStack, noDepthBuffer,
+                minX, minY, minZ, maxX, maxY, maxZ,
+                r, g, b, NO_DEPTH_BRACKET_ALPHA, distance);
     }
 
     // ══════════════════════════════════════════════
@@ -366,8 +342,10 @@ public final class InteractionTargetRenderer {
      * @param b         blue  colour component [0, 1]
      */
     private static void renderHitFaceFog(VertexConsumer consumer, PoseStack poseStack,
-            AABB bounds, Direction face, float r, float g, float b) {
-        float alpha = FACE_FOG_ALPHA;
+            AABB bounds, Direction face, float r, float g, float b, float alpha) {
+        if (consumer == null) {
+            return;
+        }
         double off = FACE_FOG_OFFSET;
 
         double x1 = bounds.minX, x2 = bounds.maxX;
