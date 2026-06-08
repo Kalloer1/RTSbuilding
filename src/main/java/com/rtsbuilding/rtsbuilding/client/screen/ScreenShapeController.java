@@ -16,7 +16,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.EndCrystalItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -448,7 +450,9 @@ public final class ScreenShapeController {
                 if (mc == null || mc.player == null) {
                     return ShapeDataRecords.GhostPreview.EMPTY;
                 }
-                if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)) {
+                if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)
+                        && !(mc.player.getMainHandItem().getItem() instanceof SpawnEggItem)
+                        && !(mc.player.getMainHandItem().getItem() instanceof EndCrystalItem)) {
                     return ShapeDataRecords.GhostPreview.EMPTY;
                 }
             }

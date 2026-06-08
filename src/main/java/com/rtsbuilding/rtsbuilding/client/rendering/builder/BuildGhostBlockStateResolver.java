@@ -9,7 +9,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.EndCrystalItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Rotation;
@@ -72,6 +74,48 @@ public final class BuildGhostBlockStateResolver {
             }
         }
         return null;
+    }
+
+    /**
+     * 解析当前手持的刷怪蛋物品栈。
+     *
+     * @param minecraft Minecraft 客户端实例
+     * @return 如果是刷怪蛋则返回对应的 ItemStack，否则返回 {@link ItemStack#EMPTY}
+     */
+    public static ItemStack resolveSpawnEggStack(Minecraft minecraft) {
+        ClientRtsController controller = ClientRtsController.get();
+        ItemStack itemPreview = controller.getSelectedItemPreview();
+        if (!itemPreview.isEmpty() && itemPreview.getItem() instanceof SpawnEggItem) {
+            return itemPreview;
+        }
+        if (minecraft != null && minecraft.player != null) {
+            ItemStack mainHand = minecraft.player.getMainHandItem();
+            if (mainHand.getItem() instanceof SpawnEggItem) {
+                return mainHand;
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
+     * 解析当前手持的末地水晶物品栈。
+     *
+     * @param minecraft Minecraft 客户端实例
+     * @return 如果是末地水晶则返回对应的 ItemStack，否则返回 {@link ItemStack#EMPTY}
+     */
+    public static ItemStack resolveEndCrystalStack(Minecraft minecraft) {
+        ClientRtsController controller = ClientRtsController.get();
+        ItemStack itemPreview = controller.getSelectedItemPreview();
+        if (!itemPreview.isEmpty() && itemPreview.getItem() instanceof EndCrystalItem) {
+            return itemPreview;
+        }
+        if (minecraft != null && minecraft.player != null) {
+            ItemStack mainHand = minecraft.player.getMainHandItem();
+            if (mainHand.getItem() instanceof EndCrystalItem) {
+                return mainHand;
+            }
+        }
+        return ItemStack.EMPTY;
     }
 
     /**

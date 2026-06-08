@@ -8,6 +8,7 @@ import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeDataRecords;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -46,12 +47,19 @@ public final class BuildGhostRenderer {
         // 1. 解析放置方向的 BlockState
         BlockState blockState = BuildGhostBlockStateResolver.resolve(minecraft, targetPos);
 
-        // 2. 渲染半透明方块模型或回退填充
+        // 2. 渲染半透明方块模型、实体虚影或回退填充
         if (renderBlockGhost) {
             if (blockState != null && !blockState.isAir() && blockState.getRenderShape() == RenderShape.MODEL) {
                 BuildGhostModelRenderer.renderModels(minecraft, blocks, poseStack, blockState);
             } else {
-                BuildGhostFillRenderer.renderFill(blocks, poseStack, fillBuffer, readyConfirm);
+                ItemStack spawnEggStack = BuildGhostBlockStateResolver.resolveSpawnEggStack(minecraft);
+                if (!spawnEggStack.isEmpty()) {
+                    EntityGhostRenderer.renderEntities(minecraft, blocks, poseStack, spawnEggStack);
+                } else if (!BuildGhostBlockStateResolver.resolveEndCrystalStack(minecraft).isEmpty()) {
+                    EntityGhostRenderer.renderEndCrystals(minecraft, blocks, poseStack);
+                } else {
+                    BuildGhostFillRenderer.renderFill(blocks, poseStack, fillBuffer, readyConfirm);
+                }
             }
         }
 
