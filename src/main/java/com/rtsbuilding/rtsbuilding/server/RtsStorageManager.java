@@ -34,6 +34,7 @@ import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsLinkStoragePayload;
 import com.rtsbuilding.rtsbuilding.network.storage.RtsStorageSort;
 import com.rtsbuilding.rtsbuilding.network.progression.S2CRtsQuestDetectStatusPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsRemoteMenuHintPayload;
+import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStorageDirtyPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
 
 import net.minecraft.core.BlockPos;
@@ -242,7 +243,6 @@ public final class RtsStorageManager {
             tickActiveMining(player, session);
             tickFunnel(player, session);
             tickPlacedRecoveryJobs(player, session);
-            tickDeferredStoragePageRefresh(player, session);
         }
     }
 
@@ -780,8 +780,23 @@ public final class RtsStorageManager {
                 activeHandlers,
                 activeFluidHandlers);
         PacketDistributor.sendToPlayer(player, result.payload());
+        session.storageViewDirty = false;
         session.page = result.safePage();
         saveSessionToPlayerNbt(player, session);
+    }
+
+    public static void markStorageViewDirty(ServerPlayer player, RtsStorageSession session) {
+        if (player == null || session == null) {
+            return;
+        }
+        if (!RtsProgressionManager.canUse(player, RtsFeature.STORAGE_BROWSER)) {
+            return;
+        }
+        if (session.storageViewDirty) {
+            return;
+        }
+        session.storageViewDirty = true;
+        PacketDistributor.sendToPlayer(player, new S2CRtsStorageDirtyPayload(true));
     }
 
     public static void requestCraftables(ServerPlayer player, String search, boolean showUnavailable, int offset, int limit) {
@@ -1176,7 +1191,7 @@ public final class RtsStorageManager {
             saveSessionToPlayerNbt(player, session);
         }
 
-        RtsStorageMining.scheduleMiningStorageRefresh(player, session);
+        RtsStorageMining.markMiningStorageDirty(player, session);
     }
 
     private static void enqueuePlacedRecoveryJob(Session session, BlockPos targetPos, List<ItemEntity> droppedEntities) {
@@ -1253,7 +1268,7 @@ public final class RtsStorageManager {
             }
         }
         if (processedAny) {
-            RtsStorageMining.scheduleMiningStorageRefresh(player, session);
+            RtsStorageMining.markMiningStorageDirty(player, session);
             runQuestDetect(player, session, false);
         }
     }
@@ -1385,10 +1400,6 @@ public final class RtsStorageManager {
             return;
         }
         RtsStorageMining.stopActiveMining(player, session);
-    }
-
-    private static void tickDeferredStoragePageRefresh(ServerPlayer player, RtsStorageSession session) {
-        RtsStorageMining.tickDeferredStoragePageRefresh(player, session);
     }
 
     private static <T> T withTemporaryOnGround(ServerPlayer player, boolean onGround, Supplier<T> action) {
@@ -1753,7 +1764,7 @@ public final class RtsStorageManager {
         boolean changed = flushFunnelBufferToDestinations(handlers, player, session);
         changed |= absorbDropsForFunnel(player, session.funnelTarget, handlers, session);
         if (changed) {
-            requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
+            markStorageViewDirty(player, session);
             runQuestDetect(player, session, false);
         }
     }

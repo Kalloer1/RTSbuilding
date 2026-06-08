@@ -189,8 +189,8 @@ public class RtsStorageSession {
     public int miningStage = -1;
     /** 下次检测 RTS 任务或进度的 tick 时间 */
     public long nextQuestDetectTick;
-    /** 挂起的存储刷新 tick（-1L = 无待执行的刷新） */
-    public long deferredStorageRefreshTick = -1L;
+    /** True when the client's storage browser page no longer matches storage contents. */
+    public boolean storageViewDirty;
 
     // ======================================================================
     // §8  放置队列
