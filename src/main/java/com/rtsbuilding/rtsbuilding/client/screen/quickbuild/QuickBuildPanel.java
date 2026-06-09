@@ -60,12 +60,14 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             ResourceLocation.tryParse("rtsbuilding:textures/gui/general/mode_button.png");
 
     // ======================== 精灵图参数 ========================
-    private static final int SHEET_W = 450;
-    private static final int SHEET_H = 900;
-    private static final int STATE_H = 450;
+    private static final int SHAPE_SHEET_W = 450;
+    private static final int SHAPE_SHEET_H = 900;
+    private static final int SHAPE_STATE_H = 450;
+    private static final int MODE_BUTTON_SHEET_W = 512;
+    private static final int MODE_BUTTON_STATE_H = 512;
 
-    /** 模式按钮贴图：450×1350，3 行状态，每行 450px */
-    private static final int MODE_BUTTON_H = STATE_H * 3;
+    /** 模式按钮贴图：512×1536，3 行状态，每行 512px */
+    private static final int MODE_BUTTON_H = MODE_BUTTON_STATE_H * 3;
 
     // ======================== 形状定义 ========================
     private static final BuildShape[] BUILD_SHAPES = {
@@ -171,15 +173,15 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     private WindowButton createShapeButton(int index) {
         ResourceLocation texture = currentShapeTexture(index);
         boolean selected = isCurrentShapeSelected(index);
-        int normalV = selected ? STATE_H : 0;
+        int normalV = selected ? SHAPE_STATE_H : 0;
         return new WindowButton(0, 0,
                 QUICK_BUILD_SHAPE_SLOT, QUICK_BUILD_SHAPE_SLOT,
                 Component.empty(),
                 texture,
                 0, normalV,
-                SHEET_W, STATE_H,
-                STATE_H, STATE_H,
-                SHEET_W, SHEET_H,
+                SHAPE_SHEET_W, SHAPE_STATE_H,
+                SHAPE_STATE_H, SHAPE_STATE_H,
+                SHAPE_SHEET_W, SHAPE_SHEET_H,
                 btn -> selectShape(index));
     }
 
@@ -469,12 +471,12 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
             boolean selected = screen.getShapeFillMode() == modes.get(i);
             boolean hovered = fillModeButtons[i].isHoveredOrFocused();
-            int vOffset = selected ? STATE_H * 2 : (hovered ? STATE_H : 0);
+            int vOffset = selected ? MODE_BUTTON_STATE_H * 2 : (hovered ? MODE_BUTTON_STATE_H : 0);
             RtsTextureRenderer.drawTextureHighPrecision(
                     g, SELECTION_DOT_TEXTURE,
                     rightX + 2, rowY + 2, 16, 16,
-                    0, vOffset, SHEET_W, STATE_H,
-                    SHEET_W, MODE_BUTTON_H,
+                    0, vOffset, MODE_BUTTON_SHEET_W, MODE_BUTTON_STATE_H,
+                    MODE_BUTTON_SHEET_W, MODE_BUTTON_H,
                     0, 0xFFFFFFFF
             );
         }
@@ -488,12 +490,12 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
             boolean connected = screen.getShapeController().isLineConnected();
             boolean hovered = this.connectToggle.isHoveredOrFocused();
-            int vOffset = connected ? STATE_H * 2 : (hovered ? STATE_H : 0);
+            int vOffset = connected ? MODE_BUTTON_STATE_H * 2 : (hovered ? MODE_BUTTON_STATE_H : 0);
             RtsTextureRenderer.drawTextureHighPrecision(
                     g, SELECTION_DOT_TEXTURE,
                     rightX + 2, connectRowY + 2, 16, 16,
-                    0, vOffset, SHEET_W, STATE_H,
-                    SHEET_W, MODE_BUTTON_H,
+                    0, vOffset, MODE_BUTTON_SHEET_W, MODE_BUTTON_STATE_H,
+                    MODE_BUTTON_SHEET_W, MODE_BUTTON_H,
                     0, 0xFFFFFFFF
             );
         }
