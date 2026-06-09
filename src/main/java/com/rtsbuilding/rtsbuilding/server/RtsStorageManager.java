@@ -241,6 +241,7 @@ public final class RtsStorageManager {
             }
             Session session = entry.getValue();
             tickActiveMining(player, session);
+            RtsStorageMining.tickDeferredMiningWork(player, session);
             tickFunnel(player, session);
             tickPlacedRecoveryJobs(player, session);
         }
@@ -1348,7 +1349,8 @@ public final class RtsStorageManager {
     }
 
     public static void mine(ServerPlayer player, BlockPos pos, Direction face, boolean start, byte toolSlot,
-            String toolItemId, ItemStack toolPrototype, boolean allowPlacedBlockRecovery) {
+            String toolItemId, ItemStack toolPrototype, boolean allowPlacedBlockRecovery,
+            boolean toolProtectionEnabled) {
         RtsStorageMining.mine(
                 player,
                 SESSIONS.get(player.getUUID()),
@@ -1358,11 +1360,12 @@ public final class RtsStorageManager {
                 toolSlot,
                 toolItemId,
                 toolPrototype,
-                allowPlacedBlockRecovery);
+                allowPlacedBlockRecovery,
+                toolProtectionEnabled);
     }
 
     public static void startUltimine(ServerPlayer player, BlockPos pos, Direction face, byte toolSlot, String toolItemId,
-            ItemStack toolPrototype, int requestedLimit, byte mode) {
+            ItemStack toolPrototype, int requestedLimit, byte mode, boolean toolProtectionEnabled) {
         RtsStorageMining.startUltimine(
                 player,
                 SESSIONS.get(player.getUUID()),
@@ -1372,13 +1375,14 @@ public final class RtsStorageManager {
                 toolItemId,
                 toolPrototype,
                 requestedLimit,
-                mode);
+                mode,
+                toolProtectionEnabled);
     }
 
     public static void areaMine(ServerPlayer player,
             int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
             byte toolSlot, String toolItemId, ItemStack toolPrototype,
-            byte shapeType, byte fillType) {
+            byte shapeType, byte fillType, boolean toolProtectionEnabled) {
         RtsStorageMining.areaMine(
                 player,
                 SESSIONS.get(player.getUUID()),
@@ -1387,18 +1391,20 @@ public final class RtsStorageManager {
                 toolItemId,
                 toolPrototype,
                 shapeType,
-                fillType);
+                fillType,
+                toolProtectionEnabled);
     }
 
     public static void areaDestroy(ServerPlayer player, List<BlockPos> positions,
-            byte toolSlot, String toolItemId, ItemStack toolPrototype) {
+            byte toolSlot, String toolItemId, ItemStack toolPrototype, boolean toolProtectionEnabled) {
         RtsStorageMining.areaDestroy(
                 player,
                 SESSIONS.get(player.getUUID()),
                 positions,
                 toolSlot,
                 toolItemId,
-                toolPrototype);
+                toolPrototype,
+                toolProtectionEnabled);
     }
 
     private static void tickActiveMining(ServerPlayer player, RtsStorageSession session) {

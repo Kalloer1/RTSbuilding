@@ -539,17 +539,20 @@ public final class RtsClientPacketGateway {
     }
 
     public static void sendAreaMine(int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
-            int toolSlot, String toolItemId, ItemStack toolPrototype, byte shapeType, byte fillType) {
+            int toolSlot, String toolItemId, ItemStack toolPrototype, byte shapeType, byte fillType,
+            boolean toolProtectionEnabled) {
         PacketDistributor.sendToServer(new C2SRtsAreaMinePayload(
                 minX, maxX, minY, maxY, minZ, maxZ,
                 (byte) Mth.clamp(toolSlot, 0, 8),
                 toolItemId == null ? "" : toolItemId,
                 toolPrototype == null ? ItemStack.EMPTY : toolPrototype,
                 shapeType,
-                fillType));
+                fillType,
+                toolProtectionEnabled));
     }
 
-    public static void sendAreaDestroy(List<BlockPos> positions, int toolSlot, String toolItemId, ItemStack toolPrototype) {
+    public static void sendAreaDestroy(List<BlockPos> positions, int toolSlot, String toolItemId, ItemStack toolPrototype,
+            boolean toolProtectionEnabled) {
         if (positions == null || positions.isEmpty()) {
             return;
         }
@@ -557,11 +560,12 @@ public final class RtsClientPacketGateway {
                 positions,
                 (byte) Mth.clamp(toolSlot, 0, 8),
                 toolItemId == null ? "" : toolItemId,
-                toolPrototype == null ? ItemStack.EMPTY : toolPrototype));
+                toolPrototype == null ? ItemStack.EMPTY : toolPrototype,
+                toolProtectionEnabled));
     }
 
     public static void sendMineStart(BlockPos pos, int face, int toolSlot, String toolItemId, ItemStack toolPrototype,
-            boolean allowPlacedBlockRecovery) {
+            boolean allowPlacedBlockRecovery, boolean toolProtectionEnabled) {
         PacketDistributor.sendToServer(new C2SRtsMinePayload(
                 pos,
                 (byte) face,
@@ -569,11 +573,12 @@ public final class RtsClientPacketGateway {
                 (byte) Mth.clamp(toolSlot, 0, 8),
                 toolItemId == null ? "" : toolItemId,
                 toolPrototype == null ? ItemStack.EMPTY : toolPrototype,
-                allowPlacedBlockRecovery));
+                allowPlacedBlockRecovery,
+                toolProtectionEnabled));
     }
 
     public static void sendUltimineStart(BlockPos pos, int face, int toolSlot, String toolItemId, ItemStack toolPrototype,
-            int limit, byte mode) {
+            int limit, byte mode, boolean toolProtectionEnabled) {
         PacketDistributor.sendToServer(new C2SRtsUltiminePayload(
                 pos,
                 (byte) face,
@@ -581,7 +586,8 @@ public final class RtsClientPacketGateway {
                 toolItemId == null ? "" : toolItemId,
                 toolPrototype == null ? ItemStack.EMPTY : toolPrototype,
                 (short) Mth.clamp(limit, 1, 256),
-                mode));
+                mode,
+                toolProtectionEnabled));
     }
 
     public static void sendMineAbort(BlockPos pos, int face, int toolSlot) {
@@ -592,6 +598,7 @@ public final class RtsClientPacketGateway {
                 (byte) Mth.clamp(toolSlot, 0, 8),
                 "",
                 ItemStack.EMPTY,
+                false,
                 false));
     }
 }

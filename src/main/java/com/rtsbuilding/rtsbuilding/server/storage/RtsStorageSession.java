@@ -177,6 +177,8 @@ public class RtsStorageSession {
     public int ultimineProcessedTargets;
     /** 连锁挖掘是否已吸收掉落物（防止重复收集，由管理器控制） */
     public boolean ultimineAbsorbedDrops;
+    /** Post-break drop absorption jobs. They run after mining visuals have had a tick to flush. */
+    public final Deque<PendingMinedDropAbsorption> pendingMinedDropAbsorptions = new ArrayDeque<>();
     /** 挖掘方向（默认为下） */
     public Direction miningFace = Direction.DOWN;
     /** 当前使用的工具栏格索引 */
@@ -185,6 +187,8 @@ public class RtsStorageSession {
     public RtsToolLease miningToolLease = RtsToolLease.empty();
     /** True when a non-block RTS selected item must be used instead of silently falling back to the hotbar. */
     public boolean miningSelectedToolRequested;
+    /** True when active batch mining should stop before a damageable tool reaches its last 5% durability. */
+    public boolean miningToolProtectionEnabled = true;
     /** 当前挖掘进度[0.0, 1.0]，服务端按 tick 递增 */
     public float miningProgress;
     /** 当前破坏阶段索引；-1 = 尚未开始 */
@@ -221,5 +225,11 @@ public class RtsStorageSession {
 
     public RtsStorageSession() {
         Arrays.fill(this.quickSlotItemIds, "");
+    }
+
+    public record PendingMinedDropAbsorption(BlockPos pos, long dueGameTime) {
+        public PendingMinedDropAbsorption {
+            pos = pos == null ? BlockPos.ZERO : pos.immutable();
+        }
     }
 }

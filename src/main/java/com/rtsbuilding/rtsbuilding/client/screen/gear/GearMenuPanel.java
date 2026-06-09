@@ -228,6 +228,11 @@ public final class GearMenuPanel extends RtsWindowPanel {
                     this.controller.isAllowPlacedBlockRecovery());
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.placed_recovery.hint");
             drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, rowY,
+                    "screen.rtsbuilding.settings.tool_protection",
+                    "screen.rtsbuilding.settings.tool_protection.hint",
+                    this.controller.isToolProtectionEnabled());
+            rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.tool_protection.hint");
+            drawSettingsToggleWithHint(g, mouseX, mouseY, x, w, rowY,
                     "screen.rtsbuilding.settings.damage_sound",
                     "screen.rtsbuilding.settings.damage_sound.hint",
                     this.controller.isDamageSoundEnabled());
@@ -491,6 +496,17 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.placed_recovery.hint");
             if (handleHintExpandClick(mouseX, contentMouseY, x, w, rowY,
+                    "screen.rtsbuilding.settings.tool_protection.hint")) {
+                return;
+            }
+            if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
+                    hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.tool_protection.hint"))) {
+                this.controller.toggleToolProtectionEnabled();
+                screen.persistUiState();
+                return;
+            }
+            rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.tool_protection.hint");
+            if (handleHintExpandClick(mouseX, contentMouseY, x, w, rowY,
                     "screen.rtsbuilding.settings.damage_sound.hint")) {
                 return;
             }
@@ -644,6 +660,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.storage_refresh_quiet.hint")
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.storage_auto_refresh.hint")
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.placed_recovery.hint")
+                        + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.tool_protection.hint")
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.damage_sound.hint")
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.damage_auto_return.hint")
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.bd_network.hint"));

@@ -187,7 +187,8 @@ public final class RtsBuilderNetworkHandlers {
                         payload.toolSlot(),
                         payload.toolItemId(),
                         payload.toolPrototype(),
-                        payload.allowPlacedBlockRecovery());
+                        payload.allowPlacedBlockRecovery(),
+                        payload.toolProtectionEnabled());
             }
         });
     }
@@ -204,7 +205,8 @@ public final class RtsBuilderNetworkHandlers {
                         payload.toolItemId(),
                         payload.toolPrototype(),
                         payload.limit(),
-                        payload.mode());
+                        payload.mode(),
+                        payload.toolProtectionEnabled());
             }
         });
     }
@@ -221,7 +223,8 @@ public final class RtsBuilderNetworkHandlers {
                         payload.toolItemId(),
                         payload.toolPrototype(),
                         payload.shapeType(),
-                        payload.fillType());
+                        payload.fillType(),
+                        payload.toolProtectionEnabled());
             }
         });
     }
@@ -234,7 +237,8 @@ public final class RtsBuilderNetworkHandlers {
                         payload.positions(),
                         payload.toolSlot(),
                         payload.toolItemId(),
-                        payload.toolPrototype());
+                        payload.toolPrototype(),
+                        payload.toolProtectionEnabled());
             }
         });
     }

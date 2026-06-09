@@ -115,6 +115,7 @@ public final class ClientRtsController {
     private boolean suppressBuilderScreenRestoreUntilRtsRestart;
     private boolean startCameraAtPlayerHead;
     private boolean allowPlacedBlockRecovery;
+    private boolean toolProtectionEnabled = true;
     private boolean invertPanDragX;
     private boolean invertPanDragY;
     private boolean smoothCamera;
@@ -280,6 +281,7 @@ public final class ClientRtsController {
         RtsClientUiStateStore.UiState uiState = RtsClientUiStateStore.load();
         this.startCameraAtPlayerHead = uiState.startCameraAtPlayerHead;
         this.allowPlacedBlockRecovery = uiState.allowPlacedBlockRecovery;
+        this.toolProtectionEnabled = uiState.toolProtectionEnabled;
         this.invertPanDragX = uiState.invertPanDragX;
         this.invertPanDragY = uiState.invertPanDragY;
         this.smoothCamera = uiState.smoothCamera;
@@ -862,6 +864,18 @@ public final class ClientRtsController {
 
     public void toggleAllowPlacedBlockRecovery() {
         this.allowPlacedBlockRecovery = !this.allowPlacedBlockRecovery;
+    }
+
+    public boolean isToolProtectionEnabled() {
+        return this.toolProtectionEnabled;
+    }
+
+    public void setToolProtectionEnabled(boolean toolProtectionEnabled) {
+        this.toolProtectionEnabled = toolProtectionEnabled;
+    }
+
+    public void toggleToolProtectionEnabled() {
+        this.toolProtectionEnabled = !this.toolProtectionEnabled;
     }
 
     public boolean isInvertPanDragX() {
@@ -2617,7 +2631,8 @@ public final class ClientRtsController {
                 this.activeMineToolSlot,
                 selectedMiningToolItemId(),
                 selectedMiningToolPrototype(),
-                this.allowPlacedBlockRecovery);
+                this.allowPlacedBlockRecovery,
+                this.toolProtectionEnabled);
     }
 
     public void startUltimine(BlockPos pos, int face, int toolSlot, int limit, byte mode) {
@@ -2636,7 +2651,8 @@ public final class ClientRtsController {
                 selectedMiningToolItemId(),
                 selectedMiningToolPrototype(),
                 limit,
-                mode);
+                mode,
+                this.toolProtectionEnabled);
     }
 
     public void continueMining(int toolSlot) {
@@ -2811,7 +2827,8 @@ public final class ClientRtsController {
                 selectedMiningToolItemId(),
                 selectedMiningToolPrototype(),
                 (byte) this.areaMineShape.ordinal(),
-                (byte) (fillMode == null ? ShapeFillMode.FILL : fillMode).ordinal());
+                (byte) (fillMode == null ? ShapeFillMode.FILL : fillMode).ordinal(),
+                this.toolProtectionEnabled);
 
         clearAreaMineSession();
     }
@@ -2830,7 +2847,8 @@ public final class ClientRtsController {
                 targets,
                 this.activeMineToolSlot,
                 selectedMiningToolItemId(),
-                selectedMiningToolPrototype());
+                selectedMiningToolPrototype(),
+                this.toolProtectionEnabled);
         clearAreaMineSession();
     }
 

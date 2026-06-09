@@ -43,10 +43,12 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
     private static final int ROW_H = 32;
     private static final int HEADER_H = 26;
     private static final int PRIORITY_W = 46;
-    private static final int EXTRACT_W = 62;
+    private static final int EXTRACT_W = 38;
     private static final int UNLINK_W = 48;
     private static final int UNLINK_H = 16;
     private static final int CONTROL_H = 16;
+    private static final int SCROLLBAR_W = 6;
+    private static final int SCROLLBAR_GAP = 5;
     private static final int PRIORITY_MIN = -9999;
     private static final int PRIORITY_MAX = 9999;
 
@@ -80,6 +82,9 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
         int x = contentX() + 8;
         int y = contentY() + 8;
         int w = contentWidth() - 16;
+        int visibleRows = visibleRows();
+        boolean hasScrollbar = entries.size() > visibleRows;
+        int rowW = w - (hasScrollbar ? SCROLLBAR_W + SCROLLBAR_GAP : 0);
         g.drawString(this.screen.font(), Component.translatable("screen.rtsbuilding.storage_links.header"),
                 x, y, 0xFFD8E3EE, false);
 
@@ -95,18 +100,17 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
         }
 
         g.drawString(this.screen.font(), Component.translatable("screen.rtsbuilding.storage_links.priority"),
-                priorityBoxX(x, w), y + 12, 0xFF9FB3C8, false);
-        g.drawString(this.screen.font(), Component.translatable("screen.rtsbuilding.storage_links.mode_extract"),
-                extractButtonX(x, w), y + 12, 0xFF9FB3C8, false);
+                priorityBoxX(x, rowW), y + 12, 0xFF9FB3C8, false);
+        g.drawString(this.screen.font(), Component.translatable("screen.rtsbuilding.storage_links.mode_extract_header"),
+                extractButtonX(x, rowW), y + 12, 0xFF9FB3C8, false);
 
         int firstY = y + HEADER_H;
-        int visibleRows = visibleRows();
         int end = Math.min(entries.size(), this.scroll + visibleRows);
         for (int i = this.scroll; i < end; i++) {
             int rowY = firstY + (i - this.scroll) * ROW_H;
-            renderRow(g, mouseX, mouseY, entries.get(i), x, rowY, w);
+            renderRow(g, mouseX, mouseY, entries.get(i), x, rowY, rowW);
         }
-        renderScrollbar(g, entries.size(), x + w - 4, firstY, visibleRows * ROW_H);
+        renderScrollbar(g, entries.size(), x + rowW + SCROLLBAR_GAP, firstY, visibleRows * ROW_H);
     }
 
     private void renderRow(GuiGraphics g, int mouseX, int mouseY, ClientRtsController.LinkedStorageEntry entry,
@@ -175,9 +179,12 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
                 ? (hovered ? 0xFFFF9DDE : 0xFFFF74C9)
                 : (hovered ? 0xFF8EA9C4 : 0xFF566D83);
         RtsClientUiUtil.drawPanelFrame(g, x, y, EXTRACT_W, CONTROL_H, fill, light, 0xFF0D1117);
+        String labelKey = extractOnly
+                ? "screen.rtsbuilding.storage_links.mode_yes"
+                : "screen.rtsbuilding.storage_links.mode_no";
         RtsClientUiUtil.drawCenteredStringNoShadow(g, this.screen.font(),
                 RtsClientUiUtil.trimToWidth(this.screen.font(),
-                        Component.translatable("screen.rtsbuilding.storage_links.mode_extract").getString(),
+                        Component.translatable(labelKey).getString(),
                         EXTRACT_W - 6),
                 x + EXTRACT_W / 2, y + 4, extractOnly ? 0xFFFFECFA : 0xFFCDE7D2);
     }
@@ -194,6 +201,7 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
         }
         int x = contentX() + 8;
         int w = contentWidth() - 16;
+        int rowW = w - (maxScroll(entries) > 0 ? SCROLLBAR_W + SCROLLBAR_GAP : 0);
         int firstY = contentY() + 8 + HEADER_H;
         int row = (int) ((mouseY - firstY) / ROW_H);
         if (row < 0 || row >= visibleRows()) {
@@ -207,20 +215,20 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
         int rowY = firstY + row * ROW_H;
         ClientRtsController.LinkedStorageEntry entry = entries.get(index);
         int controlY = controlY(rowY);
-        if (inside(mouseX, mouseY, priorityBoxX(x, w), controlY, PRIORITY_W, CONTROL_H)) {
-            beginPriorityEdit(entry, priorityBoxX(x, w), controlY);
+        if (inside(mouseX, mouseY, priorityBoxX(x, rowW), controlY, PRIORITY_W, CONTROL_H)) {
+            beginPriorityEdit(entry, priorityBoxX(x, rowW), controlY);
             return;
         }
         int priorityForUpdate = isEditingPriority(entry.pos())
                 ? parsePriorityDraft(this.priorityInput.getValue(), this.editingPriorityFallback)
                 : entry.priority();
         commitPriorityEdit();
-        if (inside(mouseX, mouseY, extractButtonX(x, w), controlY, EXTRACT_W, CONTROL_H)) {
+        if (inside(mouseX, mouseY, extractButtonX(x, rowW), controlY, EXTRACT_W, CONTROL_H)) {
             boolean nextExtractOnly = entry.mode() != C2SRtsLinkStoragePayload.MODE_EXTRACT_ONLY;
             this.controller.updateLinkedStorageSettings(entry.pos(), nextExtractOnly, priorityForUpdate);
             return;
         }
-        if (inside(mouseX, mouseY, unlinkButtonX(x, w), controlY, UNLINK_W, UNLINK_H)) {
+        if (inside(mouseX, mouseY, unlinkButtonX(x, rowW), controlY, UNLINK_W, UNLINK_H)) {
             BlockPos pos = entry.pos();
             this.controller.unlinkLinkedStorage(pos);
         }
@@ -412,9 +420,10 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
         if (maxScroll <= 0) {
             return;
         }
-        g.fill(x, y, x + 3, y + h, 0xAA101820);
-        int thumbH = Math.max(10, h * visibleRows() / Math.max(1, totalRows));
+        g.fill(x, y, x + SCROLLBAR_W, y + h, 0xAA101820);
+        g.fill(x + 1, y + 1, x + SCROLLBAR_W - 1, y + h - 1, 0x88303B47);
+        int thumbH = Math.max(14, h * visibleRows() / Math.max(1, totalRows));
         int thumbY = y + (h - thumbH) * this.scroll / maxScroll;
-        g.fill(x, thumbY, x + 3, thumbY + thumbH, 0xFF8EA9C4);
+        g.fill(x + 1, thumbY, x + SCROLLBAR_W - 1, thumbY + thumbH, 0xFF8EA9C4);
     }
 }

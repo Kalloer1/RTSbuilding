@@ -16,7 +16,8 @@ public record C2SRtsMinePayload(
         byte toolSlot,
         String toolItemId,
         ItemStack toolPrototype,
-        boolean allowPlacedBlockRecovery) implements CustomPacketPayload {
+        boolean allowPlacedBlockRecovery,
+        boolean toolProtectionEnabled) implements CustomPacketPayload {
     public static final Type<C2SRtsMinePayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(RtsbuildingMod.MODID, "c2s_rts_mine"));
 
@@ -33,6 +34,7 @@ public record C2SRtsMinePayload(
                     ItemStack.STREAM_CODEC.encode(buf, toolPrototype);
                 }
                 buf.writeBoolean(payload.allowPlacedBlockRecovery());
+                buf.writeBoolean(payload.toolProtectionEnabled());
             },
             (buf) -> new C2SRtsMinePayload(
                     buf.readBlockPos(),
@@ -41,6 +43,7 @@ public record C2SRtsMinePayload(
                     buf.readByte(),
                     buf.readUtf(256),
                     buf.readBoolean() ? ItemStack.STREAM_CODEC.decode(buf) : ItemStack.EMPTY,
+                    buf.readBoolean(),
                     buf.readBoolean()));
 
     @Override

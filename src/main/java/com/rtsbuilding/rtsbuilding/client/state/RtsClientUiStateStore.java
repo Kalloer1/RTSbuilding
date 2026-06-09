@@ -176,6 +176,7 @@ public final class RtsClientUiStateStore {
         public int inputSensitivityIndex = 2;
         public boolean startCameraAtPlayerHead = false;
         public boolean allowPlacedBlockRecovery = false;
+        public boolean toolProtectionEnabled = true;
         public boolean invertPanDragX = false;
         public boolean invertPanDragY = false;
         public boolean smoothCamera = true;
@@ -236,6 +237,7 @@ public final class RtsClientUiStateStore {
             clean.inputSensitivityIndex = Math.max(0, Math.min(32, this.inputSensitivityIndex));
             clean.startCameraAtPlayerHead = this.startCameraAtPlayerHead;
             clean.allowPlacedBlockRecovery = this.allowPlacedBlockRecovery;
+            clean.toolProtectionEnabled = this.toolProtectionEnabled;
             clean.invertPanDragX = this.invertPanDragX;
             clean.invertPanDragY = this.invertPanDragY;
             clean.smoothCamera = this.smoothCamera;

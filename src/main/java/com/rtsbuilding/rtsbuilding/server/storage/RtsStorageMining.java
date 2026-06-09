@@ -84,6 +84,10 @@ public final class RtsStorageMining {
 
     /** How many ultimine targets are processed in a single tick. */
     private static final int ULTIMINE_BLOCKS_PER_TICK = 8;
+    /** Delay drop absorption so block updates and destroy shrink-out packets can flush first. */
+    private static final long MINED_DROP_ABSORPTION_DELAY_TICKS = 1L;
+    /** Keep deferred storage work small so it does not recreate mining stutter on large packs. */
+    private static final int MINED_DROP_ABSORPTIONS_PER_TICK = 4;
 
     /** Number of hotbar slots a player has (0-8). */
     private static final int PLAYER_HOTBAR_SLOT_COUNT = 9;
@@ -134,7 +138,8 @@ public final class RtsStorageMining {
      * @param allowPlacedBlockRecovery  if true, try placed-block recovery first
      */
     public static void mine(ServerPlayer player, RtsStorageSession session, BlockPos pos, Direction face, boolean start,
-            byte toolSlot, String toolItemId, ItemStack toolPrototype, boolean allowPlacedBlockRecovery) {
+            byte toolSlot, String toolItemId, ItemStack toolPrototype, boolean allowPlacedBlockRecovery,
+            boolean toolProtectionEnabled) {
         if (start && !RtsProgressionManager.canUse(player, RtsFeature.REMOTE_BREAK)) {
             return;
         }
@@ -174,6 +179,7 @@ public final class RtsStorageMining {
                 resetMiningState(session);
                 return;
             }
+            session.miningToolProtectionEnabled = toolProtectionEnabled;
             beginRemoteMining(player, session, pos, face, slot);
             return;
         }
@@ -209,7 +215,7 @@ public final class RtsStorageMining {
      * @param mode            ultimine mode (0 = same block type, etc.)
      */
     public static void startUltimine(ServerPlayer player, RtsStorageSession session, BlockPos pos, Direction face, byte toolSlot,
-            String toolItemId, ItemStack toolPrototype, int requestedLimit, byte mode) {
+            String toolItemId, ItemStack toolPrototype, int requestedLimit, byte mode, boolean toolProtectionEnabled) {
         if (!RtsProgressionManager.canUse(player, RtsFeature.ULTIMINE)) {
             return;
         }
@@ -253,6 +259,7 @@ public final class RtsStorageMining {
 
         session.miningToolLease = toolLease;
         session.miningSelectedToolRequested = selectedToolRequested;
+        session.miningToolProtectionEnabled = toolProtectionEnabled;
         session.ultimineTargets.clear();
         session.ultimineTargets.addAll(targets);
         session.ultimineProgressPos = targets.peekFirst();
@@ -295,7 +302,7 @@ public final class RtsStorageMining {
     public static void areaMine(ServerPlayer player, RtsStorageSession session,
             int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
             byte toolSlot, String toolItemId, ItemStack toolPrototype,
-            byte shapeType, byte fillType) {
+            byte shapeType, byte fillType, boolean toolProtectionEnabled) {
         // --- 1. 前置检查 ---
         if (!RtsProgressionManager.canUse(player, RtsFeature.ULTIMINE)) {
             return;
@@ -412,6 +419,7 @@ public final class RtsStorageMining {
         // 生存模式：借用工具，设置 Ultimine 目标队列，逐步远程挖掘
         session.miningToolLease = toolLease;
         session.miningSelectedToolRequested = selectedToolRequested;
+        session.miningToolProtectionEnabled = toolProtectionEnabled;
         session.ultimineTargets.clear();
         session.ultimineTargets.addAll(targets);
         session.ultimineProgressPos = targets.peekFirst();
@@ -425,7 +433,7 @@ public final class RtsStorageMining {
     }
 
     public static void areaDestroy(ServerPlayer player, RtsStorageSession session, List<BlockPos> positions,
-            byte toolSlot, String toolItemId, ItemStack toolPrototype) {
+            byte toolSlot, String toolItemId, ItemStack toolPrototype, boolean toolProtectionEnabled) {
         if (!RtsProgressionManager.canUse(player, RtsFeature.AREA_DESTROY)) {
             return;
         }
@@ -462,6 +470,7 @@ public final class RtsStorageMining {
 
         session.miningToolLease = toolLease;
         session.miningSelectedToolRequested = selectedToolRequested;
+        session.miningToolProtectionEnabled = toolProtectionEnabled;
         session.ultimineTargets.clear();
         session.ultimineTargets.addAll(targets);
         session.ultimineProgressPos = targets.peekFirst();
@@ -568,6 +577,10 @@ public final class RtsStorageMining {
             stopActiveMining(player, session);
             return;
         }
+        if (isToolNearBreak(player, session)) {
+            stopActiveMining(player, session);
+            return;
+        }
 
         float step = computeRemoteDestroyStep(player, state, pos, session.miningToolSlot,
                 session.miningToolLease.stack(), session.miningSelectedToolRequested);
@@ -593,7 +606,7 @@ public final class RtsStorageMining {
             removeUltimineTarget(session, pos);
             session.ultimineProcessedTargets = Math.max(session.ultimineProcessedTargets, 1);
             if (canAutoStoreDrops(player, session)) {
-                session.ultimineAbsorbedDrops |= absorbNearbyMinedDrops(player, pos, session);
+                scheduleMinedDropAbsorption(player, session, pos);
             }
             session.miningPos = null;
             session.miningProgress = 0.0F;
@@ -604,14 +617,49 @@ public final class RtsStorageMining {
 
         clearMineProgress(player, pos);
         if (broken && canAutoStoreDrops(player, session)) {
-            boolean absorbed = absorbNearbyMinedDrops(player, pos, session);
-            if (absorbed) {
-                RtsStorageManager.runQuestDetect(player, session, false);
-            }
+            scheduleMinedDropAbsorption(player, session, pos);
         }
         returnMiningTool(player, session, session.miningToolLease);
         markMiningStorageDirty(player, session);
         resetMiningState(session);
+    }
+
+    /**
+     * Runs post-break storage absorption after visible mining has already
+     * completed. Keeping this out of the break-confirmation tick lets the
+     * block update plus destroy shrink-out animation reach the client before
+     * large modpack storage handlers do their slower item insertion work.
+     */
+    public static void tickDeferredMiningWork(ServerPlayer player, RtsStorageSession session) {
+        if (player == null || session == null || session.pendingMinedDropAbsorptions.isEmpty()) {
+            return;
+        }
+        if (hasActiveMiningVisualWork(session)) {
+            return;
+        }
+
+        long now = player.serverLevel().getGameTime();
+        int processed = 0;
+        while (processed < MINED_DROP_ABSORPTIONS_PER_TICK && !session.pendingMinedDropAbsorptions.isEmpty()) {
+            RtsStorageSession.PendingMinedDropAbsorption job = session.pendingMinedDropAbsorptions.peekFirst();
+            if (job == null) {
+                session.pendingMinedDropAbsorptions.removeFirst();
+                continue;
+            }
+            if (job.dueGameTime() > now) {
+                break;
+            }
+            session.pendingMinedDropAbsorptions.removeFirst();
+            processed++;
+            if (!canAutoStoreDrops(player, session)) {
+                continue;
+            }
+            boolean absorbed = absorbNearbyMinedDrops(player, job.pos(), session);
+            if (absorbed) {
+                RtsStorageManager.runQuestDetect(player, session, false);
+                markMiningStorageDirty(player, session);
+            }
+        }
     }
 
     /**
@@ -814,7 +862,7 @@ public final class RtsStorageMining {
             }
             boolean targetBroken = destroyMinedBlock(player, session, target, session.miningToolSlot);
             if (targetBroken && canAutoStoreDrops(player, session)) {
-                session.ultimineAbsorbedDrops |= absorbNearbyMinedDrops(player, target, session);
+                scheduleMinedDropAbsorption(player, session, target);
             }
             if (targetBroken && isToolNearBreak(player, session)) {
                 finishUltimineBatch(player, session);
@@ -845,15 +893,13 @@ public final class RtsStorageMining {
     }
 
     /**
-     * Finalises an ultimine batch: clears progress, triggers quest detection
-     * if drops were absorbed, returns the borrowed tool, schedules a storage
-     * page refresh, and resets the mining state.
+     * Finalises an ultimine batch: clears progress, returns the borrowed tool,
+     * schedules a storage page refresh, and resets the mining state. Deferred
+     * auto-store jobs trigger quest detection when their later insertion
+     * actually absorbs drops.
      */
     private static void finishUltimineBatch(ServerPlayer player, RtsStorageSession session) {
         sendUltimineProgress(player, -1, 0);
-        if (session.ultimineAbsorbedDrops) {
-            RtsStorageManager.runQuestDetect(player, session, false);
-        }
         returnMiningTool(player, session, session.miningToolLease);
         markMiningStorageDirty(player, session);
         BlockPos progressPos = session.ultimineProgressPos;
@@ -1293,6 +1339,15 @@ public final class RtsStorageMining {
         return changed;
     }
 
+    private static void scheduleMinedDropAbsorption(ServerPlayer player, RtsStorageSession session, BlockPos pos) {
+        if (player == null || session == null || pos == null) {
+            return;
+        }
+        long dueGameTime = player.serverLevel().getGameTime() + MINED_DROP_ABSORPTION_DELAY_TICKS;
+        session.pendingMinedDropAbsorptions.addLast(
+                new RtsStorageSession.PendingMinedDropAbsorption(pos, dueGameTime));
+    }
+
     // =========================================================================
     //  SECTION 7 — NETWORK COMMUNICATION
     // =========================================================================
@@ -1336,6 +1391,7 @@ public final class RtsStorageMining {
         session.miningStage = -1;
         session.miningToolLease = RtsToolLease.empty();
         session.miningSelectedToolRequested = false;
+        session.miningToolProtectionEnabled = true;
     }
 
     /**
@@ -1356,7 +1412,17 @@ public final class RtsStorageMining {
                 && RtsProgressionManager.canUse(player, RtsFeature.AUTO_STORE_MINED_DROPS);
     }
 
+    private static boolean hasActiveMiningVisualWork(RtsStorageSession session) {
+        return session != null
+                && (session.miningPos != null
+                        || session.ultimineProgressPos != null
+                        || !session.ultimineTargets.isEmpty());
+    }
+
     private static boolean isToolNearBreak(ServerPlayer player, RtsStorageSession session) {
+        if (session == null || !session.miningToolProtectionEnabled) {
+            return false;
+        }
         ItemStack tool = activeMiningTool(player, session);
         if (tool.isEmpty() || !tool.isDamageableItem()) {
             return false;
