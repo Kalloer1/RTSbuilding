@@ -33,7 +33,8 @@ public final class GearMenuPanel extends RtsWindowPanel {
     private static final int CONTENT_TOP_PADDING = 8;
     private static final int SECTION_HEADER_H = 22;
     private static final int SECTION_GAP = 6;
-    private static final int SENSITIVITY_ROW_H = 68;
+    private static final int SENSITIVITY_SLIDER_ROW_H = 36;
+    private static final int SENSITIVITY_GROUP_H = SENSITIVITY_SLIDER_ROW_H * 3 + 18;
     private static final int SCALE_ROW_H = 34;
     private static final int SIMPLE_TOGGLE_ROW_H = 28;
     private static final int HINT_TOGGLE_ROW_H = 34;
@@ -46,6 +47,14 @@ public final class GearMenuPanel extends RtsWindowPanel {
     private boolean helpersExpanded = false;
     private boolean animationExpanded = false;
     private final Set<String> expandedHintKeys = new HashSet<>();
+    private SensitivitySlider draggingSensitivitySlider = SensitivitySlider.NONE;
+
+    private enum SensitivitySlider {
+        NONE,
+        HORIZONTAL,
+        VERTICAL,
+        ROTATE
+    }
 
     @Override
     public void init(BuilderScreen screen, ClientRtsController controller) {
@@ -60,8 +69,13 @@ public final class GearMenuPanel extends RtsWindowPanel {
         this.helpersExpanded = false;
         this.animationExpanded = false;
         this.expandedHintKeys.clear();
+        this.draggingSensitivitySlider = SensitivitySlider.NONE;
         setOpen(true);
         markBroughtToFront();
+    }
+
+    public boolean isDraggingSensitivity() {
+        return this.draggingSensitivitySlider != SensitivitySlider.NONE;
     }
 
     @Override
@@ -90,6 +104,28 @@ public final class GearMenuPanel extends RtsWindowPanel {
         int delta = scrollY > 0.0D ? -18 : 18;
         this.scroll = Mth.clamp(this.scroll + delta, 0, maxScroll);
         return true;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (button == 0 && isDraggingSensitivity()) {
+            updateSensitivityFromMouse(this.draggingSensitivitySlider, mouseX);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && isDraggingSensitivity()) {
+            updateSensitivityFromMouse(this.draggingSensitivitySlider, mouseX);
+            this.draggingSensitivitySlider = SensitivitySlider.NONE;
+            if (this.screen != null) {
+                this.screen.persistUiState();
+            }
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
@@ -163,8 +199,8 @@ public final class GearMenuPanel extends RtsWindowPanel {
         rowY = drawSectionHeader(g, mouseX, mouseY, x, w, rowY,
                 "screen.rtsbuilding.settings.category.controls", this.controlsExpanded);
         if (this.controlsExpanded) {
-            drawSensitivityRow(g, rowY, x, w);
-            rowY += SENSITIVITY_ROW_H;
+            drawSensitivityRows(g, rowY, x, w);
+            rowY += SENSITIVITY_GROUP_H;
             drawSimpleToggleRow(g, mouseX, mouseY, x, w, rowY,
                     "screen.rtsbuilding.settings.head_start",
                     this.controller.isStartCameraAtPlayerHead());
@@ -281,25 +317,47 @@ public final class GearMenuPanel extends RtsWindowPanel {
         return y + SECTION_HEADER_H;
     }
 
-    private void drawSensitivityRow(GuiGraphics g, int rowY, int x, int w) {
-        g.drawString(screen.font(), Component.translatable("screen.rtsbuilding.settings.sensitivity"),
-                x + 16, rowY + 6, 0xC8D3DF, false);
-        g.drawString(screen.font(), this.controller.getInputSensitivityLabel(),
-                x + w - 60, rowY + 6, 0xEAF4FF, false);
+    private void drawSensitivityRows(GuiGraphics g, int rowY, int x, int w) {
+        drawSensitivitySliderRow(g, rowY, x, w,
+                "screen.rtsbuilding.settings.horizontal_speed",
+                this.controller.getHorizontalSensitivityLabel(),
+                this.controller.getHorizontalSensitivityFraction());
+        rowY += SENSITIVITY_SLIDER_ROW_H;
+        drawSensitivitySliderRow(g, rowY, x, w,
+                "screen.rtsbuilding.settings.vertical_speed",
+                this.controller.getVerticalSensitivityLabel(),
+                this.controller.getVerticalSensitivityFraction());
+        rowY += SENSITIVITY_SLIDER_ROW_H;
+        drawSensitivitySliderRow(g, rowY, x, w,
+                "screen.rtsbuilding.settings.rotate_speed",
+                this.controller.getRotateSensitivityLabel(),
+                this.controller.getRotateSensitivityFraction());
 
-        int trackX = x + 16;
-        int trackY = rowY + 28;
-        int trackW = w - 32;
+        int trackX = sensitivityTrackX(x);
+        int trackW = sensitivityTrackW(w);
+        int labelY = rowY + 30;
+        g.drawString(screen.font(), Component.translatable("screen.rtsbuilding.settings.slow"),
+                trackX, labelY, 0xB5C1CE, false);
+        g.drawString(screen.font(), Component.translatable("screen.rtsbuilding.settings.fast"),
+                trackX + trackW - screen.font().width(text("screen.rtsbuilding.settings.fast")),
+                labelY, 0xB5C1CE, false);
+    }
+
+    private void drawSensitivitySliderRow(GuiGraphics g, int rowY, int x, int w,
+            String labelKey, String value, double fraction) {
+        int valueW = screen.font().width(value);
+        g.drawString(screen.font(), trimToWidth(text(labelKey), w - 110),
+                x + 16, rowY + 2, 0xC8D3DF, false);
+        g.drawString(screen.font(), value,
+                x + w - 16 - valueW, rowY + 2, 0xEAF4FF, false);
+
+        int trackX = sensitivityTrackX(x);
+        int trackY = sensitivityTrackY(rowY);
+        int trackW = sensitivityTrackW(w);
         g.fill(trackX, trackY, trackX + trackW, trackY + 4, 0xFF07090D);
         g.fill(trackX + 1, trackY + 1, trackX + trackW - 1, trackY + 3, 0xFF313946);
-        int presetCount = Math.max(1, this.controller.getInputSensitivityPresetCount());
-        int knobX = trackX + (int) Math.round((this.controller.getInputSensitivityIndex()
-                / (double) Math.max(1, presetCount - 1)) * trackW);
+        int knobX = trackX + (int) Math.round(Mth.clamp(fraction, 0.0D, 1.0D) * trackW);
         g.fill(knobX - 3, trackY - 5, knobX + 4, trackY + 8, 0xFF5FE36C);
-        g.drawString(screen.font(), Component.translatable("screen.rtsbuilding.settings.slow"),
-                trackX, trackY + 10, 0xB5C1CE, false);
-        g.drawString(screen.font(), Component.translatable("screen.rtsbuilding.settings.fast"),
-                trackX + trackW - 24, trackY + 10, 0xB5C1CE, false);
     }
 
     private void drawScaleRow(GuiGraphics g, int mouseX, int mouseY, int rowY, int x, int w) {
@@ -359,11 +417,18 @@ public final class GearMenuPanel extends RtsWindowPanel {
         }
         rowY += SECTION_HEADER_H;
         if (this.controlsExpanded) {
-            if (inside(mouseX, contentMouseY, x + 16, rowY + 20, w - 32, 24)) {
-                this.controller.setInputSensitivityByFraction(calcSensitivityFraction(mouseX, x, w));
+            if (handleSensitivityClick(mouseX, contentMouseY, rowY, x, w, SensitivitySlider.HORIZONTAL)) {
                 return;
             }
-            rowY += SENSITIVITY_ROW_H;
+            rowY += SENSITIVITY_SLIDER_ROW_H;
+            if (handleSensitivityClick(mouseX, contentMouseY, rowY, x, w, SensitivitySlider.VERTICAL)) {
+                return;
+            }
+            rowY += SENSITIVITY_SLIDER_ROW_H;
+            if (handleSensitivityClick(mouseX, contentMouseY, rowY, x, w, SensitivitySlider.ROTATE)) {
+                return;
+            }
+            rowY += SENSITIVITY_SLIDER_ROW_H + 18;
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24, SIMPLE_TOGGLE_ROW_H)) {
                 this.controller.toggleStartCameraAtPlayerHead();
                 screen.persistUiState();
@@ -590,10 +655,42 @@ public final class GearMenuPanel extends RtsWindowPanel {
         return true;
     }
 
-    private double calcSensitivityFraction(double mouseX, int menuX, int menuW) {
-        int trackX = menuX + 16;
-        int trackW = menuW - 32;
-        return (mouseX - trackX) / Math.max(1.0D, trackW);
+    private boolean handleSensitivityClick(double mouseX, double mouseY, int rowY, int x, int w,
+            SensitivitySlider slider) {
+        if (!inside(mouseX, mouseY, sensitivityTrackX(x), sensitivityTrackY(rowY) - 8,
+                sensitivityTrackW(w), 20)) {
+            return false;
+        }
+        this.draggingSensitivitySlider = slider;
+        updateSensitivityFromMouse(slider, mouseX);
+        return true;
+    }
+
+    private void updateSensitivityFromMouse(SensitivitySlider slider, double mouseX) {
+        double fraction = calcSensitivityFraction(mouseX, contentX(), contentWidth());
+        switch (slider) {
+            case HORIZONTAL -> this.controller.setHorizontalSensitivityByFraction(fraction);
+            case VERTICAL -> this.controller.setVerticalSensitivityByFraction(fraction);
+            case ROTATE -> this.controller.setRotateSensitivityByFraction(fraction);
+            case NONE -> {
+            }
+        }
+    }
+
+    private double calcSensitivityFraction(double mouseX, int x, int w) {
+        return (mouseX - sensitivityTrackX(x)) / Math.max(1.0D, sensitivityTrackW(w));
+    }
+
+    private int sensitivityTrackX(int x) {
+        return x + 16;
+    }
+
+    private int sensitivityTrackY(int rowY) {
+        return rowY + 20;
+    }
+
+    private int sensitivityTrackW(int w) {
+        return w - 32;
     }
 
     private void adjustRtsGuiScale(double delta) {
@@ -628,7 +725,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
         int x = contentX();
         int w = contentWidth();
         int height = sectionHeight(this.controlsExpanded,
-                SENSITIVITY_ROW_H
+                SENSITIVITY_GROUP_H
                         + SIMPLE_TOGGLE_ROW_H
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.pan_drag_x_invert.hint")
                         + hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.pan_drag_y_invert.hint"));

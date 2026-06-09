@@ -173,7 +173,11 @@ public final class RtsClientUiStateStore {
         public String areaMineShape = "CHAIN";
         public boolean chunkCurtainVisible = false;
         public double rtsGuiScale = 2.0D;
-        public int inputSensitivityIndex = 2;
+        public double horizontalSensitivityScale = 1.0D;
+        public double verticalSensitivityScale = 1.0D;
+        public double rotateSensitivityScale = 1.0D;
+        @Deprecated
+        public int inputSensitivityIndex = -1;
         public boolean startCameraAtPlayerHead = false;
         public boolean allowPlacedBlockRecovery = false;
         public boolean invertPanDragX = false;
@@ -233,7 +237,12 @@ public final class RtsClientUiStateStore {
             clean.areaMineShape = sanitizeEnum(this.areaMineShape, "CHAIN");
             clean.chunkCurtainVisible = this.chunkCurtainVisible;
             clean.rtsGuiScale = sanitizeScale(this.rtsGuiScale);
-            clean.inputSensitivityIndex = Math.max(0, Math.min(32, this.inputSensitivityIndex));
+            clean.horizontalSensitivityScale = sanitizeSensitivityScale(this.horizontalSensitivityScale);
+            clean.verticalSensitivityScale = sanitizeSensitivityScale(this.verticalSensitivityScale);
+            clean.rotateSensitivityScale = sanitizeSensitivityScale(this.rotateSensitivityScale);
+            clean.inputSensitivityIndex = this.inputSensitivityIndex >= 0
+                    ? Math.max(0, Math.min(32, this.inputSensitivityIndex))
+                    : -1;
             clean.startCameraAtPlayerHead = this.startCameraAtPlayerHead;
             clean.allowPlacedBlockRecovery = this.allowPlacedBlockRecovery;
             clean.invertPanDragX = this.invertPanDragX;
@@ -309,6 +318,13 @@ public final class RtsClientUiStateStore {
             }
             double snapped = Math.round(value / 0.5D) * 0.5D;
             return Math.max(1.0D, Math.min(4.0D, snapped));
+        }
+
+        private static double sanitizeSensitivityScale(double value) {
+            if (!Double.isFinite(value)) {
+                return 1.0D;
+            }
+            return Math.max(0.25D, Math.min(3.0D, value));
         }
 
         /**
