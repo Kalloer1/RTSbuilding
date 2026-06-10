@@ -278,8 +278,9 @@ public final class RtsClientPacketGateway {
         return matchedAnyToken;
     }
 
-    public static void sendSetQuickSlot(int index, String itemId) {
-        PacketDistributor.sendToServer(new C2SRtsSetQuickSlotPayload((byte) index, itemId));
+    public static void sendSetQuickSlot(int index, String itemId, ItemStack previewStack) {
+        ItemStack preview = previewStack == null ? ItemStack.EMPTY : previewStack.copyWithCount(1);
+        PacketDistributor.sendToServer(new C2SRtsSetQuickSlotPayload((byte) index, itemId, preview));
     }
 
     public static void sendSetGuiBinding(int index, BlockPos pos, Direction face, String itemIdHint) {

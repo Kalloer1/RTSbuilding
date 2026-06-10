@@ -27,7 +27,9 @@ public final class BlueprintCaptureRenderer {
     private static final float EXCLUDED_BLOCK_R = 1.0F;
     private static final float EXCLUDED_BLOCK_G = 0.36F;
     private static final float EXCLUDED_BLOCK_B = 0.12F;
-    private static final float EXCLUDED_BLOCK_A = 0.95F;
+    private static final float EXCLUDED_BLOCK_LINE_A = 0.95F;
+    private static final float EXCLUDED_BLOCK_FILL_A = 0.24F;
+    private static final float EXCLUDED_BLOCK_MARK_A = 0.72F;
 
     private static final float BOUNDARY_BOX_R = 0.35F;
     private static final float BOUNDARY_BOX_G = 0.78F;
@@ -89,12 +91,24 @@ public final class BlueprintCaptureRenderer {
 
         // 渲染每个排除方块的红色边框
         for (BlockPos pos : BlueprintPanel.getCaptureExcludedBlocksForRender(CAPTURE_EXCLUDED_HIGHLIGHT_LIMIT)) {
+            LevelRenderer.addChainedFilledBoxVertices(
+                    poseStack,
+                    fillBuffer,
+                    pos.getX() + 0.07D, pos.getY() + 0.07D, pos.getZ() + 0.07D,
+                    pos.getX() + 0.93D, pos.getY() + 0.93D, pos.getZ() + 0.93D,
+                    EXCLUDED_BLOCK_R, EXCLUDED_BLOCK_G, EXCLUDED_BLOCK_B, EXCLUDED_BLOCK_FILL_A);
+            LevelRenderer.addChainedFilledBoxVertices(
+                    poseStack,
+                    fillBuffer,
+                    pos.getX() + 0.18D, pos.getY() + 0.91D, pos.getZ() + 0.18D,
+                    pos.getX() + 0.82D, pos.getY() + 0.99D, pos.getZ() + 0.82D,
+                    EXCLUDED_BLOCK_R, EXCLUDED_BLOCK_G, EXCLUDED_BLOCK_B, EXCLUDED_BLOCK_MARK_A);
             LevelRenderer.renderLineBox(
                     poseStack,
                     lineBuffer,
                     pos.getX() + 0.06D, pos.getY() + 0.06D, pos.getZ() + 0.06D,
                     pos.getX() + 0.94D, pos.getY() + 0.94D, pos.getZ() + 0.94D,
-                    EXCLUDED_BLOCK_R, EXCLUDED_BLOCK_G, EXCLUDED_BLOCK_B, EXCLUDED_BLOCK_A);
+                    EXCLUDED_BLOCK_R, EXCLUDED_BLOCK_G, EXCLUDED_BLOCK_B, EXCLUDED_BLOCK_LINE_A);
         }
 
         // 渲染整个选择框的蓝色边框

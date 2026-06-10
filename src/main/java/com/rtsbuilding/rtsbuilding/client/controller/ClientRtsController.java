@@ -1765,7 +1765,7 @@ public final class ClientRtsController {
             }
         }
 
-        applyQuickSlotPayload(payload.quickSlotItemIds());
+        applyQuickSlotPayload(payload.quickSlotItemIds(), payload.quickSlotPreviews());
         applyGuiBindingPayload(payload.guiBindingLabels(), payload.guiBindingItemIds());
         refreshSelectedItemPreviewFromStorage();
 
@@ -2284,7 +2284,7 @@ public final class ClientRtsController {
             return;
         }
         setQuickSlotLocal(index, this.selectedItemId, this.selectedItemPreview.copy());
-        RtsClientPacketGateway.sendSetQuickSlot(index, this.selectedItemId);
+        RtsClientPacketGateway.sendSetQuickSlot(index, this.selectedItemId, this.selectedItemPreview);
     }
 
     public void assignQuickSlotFromToolItem(int index, ItemStack stack) {
@@ -2297,7 +2297,7 @@ public final class ClientRtsController {
         }
         String itemId = id.toString();
         setQuickSlotLocal(index, itemId, stack.copy());
-        RtsClientPacketGateway.sendSetQuickSlot(index, itemId);
+        RtsClientPacketGateway.sendSetQuickSlot(index, itemId, stack);
     }
 
     public void clearQuickSlot(int index) {
@@ -2305,7 +2305,7 @@ public final class ClientRtsController {
             return;
         }
         setQuickSlotLocal(index, "", ItemStack.EMPTY);
-        RtsClientPacketGateway.sendSetQuickSlot(index, "");
+        RtsClientPacketGateway.sendSetQuickSlot(index, "", ItemStack.EMPTY);
     }
 
     public void selectQuickSlot(int index) {
@@ -2499,7 +2499,7 @@ public final class ClientRtsController {
         }
     }
 
-    private void applyQuickSlotPayload(List<String> payloadQuickSlots) {
+    private void applyQuickSlotPayload(List<String> payloadQuickSlots, List<ItemStack> payloadQuickSlotPreviews) {
         clearQuickSlotsLocal();
         int size = Math.min(QUICK_SLOT_COUNT, payloadQuickSlots == null ? 0 : payloadQuickSlots.size());
         for (int i = 0; i < size; i++) {
@@ -2511,9 +2511,33 @@ public final class ClientRtsController {
             if (key == null || !BuiltInRegistries.ITEM.containsKey(key)) {
                 continue;
             }
-            ItemStack preview = new ItemStack(BuiltInRegistries.ITEM.get(key));
+            ItemStack preview = payloadQuickSlotPreviews != null && i < payloadQuickSlotPreviews.size()
+                    ? payloadQuickSlotPreviews.get(i)
+                    : ItemStack.EMPTY;
+            if (preview == null || preview.isEmpty() || !preview.is(BuiltInRegistries.ITEM.get(key))) {
+                preview = resolveQuickSlotFallbackPreview(itemId, key);
+            } else {
+                preview = preview.copyWithCount(1);
+            }
             setQuickSlotLocal(i, itemId, preview);
         }
+    }
+
+    private ItemStack resolveQuickSlotFallbackPreview(String itemId, ResourceLocation key) {
+        for (StorageEntry entry : this.storageEntries) {
+            if (entry != null && itemId.equals(entry.itemId()) && entry.stack() != null && !entry.stack().isEmpty()) {
+                return entry.stack().copyWithCount(1);
+            }
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            for (ItemStack stack : mc.player.getInventory().items) {
+                if (stack != null && !stack.isEmpty() && itemId.equals(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString())) {
+                    return stack.copyWithCount(1);
+                }
+            }
+        }
+        return new ItemStack(BuiltInRegistries.ITEM.get(key));
     }
 
     private void applyGuiBindingPayload(List<String> payloadGuiBindings, List<String> payloadGuiBindingItemIds) {
@@ -2544,6 +2568,9 @@ public final class ClientRtsController {
         }
         String normalizedItemId = itemId == null ? "" : itemId;
         ItemStack normalizedPreview = preview == null ? ItemStack.EMPTY : preview.copy();
+        if (!normalizedPreview.isEmpty()) {
+            normalizedPreview.setCount(1);
+        }
         this.quickSlotItemIds[index] = normalizedItemId;
         if (normalizedItemId.isBlank() || normalizedPreview.isEmpty()) {
             this.quickSlotLabels[index] = "";

@@ -71,6 +71,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ShearsItem;
 import net.minecraft.world.item.ShovelItem;
 import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ContainerLevelAccess;
@@ -216,7 +217,7 @@ public final class RtsStorageManager {
     }
 
     public static void saveSessionToPlayerNbt(ServerPlayer player, RtsStorageSession session) {
-        CompoundTag root = RtsStorageSessionCodec.serialize(session);
+        CompoundTag root = RtsStorageSessionCodec.serialize(player, session);
         player.getPersistentData().put(RtsStorageSessionCodec.ROOT_KEY, root.copy());
         RtsStorageSessionStore.saveSession(player, root);
     }
@@ -543,9 +544,9 @@ public final class RtsStorageManager {
         runQuestDetect(player, session, false);
     }
 
-    public static void setQuickSlot(ServerPlayer player, byte slotId, String itemId) {
+    public static void setQuickSlot(ServerPlayer player, byte slotId, String itemId, ItemStack previewStack) {
         Session session = getOrCreateSession(player);
-        applyBindingUpdate(player, session, RtsStorageBindings.setQuickSlot(session, slotId, itemId));
+        applyBindingUpdate(player, session, RtsStorageBindings.setQuickSlot(session, slotId, itemId, previewStack));
     }
 
     public static void setGuiBinding(ServerPlayer player, byte slotId, boolean clear, BlockPos pos, Direction face, String itemIdHint) {
@@ -1585,6 +1586,14 @@ public final class RtsStorageManager {
     public static void refillCraftGridFromBlueprint(CraftingMenu menu, List<IItemHandler> handlers, ServerPlayer player,
             ItemStack[] blueprint, boolean fillAll, boolean includePlayerFallback) {
         RtsStorageCrafting.refillCraftGridFromBlueprint(menu, handlers, player, blueprint, fillAll, includePlayerFallback);
+    }
+
+    public static void refillCraftGridFromLinked(
+            ServerPlayer player,
+            CraftingMenu craftingMenu,
+            ItemStack[] blueprint,
+            CraftingRecipe recipe) {
+        RtsStorageCrafting.refillCraftGridFromLinked(player, SESSIONS.get(player.getUUID()), craftingMenu, blueprint, recipe);
     }
 
     private static ItemStack extractOneMatchingPrototypeCombined(List<IItemHandler> handlers, ServerPlayer player, ItemStack prototype) {

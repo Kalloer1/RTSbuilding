@@ -62,6 +62,9 @@ final class VanillaStructureNbtReader {
             CompoundTag blockEntityTag = blockTag.contains("nbt", Tag.TAG_COMPOUND)
                     ? blockTag.getCompound("nbt").copy()
                     : new CompoundTag();
+            String materialItemId = blockTag.contains("rtsbuilding_material_item", Tag.TAG_STRING)
+                    ? blockTag.getString("rtsbuilding_material_item")
+                    : "";
             if (!paletteEntry.missingBlockId().isBlank()) {
                 out.add(RtsBlueprintBlock.missing(pos, paletteEntry.missingBlockId(), blockEntityTag));
                 continue;
@@ -69,7 +72,7 @@ final class VanillaStructureNbtReader {
             if (state.isAir() || state.is(Blocks.STRUCTURE_VOID)) {
                 continue;
             }
-            out.add(new RtsBlueprintBlock(pos, state, blockEntityTag));
+            out.add(new RtsBlueprintBlock(pos, state, blockEntityTag, "", materialItemId));
         }
         return RtsBlueprint.create(cleanName(fileName), fileName, BlueprintFormat.VANILLA_NBT, size, out);
     }

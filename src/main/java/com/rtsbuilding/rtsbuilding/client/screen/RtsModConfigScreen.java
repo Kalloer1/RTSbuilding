@@ -52,8 +52,10 @@ public final class RtsModConfigScreen extends Screen {
     private boolean shareWithTeams = Config.SHARE_SURVIVAL_PROGRESSION_WITH_TEAMS.getAsBoolean();
     private boolean blueprintsEnabled = Config.ENABLE_BLUEPRINTS.getAsBoolean();
     private boolean placementBlockGhostPreview = Config.isPlacementBlockGhostPreviewEnabled();
+    private boolean placeBlockGhostAnimation = Config.isPlaceBlockGhostAnimationEnabled();
     private boolean destroyBlockGhostAnimation = Config.isDestroyBlockGhostAnimationEnabled();
     private boolean placementWireframePreview = Config.isPlacementWireframePreviewEnabled();
+    private boolean placeWireframeAnimation = Config.isPlaceWireframeAnimationEnabled();
     private boolean destroyWireframeAnimation = Config.isDestroyWireframeAnimationEnabled();
     private boolean rangeDestroySkeleton = Config.isRangeDestroySkeletonEnabled();
     private String draftMaxRadius = Integer.toString(Config.maxActionRadiusBlocks());
@@ -238,6 +240,16 @@ public final class RtsModConfigScreen extends Screen {
         y += OPTION_ROW_H;
 
         if (fullyVisible(y, OPTION_ROW_H)) {
+            addRenderableWidget(Button.builder(Component.translatable(this.placeBlockGhostAnimation
+                    ? "config.rtsbuilding.enabled"
+                    : "config.rtsbuilding.disabled"), btn -> {
+                this.placeBlockGhostAnimation = !this.placeBlockGhostAnimation;
+                rebuildConfigWidgets();
+            }).bounds(controlX, y + 9, controlW, 20).build());
+        }
+        y += OPTION_ROW_H;
+
+        if (fullyVisible(y, OPTION_ROW_H)) {
             addRenderableWidget(Button.builder(Component.translatable(this.destroyBlockGhostAnimation
                     ? "config.rtsbuilding.enabled"
                     : "config.rtsbuilding.disabled"), btn -> {
@@ -252,6 +264,16 @@ public final class RtsModConfigScreen extends Screen {
                     ? "config.rtsbuilding.enabled"
                     : "config.rtsbuilding.disabled"), btn -> {
                 this.placementWireframePreview = !this.placementWireframePreview;
+                rebuildConfigWidgets();
+            }).bounds(controlX, y + 9, controlW, 20).build());
+        }
+        y += OPTION_ROW_H;
+
+        if (fullyVisible(y, OPTION_ROW_H)) {
+            addRenderableWidget(Button.builder(Component.translatable(this.placeWireframeAnimation
+                    ? "config.rtsbuilding.enabled"
+                    : "config.rtsbuilding.disabled"), btn -> {
+                this.placeWireframeAnimation = !this.placeWireframeAnimation;
                 rebuildConfigWidgets();
             }).bounds(controlX, y + 9, controlW, 20).build());
         }
@@ -344,8 +366,10 @@ public final class RtsModConfigScreen extends Screen {
                     this.blueprintsEnabled,
                     parseMaxBlueprintBlocks(),
                     this.placementBlockGhostPreview,
+                    this.placeBlockGhostAnimation,
                     this.destroyBlockGhostAnimation,
                     this.placementWireframePreview,
+                    this.placeWireframeAnimation,
                     this.destroyWireframeAnimation,
                     this.rangeDestroySkeleton,
                     costOverrides);
@@ -418,11 +442,17 @@ public final class RtsModConfigScreen extends Screen {
         drawOptionRow(g, x, y, width, Component.translatable("config.rtsbuilding.option.placement_block_ghost_preview"),
                 Component.translatable("config.rtsbuilding.option.placement_block_ghost_preview.hint"));
         y += OPTION_ROW_H;
+        drawOptionRow(g, x, y, width, Component.translatable("config.rtsbuilding.option.place_block_ghost_animation"),
+                Component.translatable("config.rtsbuilding.option.place_block_ghost_animation.hint"));
+        y += OPTION_ROW_H;
         drawOptionRow(g, x, y, width, Component.translatable("config.rtsbuilding.option.destroy_block_ghost_animation"),
                 Component.translatable("config.rtsbuilding.option.destroy_block_ghost_animation.hint"));
         y += OPTION_ROW_H;
         drawOptionRow(g, x, y, width, Component.translatable("config.rtsbuilding.option.placement_wireframe_preview"),
                 Component.translatable("config.rtsbuilding.option.placement_wireframe_preview.hint"));
+        y += OPTION_ROW_H;
+        drawOptionRow(g, x, y, width, Component.translatable("config.rtsbuilding.option.place_wireframe_animation"),
+                Component.translatable("config.rtsbuilding.option.place_wireframe_animation.hint"));
         y += OPTION_ROW_H;
         drawOptionRow(g, x, y, width, Component.translatable("config.rtsbuilding.option.destroy_wireframe_animation"),
                 Component.translatable("config.rtsbuilding.option.destroy_wireframe_animation.hint"));
@@ -447,7 +477,7 @@ public final class RtsModConfigScreen extends Screen {
 
     private int contentHeight(Page target) {
         if (target == Page.GENERAL) {
-            return SECTION_H * 3 + OPTION_ROW_H * 10 + 12;
+            return SECTION_H * 3 + OPTION_ROW_H * 12 + 12;
         }
         return SECTION_H + COST_ROW_H + this.nodes.size() * COST_ROW_H;
     }

@@ -140,7 +140,7 @@ public final class RtsStorageBindings {
      * Updates one fixed quick-slot cell. Blank/null item ids clear the slot;
      * nonblank ids must parse to a registered item before the session changes.
      */
-    public static UpdateResult setQuickSlot(RtsStorageSession session, byte slotId, String itemId) {
+    public static UpdateResult setQuickSlot(RtsStorageSession session, byte slotId, String itemId, ItemStack previewStack) {
         if (session == null) {
             return UpdateResult.none();
         }
@@ -150,19 +150,31 @@ public final class RtsStorageBindings {
         }
 
         String normalized = "";
+        ItemStack normalizedPreview = ItemStack.EMPTY;
         if (itemId != null && !itemId.isBlank()) {
             ResourceLocation key = ResourceLocation.tryParse(itemId);
             if (key == null || !BuiltInRegistries.ITEM.containsKey(key)) {
                 return UpdateResult.none();
             }
             normalized = itemId;
+            Item item = BuiltInRegistries.ITEM.get(key);
+            if (previewStack != null && !previewStack.isEmpty() && previewStack.is(item)) {
+                normalizedPreview = previewStack.copyWithCount(1);
+            } else {
+                normalizedPreview = new ItemStack(item);
+            }
         }
 
-        if (normalized.equals(session.quickSlotItemIds[slot])) {
+        ItemStack previousPreview = session.quickSlotPreviews[slot] == null
+                ? ItemStack.EMPTY
+                : session.quickSlotPreviews[slot];
+        if (normalized.equals(session.quickSlotItemIds[slot])
+                && ItemStack.isSameItemSameComponents(previousPreview, normalizedPreview)) {
             return UpdateResult.none();
         }
 
         session.quickSlotItemIds[slot] = normalized;
+        session.quickSlotPreviews[slot] = normalizedPreview;
         return UpdateResult.refreshCurrent(session, true);
     }
 

@@ -739,10 +739,8 @@ public final class BuilderScreen extends Screen {
             return true;
         }
         boolean forcePlace = hasShiftDown();
-        if (isQuickBuildRangeDestroyMode()) {
-            return true;
-        }
-        if (this.shapeController.tryConfirmPendingShapeBuild(forcePlace)) {
+        boolean rangeDestroyMode = isQuickBuildRangeDestroyMode();
+        if (!rangeDestroyMode && this.shapeController.tryConfirmPendingShapeBuild(forcePlace)) {
             return true;
         }
         if (this.bottomPanel.bottomPanelTab == BottomPanelLayoutTypes.BottomPanelTab.BLUEPRINTS && BlueprintPanel.hasSelectedBlueprint()) {
@@ -767,16 +765,20 @@ public final class BuilderScreen extends Screen {
         }
         if (this.controller.hasSelectedFluid()) {
             if (target.blockHit() != null) {
-                this.shapeController.placeWithShape(
-                        target.blockHit(),
-                        forcePlace,
-                        target.rayOrigin(),
-                        target.rayDir(),
-                        mouseY,
-                        true,
-                        InteractionTypes.PlacementReplayKind.TOOL_SLOT,
-                        "",
-                        -1);
+                if (rangeDestroyMode) {
+                    this.controller.placeSelectedFluid(target.blockHit(), forcePlace, target.rayOrigin(), target.rayDir());
+                } else {
+                    this.shapeController.placeWithShape(
+                            target.blockHit(),
+                            forcePlace,
+                            target.rayOrigin(),
+                            target.rayDir(),
+                            mouseY,
+                            true,
+                            InteractionTypes.PlacementReplayKind.TOOL_SLOT,
+                            "",
+                            -1);
+                }
             }
             return true;
         }
@@ -790,6 +792,15 @@ public final class BuilderScreen extends Screen {
                         target.rayOrigin(),
                         target.rayDir());
             } else if (target.blockHit() != null) {
+                if (rangeDestroyMode) {
+                    this.controller.placeSelected(target.blockHit(), forcePlace, target.rayOrigin(), target.rayDir());
+                    this.shapeController.recordSinglePlacementForUndo(
+                            target.blockHit(),
+                            InteractionTypes.PlacementReplayKind.PIN_ITEM,
+                            this.controller.getSelectedItemId(),
+                            -1);
+                    return true;
+                }
                 this.shapeController.placeWithShape(
                         target.blockHit(),
                         forcePlace,
@@ -805,6 +816,7 @@ public final class BuilderScreen extends Screen {
         }
         if (target.blockHit() != null
                 && this.controller.getBuildShape() != BuildShape.BLOCK
+                && !rangeDestroyMode
                 && canUseToolSlotShapeSource()) {
             this.shapeController.placeWithShape(
                     target.blockHit(),

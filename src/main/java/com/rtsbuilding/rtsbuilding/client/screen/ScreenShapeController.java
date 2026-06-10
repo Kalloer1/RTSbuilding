@@ -162,8 +162,9 @@ public final class ScreenShapeController {
                 // Single block pending ghost — resolve target position for accurate direction
                 BlockPos placePos = resolvePlacementTargetPos(hit.getBlockPos(), hit.getDirection());
                 BlockState pendingState = resolvePendingGhostBlockState(placePos);
-                PlacementAnimationRenderer.addPendingBatch(
-                        List.of(hit.getBlockPos().immutable()), pendingState);
+                if (placePos != null) {
+                    PlacementAnimationRenderer.addPendingBatch(List.of(placePos.immutable()), pendingState);
+                }
             }
             return;
         }

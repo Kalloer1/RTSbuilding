@@ -214,6 +214,8 @@ public class RtsStorageSession {
     public final Deque<RecentEntry> recentEntries = new ArrayDeque<>();
     /** 快捷槽物品 ID 数组；空串 = 空槽，大小由 QUICK_SLOT_COUNT 固定 */
     public final String[] quickSlotItemIds = new String[RtsStorageManager.QUICK_SLOT_COUNT];
+    /** Full client-facing preview stacks for pinned quick slots. Keeps component-heavy tool icons intact. */
+    public final ItemStack[] quickSlotPreviews = new ItemStack[RtsStorageManager.QUICK_SLOT_COUNT];
     /** 外部方块 GUI 绑定数组（允许从 RTS 模式一键打开箱子/机器界面） */
     public final GuiBinding[] guiBindings = new GuiBinding[RtsStorageManager.GUI_BINDING_SLOT_COUNT];
 
@@ -223,6 +225,7 @@ public class RtsStorageSession {
 
     public RtsStorageSession() {
         Arrays.fill(this.quickSlotItemIds, "");
+        Arrays.fill(this.quickSlotPreviews, ItemStack.EMPTY);
     }
 
 }

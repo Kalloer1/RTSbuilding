@@ -260,7 +260,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     public void setBuildModeShape(BuildShape shape) {
         this.buildModeShape = shape == null ? BuildShape.BLOCK : shape;
-        if (!isDestroyModeActive()) {
+        if (isOpen() && !isDestroyModeActive()) {
             this.controller.setBuildShape(this.buildModeShape);
             screen.ensureFillModeForShape(this.buildModeShape);
             screen.clearShapeBuildSession();
@@ -273,7 +273,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     public void setRangeDestroyShape(AreaMineShape shape) {
         this.rangeDestroyShape = shape == null ? AreaMineShape.CHAIN : shape;
-        if (isDestroyModeActive()) {
+        if (isOpen() && isDestroyModeActive()) {
             applyActiveShapeToController();
             screen.clearShapeBuildSession();
             this.controller.clearAreaMineSession();
@@ -286,7 +286,11 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     public void loadStoredShapes(BuildShape storedBuildShape, AreaMineShape storedDestroyShape) {
         this.buildModeShape = storedBuildShape == null ? BuildShape.BLOCK : storedBuildShape;
         this.rangeDestroyShape = storedDestroyShape == null ? AreaMineShape.CHAIN : storedDestroyShape;
-        applyActiveShapeToController();
+        if (isOpen()) {
+            applyActiveShapeToController();
+        } else {
+            restoreSingleBlockCursor();
+        }
         rebuildFillModeButtons();
         rebuildAllShapeButtons();
     }
@@ -695,7 +699,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     @Override
     protected void onClose() {
-        this.controller.clearAreaMineSession();
+        restoreSingleBlockCursor();
         screen.persistUiState();
     }
 
@@ -709,13 +713,21 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             next = QuickBuildMode.BUILD;
         }
         if (this.quickBuildMode == next) {
-            applyActiveShapeToController();
+            if (isOpen()) {
+                applyActiveShapeToController();
+            } else {
+                restoreSingleBlockCursor();
+            }
             return;
         }
         this.quickBuildMode = next;
-        applyActiveShapeToController();
-        screen.clearShapeBuildSession();
-        this.controller.clearAreaMineSession();
+        if (isOpen()) {
+            applyActiveShapeToController();
+            screen.clearShapeBuildSession();
+            this.controller.clearAreaMineSession();
+        } else {
+            restoreSingleBlockCursor();
+        }
         screen.persistUiState();
         rebuildFillModeButtons();
         rebuildAllShapeButtons();
@@ -827,6 +839,14 @@ public final class QuickBuildPanel extends RtsWindowPanel {
         }
         this.controller.setBuildShape(this.buildModeShape);
         screen.ensureFillModeForShape(this.buildModeShape);
+    }
+
+    private void restoreSingleBlockCursor() {
+        this.controller.setBuildShape(BuildShape.BLOCK);
+        this.controller.clearAreaMineSession();
+        if (screen != null) {
+            screen.clearShapeBuildSession();
+        }
     }
 
     /**

@@ -42,6 +42,7 @@ public record S2CRtsStoragePagePayload(
         List<Long> recentCapacities,
         List<Byte> recentKinds,
         List<String> quickSlotItemIds,
+        List<ItemStack> quickSlotPreviews,
         List<String> guiBindingLabels,
         List<String> guiBindingItemIds,
         boolean funnelEnabled,
@@ -134,6 +135,14 @@ public record S2CRtsStoragePagePayload(
                 buf.writeVarInt(payload.quickSlotItemIds().size());
                 for (String quickSlotItemId : payload.quickSlotItemIds()) {
                     buf.writeUtf(quickSlotItemId == null ? "" : quickSlotItemId, 128);
+                }
+                buf.writeVarInt(payload.quickSlotPreviews().size());
+                for (ItemStack quickSlotPreview : payload.quickSlotPreviews()) {
+                    ItemStack preview = quickSlotPreview == null ? ItemStack.EMPTY : quickSlotPreview;
+                    buf.writeBoolean(!preview.isEmpty());
+                    if (!preview.isEmpty()) {
+                        ItemStack.STREAM_CODEC.encode(buf, preview.copyWithCount(1));
+                    }
                 }
 
                 buf.writeVarInt(payload.guiBindingLabels().size());
@@ -228,6 +237,11 @@ public record S2CRtsStoragePagePayload(
                 for (int i = 0; i < quickSlotSize; i++) {
                     quickSlotItemIds.add(buf.readUtf(128));
                 }
+                int quickSlotPreviewSize = buf.readVarInt();
+                List<ItemStack> quickSlotPreviews = new ArrayList<>(quickSlotPreviewSize);
+                for (int i = 0; i < quickSlotPreviewSize; i++) {
+                    quickSlotPreviews.add(buf.readBoolean() ? ItemStack.STREAM_CODEC.decode(buf) : ItemStack.EMPTY);
+                }
                 int guiBindingSize = buf.readVarInt();
                 List<String> guiBindingLabels = new ArrayList<>(guiBindingSize);
                 for (int i = 0; i < guiBindingSize; i++) {
@@ -277,6 +291,7 @@ public record S2CRtsStoragePagePayload(
                         recentCapacities,
                         recentKinds,
                         quickSlotItemIds,
+                        quickSlotPreviews,
                         guiBindingLabels,
                         guiBindingItemIds,
                         funnelEnabled,

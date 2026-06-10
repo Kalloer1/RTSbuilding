@@ -7,6 +7,10 @@ import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSessionCodec;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+
 /**
  * Builds read-only client packet/UI snapshots from an RTS storage session.
  *
@@ -42,6 +46,37 @@ public final class RtsStorageUiPayloads {
             quickSlotItemIds.add(itemId == null || itemId.isEmpty() ? "" : itemId);
         }
         return quickSlotItemIds;
+    }
+
+    /**
+     * Emits exactly {@code quickSlotCount} preview stacks in quick-slot order.
+     * Component-heavy modded tools, such as Silent Gear gear items, need the
+     * stored stack rather than a fresh item-id-only stack to render correctly.
+     */
+    public static List<ItemStack> buildQuickSlotPreviewPayload(RtsStorageSession session, int quickSlotCount) {
+        List<ItemStack> previews = new ArrayList<>(quickSlotCount);
+        String[] itemIds = session == null ? null : session.quickSlotItemIds;
+        ItemStack[] source = session == null ? null : session.quickSlotPreviews;
+        for (int i = 0; i < quickSlotCount; i++) {
+            String itemId = itemIds == null || i >= itemIds.length ? "" : itemIds[i];
+            ItemStack preview = source == null || i >= source.length || source[i] == null ? ItemStack.EMPTY : source[i];
+            previews.add(sanitizeQuickSlotPreview(itemId, preview));
+        }
+        return previews;
+    }
+
+    private static ItemStack sanitizeQuickSlotPreview(String itemId, ItemStack preview) {
+        if (itemId == null || itemId.isBlank()) {
+            return ItemStack.EMPTY;
+        }
+        ResourceLocation key = ResourceLocation.tryParse(itemId);
+        if (key == null || !BuiltInRegistries.ITEM.containsKey(key)) {
+            return ItemStack.EMPTY;
+        }
+        if (preview != null && !preview.isEmpty() && preview.is(BuiltInRegistries.ITEM.get(key))) {
+            return preview.copyWithCount(1);
+        }
+        return new ItemStack(BuiltInRegistries.ITEM.get(key));
     }
 
     /**

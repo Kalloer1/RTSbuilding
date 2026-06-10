@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.client.rendering.animation;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ public final class PendingGhostRenderer {
     // ---- Ghost animation parameters ----
 
     private static final long GROW_DURATION_MS = 220L;
+    private static final long MAX_PENDING_MS = 5000L;
     private static final float BASE_SCALE = 0.8F;
     private static final float PULSE_AMPLITUDE = 0.025F;
     private static final float PULSE_FREQUENCY = 0.008F;
@@ -82,6 +84,7 @@ public final class PendingGhostRenderer {
     /** Renders pending ghosts as wireframes (line-only mode). */
     static void renderWireframes(PoseStack poseStack, VertexConsumer lineBuffer) {
         long now = System.currentTimeMillis();
+        pruneExpired(now);
         float lineR = 0.30F, lineG = 0.75F, lineB = 1.00F, lineA = 0.75F;
         for (PendingGhostEntry ghost : GHOSTS.values()) {
             if (!isWithinBounds(ghost.pos)) continue;
@@ -101,6 +104,8 @@ public final class PendingGhostRenderer {
     // ===== Internal rendering =====
 
     private static void renderPendingGhosts(Minecraft minecraft, PoseStack poseStack, VertexConsumer fillBuffer) {
+        if (GHOSTS.isEmpty()) return;
+        pruneExpired(System.currentTimeMillis());
         if (GHOSTS.isEmpty()) return;
 
         // Separate model-renderable entries from fallback entries
@@ -161,6 +166,16 @@ public final class PendingGhostRenderer {
                     pos.getX() + inset, pos.getY() + inset, pos.getZ() + inset,
                     pos.getX() + 1.0D - inset, pos.getY() + 1.0D - inset, pos.getZ() + 1.0D - inset,
                     fillR, fillG, fillB, fillA);
+        }
+    }
+
+    private static void pruneExpired(long now) {
+        Iterator<Map.Entry<Long, PendingGhostEntry>> iterator = GHOSTS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            PendingGhostEntry ghost = iterator.next().getValue();
+            if (now - ghost.addedAtMs > MAX_PENDING_MS) {
+                iterator.remove();
+            }
         }
     }
 

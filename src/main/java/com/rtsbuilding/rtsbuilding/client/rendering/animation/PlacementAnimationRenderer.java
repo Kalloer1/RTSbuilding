@@ -41,7 +41,7 @@ public final class PlacementAnimationRenderer {
      */
     public static void confirmPlacement(BlockPos pos, BlockState state) {
         PendingGhostRenderer.remove(pos);
-        if (shouldRenderPlacementLayers()) {
+        if (shouldRenderPlaceAnimationLayers()) {
             ConfirmedPlacementRenderer.add(pos, state);
         }
     }
@@ -73,19 +73,25 @@ public final class PlacementAnimationRenderer {
         if (minecraft == null || minecraft.level == null) {
             return;
         }
-        boolean placementBlockGhost = Config.isPlacementBlockGhostPreviewEnabled();
+        boolean previewBlockGhost = Config.isPlacementBlockGhostPreviewEnabled();
+        boolean placeBlockGhost = Config.isPlaceBlockGhostAnimationEnabled();
         boolean destroyBlockGhost = Config.isDestroyBlockGhostAnimationEnabled();
-        boolean placementWireframe = Config.isPlacementWireframePreviewEnabled();
+        boolean previewWireframe = Config.isPlacementWireframePreviewEnabled();
+        boolean placeWireframe = Config.isPlaceWireframeAnimationEnabled();
         boolean destroyWireframe = Config.isDestroyWireframeAnimationEnabled();
-        if (placementBlockGhost) {
+        if (previewBlockGhost) {
             PendingGhostRenderer.render(minecraft, poseStack, lineBuffer, fillBuffer);
+        }
+        if (placeBlockGhost) {
             ConfirmedPlacementRenderer.renderModels(minecraft, poseStack, fillBuffer);
         }
         if (destroyBlockGhost) {
             DestroyGhostRenderer.renderModels(minecraft, poseStack, fillBuffer);
         }
-        if (placementWireframe) {
+        if (previewWireframe) {
             PendingGhostRenderer.renderWireframes(poseStack, lineBuffer);
+        }
+        if (placeWireframe) {
             ConfirmedPlacementRenderer.renderWireframes(poseStack, lineBuffer);
         }
         if (destroyWireframe) {
@@ -93,8 +99,8 @@ public final class PlacementAnimationRenderer {
         }
     }
 
-    private static boolean shouldRenderPlacementLayers() {
-        return Config.isPlacementBlockGhostPreviewEnabled() || Config.isPlacementWireframePreviewEnabled();
+    private static boolean shouldRenderPlaceAnimationLayers() {
+        return Config.isPlaceBlockGhostAnimationEnabled() || Config.isPlaceWireframeAnimationEnabled();
     }
 
     private static boolean shouldRenderDestroyLayers() {
