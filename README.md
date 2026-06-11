@@ -77,6 +77,29 @@ point I already cannot play without it.
 - It has received some light gameplay testing on adventure modpacks like Closing
   Song, but not as much as 1.21.1.
 
+### Contributors and credits
+
+**Hcrab** is the project author and primary maintainer, responsible for the
+overall design direction, core gameplay, major feature implementation, releases,
+and long-term maintenance.
+
+Special thanks to the following contributors:
+
+- **Yiran**: core developer. Helped with structural refactors, parts of the UI
+  implementation, community management, and systematizing bug reporting and todo
+  tracking.
+- **凌墨问**: core community collaborator. Helped with community outreach,
+  feedback collection, and the project journal website.
+- **卓清婉**: major code contributor. Helped resolve critical bugs, contributed
+  compatibility and quality-of-life pull requests, and assisted with todo
+  management.
+- **可怜Bot**: major code contributor. Helped investigate and review critical
+  bugs, shaped bug-fix approaches, and submitted multiple fix pull requests.
+- **[ReConstruction-127](https://github.com/ReConstruction-127)**: contributed
+  UI icons for the top bar.
+- **[Eternal-Snowstorm](https://github.com/Eternal-Snowstorm)**: helped
+  organize the issue templates and provided guidance on licensing.
+
 ### Branches and source builds
 
 - `main`: Minecraft 1.21.1 / NeoForge.
@@ -155,6 +178,25 @@ On Windows:
 - 理论上应当与 1.21.1 版本表现基本一致。
 - 进行过少量游玩测试，比如玩了一阵子落幕曲，但还没有像 1.21.1 那样充分在
   科技整合包中测试。
+
+### 贡献者与鸣谢
+
+**Hcrab** 是项目作者与主要维护者，负责整体设计方向、核心玩法、主要功能实现、
+版本发布与长期维护。
+
+特别感谢以下贡献者：
+
+- **Yiran**：核心开发者。协助项目结构重构、部分 UI 实现与社区管理，并推动
+  bug 反馈与 todo 跟踪流程的系统化。
+- **凌墨问**：核心社区协作者。协助社区宣传、收集社区反馈，并开发项目记录网页。
+- **卓清婉**：重要代码贡献者。多次参与关键 bug 攻坚，提交兼容性与 QoL 改进
+  PR，并协助管理 todo。
+- **可怜Bot**：重要代码贡献者。参与关键 bug 排查与审查，协助梳理整体修复
+  思路，并多次提交修复 PR。
+- **[ReConstruction-127](https://github.com/ReConstruction-127)**：协助绘制顶栏
+  UI 图标。
+- **[Eternal-Snowstorm](https://github.com/Eternal-Snowstorm)**：协助统合 issue
+  template，并在 license 相关事项上提供指导。
 
 ### 分支与源码构建
 
