@@ -17,6 +17,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.compat.ftb.RtsFtbCompat;
 import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
 import com.rtsbuilding.rtsbuilding.compat.sophisticatedbackpacks.RtsBackpackCompat;
@@ -25,6 +26,7 @@ import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
 import com.rtsbuilding.rtsbuilding.server.storage.*;
+import com.rtsbuilding.rtsbuilding.server.storage.mining.RtsMiningStateMachine;
 import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementBatch;
 import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementHelper;
 import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementSound;
@@ -122,6 +124,8 @@ public final class RtsStorageManager {
         Session session = getOrCreateSession(player);
         sanitizeSessionDimension(player, session);
         requestPage(player, session.page, session.search, session.category, session.sort, session.ascending);
+        // 进入 RTS 模式时同步历史状态，确保客户端 UI 显示正确的撤回/重做次数
+        ServerHistoryManager.sendSync(player);
     }
 
     public static void warmCreativeTabCaches(MinecraftServer server) {
@@ -1182,6 +1186,12 @@ public final class RtsStorageManager {
             return;
         }
 
+        // 记录破坏操作到历史
+        // 仅在用户主动破坏时记录，不记录内部恢复流程
+        if (!allowAdjacentFallback) {
+            ServerHistoryManager.recordBreak(player, List.of(targetPos), face != null ? face : Direction.UP);
+        }
+
         Set<UUID> dropIdsBeforeBreak = snapshotNearbyDropIds(level, targetPos);
         boolean removed = breakPlacedWithSimulatedSilkTool(player, level, targetPos);
         if (!removed || !level.getBlockState(targetPos).isAir()) {
@@ -1419,11 +1429,11 @@ public final class RtsStorageManager {
     }
 
     private static <T> T withTemporaryOnGround(ServerPlayer player, boolean onGround, Supplier<T> action) {
-        return RtsStorageMining.withTemporaryOnGround(player, onGround, action);
+        return RtsMiningStateMachine.withTemporaryOnGround(player, onGround, action);
     }
 
     public static <T> T withTemporaryMainHandItem(ServerPlayer player, ItemStack stack, Supplier<T> action) {
-        return RtsStorageMining.withTemporaryMainHandItem(player, stack, action);
+        return RtsMiningStateMachine.withTemporaryMainHandItem(player, stack, action);
     }
     private static int clampHotbarSlot(int slot) {
         return Math.max(0, Math.min(8, slot));
