@@ -1,5 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
+import com.rtsbuilding.rtsbuilding.compat.AnySlotInsertItemHandler;
+import com.rtsbuilding.rtsbuilding.compat.ReportedCountItemHandler;
 import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2Compat;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -31,14 +33,14 @@ public final class RtsLinkedHandlerViews {
      * {@code null} if the handler does not support it so callers can fall back
      * to slot-by-slot insertion.
      */
-    static ItemStack insertItemAnywhereIfSupported(IItemHandler handler, ItemStack stack, boolean simulate) {
+    public static ItemStack insertItemAnywhereIfSupported(IItemHandler handler, ItemStack stack, boolean simulate) {
         if (handler == null || stack == null || stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
         if (handler instanceof LinkedItemHandlerView linkedView && linkedView.supportsAnySlotInsert()) {
             return linkedView.insertItemAnywhere(stack, simulate);
         }
-        if (handler instanceof RtsAe2Compat.AnySlotInsertItemHandler anySlot) {
+        if (handler instanceof AnySlotInsertItemHandler anySlot) {
             return anySlot.insertItemAnywhere(stack, simulate);
         }
         return null;
@@ -48,7 +50,7 @@ public final class RtsLinkedHandlerViews {
      * Inserts an item stack into a handler, preferring any-slot-insert when
      * available, otherwise falling back to sequential slot-by-slot insertion.
      */
-    static ItemStack insertItemAnywhere(IItemHandler handler, ItemStack stack, boolean simulate) {
+    public static ItemStack insertItemAnywhere(IItemHandler handler, ItemStack stack, boolean simulate) {
         ItemStack supported = insertItemAnywhereIfSupported(handler, stack, simulate);
         if (supported != null) {
             return supported;
@@ -67,7 +69,7 @@ public final class RtsLinkedHandlerViews {
  * <p>When {@code allowStore} is false, {@link #insertItem} rejects all
  * insertions by returning the full stack. Extraction is always delegated.
  */
-final class LinkedItemHandlerView implements IItemHandler, RtsAe2Compat.ReportedCountItemHandler {
+final class LinkedItemHandlerView implements IItemHandler, ReportedCountItemHandler {
     private final IItemHandler delegate;
     private final boolean allowStore;
 
@@ -92,14 +94,14 @@ final class LinkedItemHandlerView implements IItemHandler, RtsAe2Compat.Reported
     }
 
     boolean supportsAnySlotInsert() {
-        return this.allowStore && this.delegate instanceof RtsAe2Compat.AnySlotInsertItemHandler;
+        return this.allowStore && this.delegate instanceof AnySlotInsertItemHandler;
     }
 
     ItemStack insertItemAnywhere(ItemStack stack, boolean simulate) {
         if (!this.allowStore) {
             return stack == null ? ItemStack.EMPTY : stack.copy();
         }
-        if (this.delegate instanceof RtsAe2Compat.AnySlotInsertItemHandler anySlot) {
+        if (this.delegate instanceof AnySlotInsertItemHandler anySlot) {
             return anySlot.insertItemAnywhere(stack, simulate);
         }
         ItemStack remain = stack == null ? ItemStack.EMPTY : stack.copy();

@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
-import com.rtsbuilding.rtsbuilding.server.storage.mining.RtsMiningStateMachine;
+import com.rtsbuilding.rtsbuilding.server.service.mining.RtsMiningStateMachine;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandler;

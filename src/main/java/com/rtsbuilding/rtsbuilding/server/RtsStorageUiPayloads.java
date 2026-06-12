@@ -3,13 +3,12 @@ package com.rtsbuilding.rtsbuilding.server;
 import com.rtsbuilding.rtsbuilding.server.storage.GuiBinding;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSessionCodec;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Builds read-only client packet/UI snapshots from an RTS storage session.

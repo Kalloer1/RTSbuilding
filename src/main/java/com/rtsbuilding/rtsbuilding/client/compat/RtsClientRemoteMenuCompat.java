@@ -6,7 +6,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 
 import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
-import com.rtsbuilding.rtsbuilding.compat.sophisticatedstorage.RtsSophisticatedStorageCompat;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -27,13 +26,12 @@ public final class RtsClientRemoteMenuCompat {
         if (minecraft == null || minecraft.player == null || menu == null) {
             return menu;
         }
-        AbstractContainerMenu wrapped = RtsSophisticatedStorageCompat.wrapRemoteMenu(menu);
-        if (RtsSophisticatedStorageCompat.isSupportedRemoteMenu(wrapped)) {
-            RtsSophisticatedStorageCompat.markClientRemoteMenu(wrapped);
+        AbstractContainerMenu wrapped = RtsRemoteMenuCompat.wrapRemoteMenu(menu);
+        if (RtsRemoteMenuCompat.isSupportedRemoteMenu(wrapped)) {
+            RtsRemoteMenuCompat.markClientRemoteMenu(wrapped);
         } else {
-            RtsSophisticatedStorageCompat.clearClientRemoteMenu();
+            RtsRemoteMenuCompat.clearClientRemoteMenu();
         }
-        RtsRemoteMenuCompat.markClientRemoteMenu(wrapped);
         if (!isScreenMenuPairSafe(minecraft.screen, wrapped)) {
             throw new IllegalStateException("Incompatible menu " + wrapped.getClass().getName()
                     + " for screen " + minecraft.screen.getClass().getName());
@@ -116,7 +114,7 @@ public final class RtsClientRemoteMenuCompat {
         if (!isInstanceOf(screen, STORAGE_SCREEN_BASE_CLASS)) {
             return true;
         }
-        return RtsSophisticatedStorageCompat.isStorageContainerMenuBase(menu);
+        return RtsRemoteMenuCompat.isStorageContainerMenuBase(menu);
     }
 
     private static boolean isInstanceOf(Object instance, String className) {

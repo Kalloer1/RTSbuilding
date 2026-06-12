@@ -1,9 +1,15 @@
 package com.rtsbuilding.rtsbuilding.network.builder;
 
 import com.rtsbuilding.rtsbuilding.common.BuilderMode;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
+import com.rtsbuilding.rtsbuilding.server.service.RtsBindingService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsFluidService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsInteractionService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsMiningService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsPlacementService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsPlacedRecoveryService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsTransferService;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -27,7 +33,7 @@ public final class RtsBuilderNetworkHandlers {
                 if (modeId < 0 || modeId >= modes.length) {
                     return;
                 }
-                RtsStorageManager.setMode(serverPlayer, modes[modeId]);
+                RtsBindingService.setMode(serverPlayer, modes[modeId]);
             }
         });
     }
@@ -35,7 +41,7 @@ public final class RtsBuilderNetworkHandlers {
     public static void handleRotateBlock(C2SRtsRotateBlockPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.rotateBlock(serverPlayer, payload.pos());
+                RtsPlacementService.rotateBlock(serverPlayer, payload.pos());
             }
         });
     }
@@ -44,7 +50,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.placeSelected(
+                RtsPlacementService.placeSelected(
                         serverPlayer,
                         payload.clickedPos(),
                         face,
@@ -72,7 +78,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.enqueuePlaceBatch(
+                RtsPlacementService.enqueuePlaceBatch(
                         serverPlayer,
                         payload.clickedPositions(),
                         face,
@@ -98,7 +104,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.placeFluid(
+                RtsFluidService.placeFluid(
                         serverPlayer,
                         payload.clickedPos(),
                         face,
@@ -120,7 +126,7 @@ public final class RtsBuilderNetworkHandlers {
     public static void handleStoreFluid(C2SRtsStoreFluidPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.storeFluidFromContainer(
+                RtsFluidService.storeFluidFromContainer(
                         serverPlayer,
                         payload.sourceType(),
                         payload.toolSlot(),
@@ -133,7 +139,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.interactTarget(
+                RtsInteractionService.interactTarget(
                         serverPlayer,
                         payload.entityId(),
                         payload.clickedPos(),
@@ -157,7 +163,7 @@ public final class RtsBuilderNetworkHandlers {
     public static void handleQuickDrop(C2SRtsQuickDropPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.quickDropLinkedItem(
+                RtsTransferService.quickDropLinkedItem(
                         serverPlayer,
                         payload.itemId(),
                         payload.amount(),
@@ -172,7 +178,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.breakPlaced(serverPlayer, payload.pos(), face, payload.allowAdjacentFallback());
+                RtsPlacedRecoveryService.breakPlaced(serverPlayer, payload.pos(), face, payload.allowAdjacentFallback());
             }
         });
     }
@@ -181,7 +187,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.mine(
+                RtsMiningService.mine(
                         serverPlayer,
                         payload.pos(),
                         face,
@@ -199,7 +205,7 @@ public final class RtsBuilderNetworkHandlers {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
                 Direction face = Direction.from3DDataValue(payload.face());
-                RtsStorageManager.startUltimine(
+                RtsMiningService.startUltimine(
                         serverPlayer,
                         payload.pos(),
                         face,
@@ -216,7 +222,7 @@ public final class RtsBuilderNetworkHandlers {
     public static void handleAreaMine(C2SRtsAreaMinePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.areaMine(
+                RtsMiningService.areaMine(
                         serverPlayer,
                         payload.minX(), payload.maxX(),
                         payload.minY(), payload.maxY(),
@@ -234,7 +240,7 @@ public final class RtsBuilderNetworkHandlers {
     public static void handleAreaDestroy(C2SRtsAreaDestroyPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.areaDestroy(
+                RtsMiningService.areaDestroy(
                         serverPlayer,
                         payload.positions(),
                         payload.toolSlot(),

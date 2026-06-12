@@ -10,7 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
+import com.rtsbuilding.rtsbuilding.server.service.RtsTransferService;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -112,7 +112,7 @@ final class RtsFtbCompatImpl {
 
                 scannedTasks++;
                 long total = countInPlayerInventory(task, player)
-                        + RtsStorageManager.countLinkedItemsMatching(player, stack -> testItemTask(task, stack));
+                        + RtsTransferService.countLinkedItemsMatching(player, stack -> testItemTask(task, stack));
                 long maxProgress = asLong(this.itemTaskGetMaxProgressMethod.invoke(task));
                 long clamped = Math.max(0L, Math.min(total, maxProgress));
                 long previousProgress = readProgress(teamData, task);

@@ -1,11 +1,10 @@
 package com.rtsbuilding.rtsbuilding.server.camera;
 
-import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
 import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraStatePayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
+import com.rtsbuilding.rtsbuilding.server.service.RtsSessionService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -67,7 +66,7 @@ public final class RtsCameraManager {
 
     private static void startNormal(ServerPlayer player, boolean startAtPlayerHead) {
         cleanupOrphanCameras(player.getServer());
-        discardOwnedCameras(player, null);
+        RtsCameraEntityHelper.discardOwnedCameras(player, null);
         ServerLevel level = player.serverLevel();
         Vec3 playerPos = player.position();
         // Align the anchor to block center so camera bounds match the placement boundary.
@@ -78,14 +77,13 @@ public final class RtsCameraManager {
         float pitch = 70.0F;
         double cameraY = startAtPlayerHead ? player.getEyeY() : anchor.y + 18.0D;
 
-        RtsCameraEntity camera = new RtsCameraEntity(RtsbuildingMod.RTS_CAMERA_ENTITY.get(), level);
-        camera.setOwnerUuid(player.getUUID());
-        camera.snapTo(anchor.x, cameraY, anchor.z, yaw, pitch);
-        level.addFreshEntity(camera);
+        RtsCameraEntity camera = RtsCameraEntityHelper.createAndSpawnCamera(level, player.getUUID(),
+                anchor.x, cameraY, anchor.z, yaw, pitch);
 
-        Session session = new Session(camera.getUUID(), anchor, camera.position(), yaw, pitch, camera.getY() - anchor.y, false, maxRadius, startAtPlayerHead);
+        Session session = new Session(camera.getUUID(), anchor, camera.position(), yaw, pitch,
+                camera.getY() - anchor.y, false, maxRadius, startAtPlayerHead);
         SESSIONS.put(player.getUUID(), session);
-        RtsStorageManager.onRtsEnabled(player);
+        RtsSessionService.onRtsEnabled(player);
 
         PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(
                 true,
@@ -121,7 +119,7 @@ public final class RtsCameraManager {
 
     private static void startHomeSelection(ServerPlayer player, boolean startAtPlayerHead) {
         cleanupOrphanCameras(player.getServer());
-        discardOwnedCameras(player, null);
+        RtsCameraEntityHelper.discardOwnedCameras(player, null);
         ServerLevel level = player.serverLevel();
         BlockPos playerPos = player.blockPosition();
         int centerChunkX = playerPos.getX() >> 4;
@@ -135,13 +133,12 @@ public final class RtsCameraManager {
         double cameraY = startAtPlayerHead ? player.getEyeY() : anchor.y + 18.0D;
         double cameraZ = anchor.z;
 
-        RtsCameraEntity camera = new RtsCameraEntity(RtsbuildingMod.RTS_CAMERA_ENTITY.get(), level);
-        camera.setOwnerUuid(player.getUUID());
-        camera.snapTo(cameraX, cameraY, cameraZ, yaw, pitch);
-        level.addFreshEntity(camera);
+        RtsCameraEntity camera = RtsCameraEntityHelper.createAndSpawnCamera(level, player.getUUID(),
+                cameraX, cameraY, cameraZ, yaw, pitch);
 
         RtsProgressionManager.beginHomeSelection(player);
-        Session session = new Session(camera.getUUID(), anchor, camera.position(), yaw, pitch, camera.getY() - anchor.y, true, maxRadius, startAtPlayerHead);
+        Session session = new Session(camera.getUUID(), anchor, camera.position(), yaw, pitch,
+                camera.getY() - anchor.y, true, maxRadius, startAtPlayerHead);
         SESSIONS.put(player.getUUID(), session);
 
         PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(
@@ -161,7 +158,7 @@ public final class RtsCameraManager {
     public static void stop(ServerPlayer player) {
         Session session = SESSIONS.remove(player.getUUID());
         if (session != null) {
-            Entity entity = findCameraEntity(player.getServer(), session.cameraUuid());
+            Entity entity = RtsCameraEntityHelper.findCameraEntity(player.getServer(), session.cameraUuid());
             if (entity != null) {
                 entity.discard();
             }
@@ -169,10 +166,11 @@ public final class RtsCameraManager {
                 RtsProgressionManager.endHomeSelection(player);
             }
         }
-        discardOwnedCameras(player, null);
+        RtsCameraEntityHelper.discardOwnedCameras(player, null);
 
-        PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(false, -1, 0.0D, 0.0D, 0.0D, RtsProgressionManager.DEFAULT_MAX_ACTION_RADIUS_BLOCKS, 18.0D, 0.0F, 70.0F, false, false));
-        RtsStorageManager.onRtsDisabled(player);
+        PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(false, -1, 0.0D, 0.0D, 0.0D,
+                RtsProgressionManager.DEFAULT_MAX_ACTION_RADIUS_BLOCKS, 18.0D, 0.0F, 70.0F, false, false));
+        RtsSessionService.onRtsDisabled(player);
     }
 
     public static void restartNormalFromHomeSelection(ServerPlayer player) {
@@ -180,7 +178,7 @@ public final class RtsCameraManager {
         if (session == null || !session.homeSelection()) {
             return;
         }
-        Entity entity = findCameraEntity(player.getServer(), session.cameraUuid());
+        Entity entity = RtsCameraEntityHelper.findCameraEntity(player.getServer(), session.cameraUuid());
         if (entity != null) {
             entity.discard();
         }
@@ -295,11 +293,12 @@ public final class RtsCameraManager {
 
         camera.snapTo(targetX, targetY, targetZ, yaw, pitch);
 
-        SESSIONS.put(player.getUUID(), new Session(camera.getUUID(), session.anchor(), new Vec3(targetX, targetY, targetZ), yaw, pitch, targetY - session.anchor().y, session.homeSelection(), session.maxRadius(), session.closeRangeAllowed()));
+        SESSIONS.put(player.getUUID(), new Session(camera.getUUID(), session.anchor(), new Vec3(targetX, targetY, targetZ),
+                yaw, pitch, targetY - session.anchor().y, session.homeSelection(), session.maxRadius(), session.closeRangeAllowed()));
     }
 
     private static RtsCameraEntity getOrRestoreCamera(ServerPlayer player, Session session) {
-        Entity baseEntity = findCameraEntity(player.getServer(), session.cameraUuid());
+        Entity baseEntity = RtsCameraEntityHelper.findCameraEntity(player.getServer(), session.cameraUuid());
         if (baseEntity instanceof RtsCameraEntity camera && baseEntity.level() == player.serverLevel()) {
             if (camera.getOwnerUuid() == null) {
                 camera.setOwnerUuid(player.getUUID());
@@ -315,12 +314,9 @@ public final class RtsCameraManager {
             baseEntity.discard();
         }
 
-        ServerLevel level = player.serverLevel();
         Vec3 cameraPos = session.cameraPos();
-        RtsCameraEntity restored = new RtsCameraEntity(RtsbuildingMod.RTS_CAMERA_ENTITY.get(), level);
-        restored.setOwnerUuid(player.getUUID());
-        restored.snapTo(cameraPos.x, cameraPos.y, cameraPos.z, session.yawDeg(), session.pitchDeg());
-        level.addFreshEntity(restored);
+        RtsCameraEntity restored = RtsCameraEntityHelper.createAndSpawnCamera(player.serverLevel(), player.getUUID(),
+                cameraPos.x, cameraPos.y, cameraPos.z, session.yawDeg(), session.pitchDeg());
 
         SESSIONS.put(player.getUUID(), new Session(
                 restored.getUUID(),
@@ -349,57 +345,17 @@ public final class RtsCameraManager {
     }
 
     public static void cleanupOrphanCameras(MinecraftServer server) {
-        if (server == null) {
-            return;
-        }
-        for (ServerLevel level : server.getAllLevels()) {
-            for (Entity entity : level.getAllEntities()) {
-                if (entity instanceof RtsCameraEntity camera && !isActiveCamera(camera.getUUID())) {
-                    camera.discard();
+        RtsCameraEntityHelper.cleanupOrphanCameras(server, cameraUuid -> {
+            if (cameraUuid == null) {
+                return false;
+            }
+            for (Session session : SESSIONS.values()) {
+                if (cameraUuid.equals(session.cameraUuid())) {
+                    return true;
                 }
             }
-        }
-    }
-
-    private static void discardOwnedCameras(ServerPlayer player, UUID keepUuid) {
-        if (player == null || player.getServer() == null) {
-            return;
-        }
-        UUID ownerUuid = player.getUUID();
-        for (ServerLevel level : player.getServer().getAllLevels()) {
-            for (Entity entity : level.getAllEntities()) {
-                if (entity instanceof RtsCameraEntity camera
-                        && ownerUuid.equals(camera.getOwnerUuid())
-                        && !camera.getUUID().equals(keepUuid)) {
-                    camera.discard();
-                }
-            }
-        }
-    }
-
-    private static boolean isActiveCamera(UUID cameraUuid) {
-        if (cameraUuid == null) {
             return false;
-        }
-        for (Session session : SESSIONS.values()) {
-            if (cameraUuid.equals(session.cameraUuid())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static Entity findCameraEntity(MinecraftServer server, UUID cameraUuid) {
-        if (server == null || cameraUuid == null) {
-            return null;
-        }
-        for (ServerLevel level : server.getAllLevels()) {
-            Entity entity = level.getEntity(cameraUuid);
-            if (entity != null) {
-                return entity;
-            }
-        }
-        return null;
+        });
     }
 
     private static double maxRadius(ServerPlayer player, Session session) {
@@ -418,7 +374,7 @@ public final class RtsCameraManager {
         return quarter * 90.0F;
     }
 
-    private record Session(UUID cameraUuid, Vec3 anchor, Vec3 cameraPos, float yawDeg, float pitchDeg, double heightOffset, boolean homeSelection, double maxRadius, boolean closeRangeAllowed) {
+    private record Session(UUID cameraUuid, Vec3 anchor, Vec3 cameraPos, float yawDeg, float pitchDeg,
+                           double heightOffset, boolean homeSelection, double maxRadius, boolean closeRangeAllowed) {
     }
 }
-

@@ -9,8 +9,9 @@ import com.rtsbuilding.rtsbuilding.blueprint.server.BlueprintPlacementService;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.feedback.RtsDamageFeedbackManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
+import com.rtsbuilding.rtsbuilding.server.RtsAPIImpl;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
+import com.rtsbuilding.rtsbuilding.server.service.RtsSessionService;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -65,6 +66,8 @@ public class RtsbuildingMod {
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
+        // 初始化 RTS API，使附属模组可通过 RtsAPI.get() 访问
+        RtsAPIImpl.init();
         LOGGER.info("RTSBuilding common setup complete");
     }
 
@@ -86,7 +89,7 @@ public class RtsbuildingMod {
 
         @SubscribeEvent
         static void onServerStarted(ServerStartedEvent event) {
-            RtsStorageManager.warmCreativeTabCaches(event.getServer());
+            RtsSessionService.warmCreativeTabCaches(event.getServer());
             RtsCameraManager.cleanupOrphanCameras(event.getServer());
         }
 
@@ -96,7 +99,7 @@ public class RtsbuildingMod {
                 RtsCameraManager.stopIfActive(serverPlayer);
                 BlueprintPlacementService.clear(serverPlayer);
                 RtsDamageFeedbackManager.forget(serverPlayer);
-                RtsStorageManager.onPlayerLogout(serverPlayer);
+                RtsSessionService.onPlayerLogout(serverPlayer);
                 RtsProgressionManager.onPlayerLogout(serverPlayer);
                 // 清除该玩家的撤回历史，防止切换到其他存档后残留无效的 BlockPos 记录
                 ServerHistoryManager.clear(serverPlayer.getUUID());
@@ -113,14 +116,14 @@ public class RtsbuildingMod {
         @SubscribeEvent
         static void onPlayerTickPre(PlayerTickEvent.Pre event) {
             if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
-                RtsStorageManager.onPlayerTickPre(serverPlayer);
+                RtsSessionService.onPlayerTickPre(serverPlayer);
             }
         }
 
         @SubscribeEvent
         static void onPlayerTickPost(PlayerTickEvent.Post event) {
             if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
-                RtsStorageManager.onPlayerTickPost(serverPlayer);
+                RtsSessionService.onPlayerTickPost(serverPlayer);
                 RtsDamageFeedbackManager.tick(serverPlayer);
                 BlueprintPlacementService.tick(serverPlayer);
             }
@@ -128,7 +131,7 @@ public class RtsbuildingMod {
 
         @SubscribeEvent
         static void onServerTick(ServerTickEvent.Post event) {
-            RtsStorageManager.tickMining(event.getServer());
+            RtsSessionService.tickMining(event.getServer());
         }
     }
 }

@@ -37,7 +37,7 @@ import com.rtsbuilding.rtsbuilding.client.state.RtsScreenUiStateManager;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.common.BuilderMode;
 import com.rtsbuilding.rtsbuilding.common.RtsUltimineCollector;
-import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2Compat;
+import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2IconResolver;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -1888,7 +1888,7 @@ public final class BuilderScreen extends Screen {
             preview = new ItemStack(state.getBlock().asItem());
         }
         if (preview.isEmpty() || preview.is(Items.AIR)) {
-            return RtsAe2Compat.resolveGuiBindingIconItemId(this.minecraft.level, pos, hit.getDirection(), "");
+            return RtsAe2IconResolver.resolveGuiBindingIconItemId(this.minecraft.level, pos, hit.getDirection(), "");
         }
         var id = BuiltInRegistries.ITEM.getKey(preview.getItem());
         return id == null ? "" : id.toString();

@@ -4,7 +4,7 @@ import com.rtsbuilding.rtsbuilding.Config;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
+import com.rtsbuilding.rtsbuilding.server.service.QuestService;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -23,7 +23,7 @@ public final class RtsProgressionNetworkHandlers {
     public static void handleQuestDetect(C2SRtsQuestDetectPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
-                RtsStorageManager.detectQuests(serverPlayer, payload.mode());
+                QuestService.detectQuests(serverPlayer, payload.mode());
             }
         });
     }

@@ -1,7 +1,8 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
-import com.rtsbuilding.rtsbuilding.server.storage.mining.RtsMiningValidator;
+import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
+import com.rtsbuilding.rtsbuilding.server.service.mining.RtsMiningValidator;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -141,7 +142,7 @@ public final class RtsToolLeaseManager {
                 return RtsToolLease.linkedSlot(handler, slot, borrowed);
             }
             if (!borrowed.isEmpty()) {
-                RtsStorageTransfers.insertToHandlerPreferExisting(handler, borrowed);
+                RtsTransferInserter.insertToHandlerPreferExisting(handler, borrowed);
             }
         }
         return RtsToolLease.empty();
@@ -189,7 +190,7 @@ public final class RtsToolLeaseManager {
         }
         List<LinkedHandler> activeLinked = RtsLinkedStorageResolver.resolveLinkedHandlers(player, session);
         List<IItemHandler> handlers = RtsLinkedStorageResolver.itemHandlersForInsert(activeLinked);
-        RtsStorageTransfers.storeToLinkedWithFallback(handlers, player, remain);
+        RtsTransferInserter.storeToLinkedWithFallback(handlers, player, remain);
     }
 
     // =========================================================================

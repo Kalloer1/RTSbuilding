@@ -1,10 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
 import com.rtsbuilding.rtsbuilding.network.storage.RtsStorageSort;
-import java.util.Arrays;
-import java.util.UUID;
-
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -17,6 +13,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+
+import java.util.Arrays;
+import java.util.UUID;
 
 /**
  * NBT codec for {@link RtsStorageSession}.
@@ -80,6 +79,14 @@ public final class RtsStorageSessionCodec {
     private RtsStorageSessionCodec() {
     }
 
+    public static ResourceKey<Level> parseDimensionKey(String dimensionId) {
+        if (dimensionId == null || dimensionId.isBlank()) {
+            return null;
+        }
+        ResourceLocation key = ResourceLocation.tryParse(dimensionId);
+        return key == null ? null : ResourceKey.create(Registries.DIMENSION, key);
+    }
+
     public static void load(ServerPlayer player, RtsStorageSession session, CompoundTag root) {
         session.linkedStorages.clear();
         session.linkedNames.clear();
@@ -91,7 +98,7 @@ public final class RtsStorageSessionCodec {
 
         session.page = root.contains(NBT_PAGE, Tag.TAG_INT) ? Math.max(0, root.getInt(NBT_PAGE)) : 0;
         session.search = sanitizeSavedText(root.getString(NBT_SEARCH), 128);
-        session.category = RtsStorageManager.normalizeCategory(root.getString(NBT_CATEGORY));
+        session.category = RtsStoragePageBuilder.normalizeCategory(root.getString(NBT_CATEGORY));
         session.sort = parseSavedSort(root.getInt(NBT_SORT));
         session.ascending = root.contains(NBT_ASCENDING, Tag.TAG_BYTE) && root.getBoolean(NBT_ASCENDING);
         session.autoStoreMinedDrops = !root.contains(NBT_AUTO_STORE_MINED_DROPS, Tag.TAG_BYTE)
@@ -102,9 +109,9 @@ public final class RtsStorageSessionCodec {
         session.craftShowUnavailable = root.contains(NBT_CRAFT_SHOW_UNAVAILABLE, Tag.TAG_BYTE)
                 && root.getBoolean(NBT_CRAFT_SHOW_UNAVAILABLE);
         session.craftRequestedCount = root.contains(NBT_CRAFT_REQUESTED_COUNT, Tag.TAG_INT)
-                ? Math.max(RtsStorageManager.CRAFTABLE_BATCH_SIZE,
+                ? Math.max(RtsStorageSession.CRAFTABLE_BATCH_SIZE,
                         Math.min(999, root.getInt(NBT_CRAFT_REQUESTED_COUNT)))
-                : RtsStorageManager.CRAFTABLE_BATCH_SIZE;
+                : RtsStorageSession.CRAFTABLE_BATCH_SIZE;
 
         loadLinkedStorages(player, session, root);
         loadInternalFluids(session, root);
@@ -118,7 +125,7 @@ public final class RtsStorageSessionCodec {
 
         root.putInt(NBT_PAGE, Math.max(0, session.page));
         root.putString(NBT_SEARCH, sanitizeSavedText(session.search, 128));
-        root.putString(NBT_CATEGORY, RtsStorageManager.normalizeCategory(session.category));
+        root.putString(NBT_CATEGORY, RtsStoragePageBuilder.normalizeCategory(session.category));
         root.putInt(NBT_SORT, (session.sort == null ? RtsStorageSort.QUANTITY : session.sort).ordinal());
         root.putBoolean(NBT_ASCENDING, session.ascending);
         root.putBoolean(NBT_AUTO_STORE_MINED_DROPS, session.autoStoreMinedDrops);
@@ -126,7 +133,7 @@ public final class RtsStorageSessionCodec {
         root.putString(NBT_CRAFT_SEARCH, sanitizeSavedText(session.craftSearch, 128));
         root.putBoolean(NBT_CRAFT_SHOW_UNAVAILABLE, session.craftShowUnavailable);
         root.putInt(NBT_CRAFT_REQUESTED_COUNT,
-                Math.max(RtsStorageManager.CRAFTABLE_BATCH_SIZE, Math.min(999, session.craftRequestedCount)));
+                Math.max(RtsStorageSession.CRAFTABLE_BATCH_SIZE, Math.min(999, session.craftRequestedCount)));
 
         saveLinkedStorages(session, root);
         saveInternalFluids(session, root);
@@ -144,7 +151,7 @@ public final class RtsStorageSessionCodec {
         ResourceKey<Level> legacyDimension = null;
         String legacyDimensionId = root.getString(NBT_LINKED_DIMENSION);
         if (!legacyDimensionId.isBlank()) {
-            legacyDimension = RtsStorageManager.parseDimensionKey(legacyDimensionId);
+            legacyDimension = parseDimensionKey(legacyDimensionId);
         }
 
         ListTag linkedEntries = root.getList(NBT_LINKED_ENTRIES, Tag.TAG_COMPOUND);
@@ -154,7 +161,7 @@ public final class RtsStorageSessionCodec {
                 if (!linkedTag.contains(NBT_LINKED_ENTRY_POS, Tag.TAG_LONG)) {
                     continue;
                 }
-                ResourceKey<Level> dimension = RtsStorageManager.parseDimensionKey(
+                ResourceKey<Level> dimension = parseDimensionKey(
                         linkedTag.getString(NBT_LINKED_ENTRY_DIMENSION));
                 if (dimension == null) {
                     continue;
@@ -164,12 +171,12 @@ public final class RtsStorageSessionCodec {
                         BlockPos.of(linkedTag.getLong(NBT_LINKED_ENTRY_POS)).immutable());
                 if (!session.linkedStorages.contains(ref)) {
                     session.linkedStorages.add(ref);
-                    session.linkedModes.put(ref, RtsStorageManager.sanitizeLinkMode(
+                    session.linkedModes.put(ref, RtsLinkedStorageResolver.sanitizeLinkMode(
                             linkedTag.getByte(NBT_LINKED_ENTRY_MODE)));
                     int priority = linkedTag.contains(NBT_LINKED_ENTRY_PRIORITY, Tag.TAG_INT)
                             ? linkedTag.getInt(NBT_LINKED_ENTRY_PRIORITY)
                             : 0;
-                    session.linkedPriorities.put(ref, RtsStorageManager.sanitizeLinkedStoragePriority(priority));
+                    session.linkedPriorities.put(ref, RtsLinkedStorageResolver.sanitizeLinkedStoragePriority(priority));
                     if (linkedTag.contains(NBT_LINKED_ENTRY_BACKPACK_UUID, Tag.TAG_INT_ARRAY)) {
                         session.linkedBackpackUuids.put(ref, linkedTag.getUUID(NBT_LINKED_ENTRY_BACKPACK_UUID));
                     }
@@ -193,10 +200,10 @@ public final class RtsStorageSessionCodec {
                     BlockPos.of(linkedPackedPositions[i]).immutable());
             if (!session.linkedStorages.contains(ref)) {
                 session.linkedStorages.add(ref);
-                byte linkMode = i < linkedModes.length ? linkedModes[i] : RtsStorageManager.LINK_MODE_BIDIRECTIONAL;
-                session.linkedModes.put(ref, RtsStorageManager.sanitizeLinkMode(linkMode));
+                byte linkMode = i < linkedModes.length ? linkedModes[i] : RtsLinkedStorageResolver.LINK_MODE_BIDIRECTIONAL;
+                session.linkedModes.put(ref, RtsLinkedStorageResolver.sanitizeLinkMode(linkMode));
                 int priority = i < linkedPriorities.length ? linkedPriorities[i] : 0;
-                session.linkedPriorities.put(ref, RtsStorageManager.sanitizeLinkedStoragePriority(priority));
+                session.linkedPriorities.put(ref, RtsLinkedStorageResolver.sanitizeLinkedStoragePriority(priority));
             }
         }
     }
@@ -232,7 +239,7 @@ public final class RtsStorageSessionCodec {
                 continue;
             }
             session.recentEntries.addLast(new RecentEntry(entryId, amount, Math.max(0L, capacity), kind));
-            if (session.recentEntries.size() >= RtsStorageManager.RECENT_ENTRY_LIMIT) {
+            if (session.recentEntries.size() >= RtsStorageRecentEntries.RECENT_ENTRY_LIMIT) {
                 break;
             }
         }
@@ -246,7 +253,7 @@ public final class RtsStorageSessionCodec {
             CompoundTag quickSlotTag = quickSlots.getCompound(i);
             int slot = quickSlotTag.getInt(NBT_QUICK_SLOT_INDEX);
             String itemId = quickSlotTag.getString(NBT_QUICK_SLOT_ITEM_ID);
-            if (slot < 0 || slot >= RtsStorageManager.QUICK_SLOT_COUNT || itemId == null || itemId.isBlank()) {
+            if (slot < 0 || slot >= RtsStorageBindings.QUICK_SLOT_COUNT || itemId == null || itemId.isBlank()) {
                 continue;
             }
             ResourceLocation key = ResourceLocation.tryParse(itemId);
@@ -273,7 +280,7 @@ public final class RtsStorageSessionCodec {
         for (int i = 0; i < guiBindings.size(); i++) {
             CompoundTag bindingTag = guiBindings.getCompound(i);
             int slot = bindingTag.getInt(NBT_GUI_BINDING_SLOT);
-            if (slot < 0 || slot >= RtsStorageManager.GUI_BINDING_SLOT_COUNT
+            if (slot < 0 || slot >= RtsStorageBindings.GUI_BINDING_SLOT_COUNT
                     || !bindingTag.contains(NBT_GUI_BINDING_POS, Tag.TAG_LONG)) {
                 continue;
             }
@@ -312,9 +319,9 @@ public final class RtsStorageSessionCodec {
             if (ref == null || ref.pos() == null || ref.dimension() == null) {
                 continue;
             }
-            byte linkMode = RtsStorageManager.sanitizeLinkMode(
-                    session.linkedModes.getOrDefault(ref, RtsStorageManager.LINK_MODE_BIDIRECTIONAL));
-            int priority = RtsStorageManager.sanitizeLinkedStoragePriority(
+            byte linkMode = RtsLinkedStorageResolver.sanitizeLinkMode(
+                    session.linkedModes.getOrDefault(ref, RtsLinkedStorageResolver.LINK_MODE_BIDIRECTIONAL));
+            int priority = RtsLinkedStorageResolver.sanitizeLinkedStoragePriority(
                     session.linkedPriorities.getOrDefault(ref, 0));
             linkedPacked[i] = ref.pos().asLong();
             linkedModes[i] = linkMode;

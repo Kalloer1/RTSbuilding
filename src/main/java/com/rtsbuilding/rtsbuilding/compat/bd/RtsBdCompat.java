@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2Compat;
+import com.rtsbuilding.rtsbuilding.compat.ReportedCountItemHandler;
 import com.wintercogs.beyonddimensions.api.dimensionnet.DimensionsNet;
 import com.wintercogs.beyonddimensions.api.dimensionnet.UnifiedStorage;
 import com.wintercogs.beyonddimensions.api.capability.helper.unordered.FluidUnifiedStorageHandler;
@@ -83,7 +83,7 @@ public final class RtsBdCompat {
         }
     }
 
-    private static final class BdDirectItemHandler implements IItemHandler, RtsAe2Compat.ReportedCountItemHandler, DirectExtractHandler {
+    private static final class BdDirectItemHandler implements IItemHandler, ReportedCountItemHandler, DirectExtractHandler {
         private final UnifiedStorage storage;
         private final Map<Item, ItemStackKey> itemToKey;
         private final List<ItemStackKey> keys;
@@ -96,10 +96,10 @@ public final class RtsBdCompat {
             this.keys = new ArrayList<>();
             this.displayStacks = new ArrayList<>();
             this.counts = new ArrayList<>();
-            buildCache();
+            rebuildCache();
         }
 
-        private void buildCache() {
+        private void rebuildCache() {
             var bucket = storage.<AbstractUnorderedStackHandler.TypeBucket>getBucket(ItemStackKey.ID);
             if (bucket.isEmpty()) {
                 return;
@@ -152,6 +152,9 @@ public final class RtsBdCompat {
                 return ItemStack.EMPTY;
             }
             KeyAmount remainder = storage.insert(new ItemStackKey(stack), stack.getCount(), simulate);
+            if (!simulate && remainder.isEmpty()) {
+                rebuildCache();
+            }
             if (remainder.isEmpty()) {
                 return ItemStack.EMPTY;
             }
@@ -172,6 +175,9 @@ public final class RtsBdCompat {
                 return ItemStack.EMPTY;
             }
             KeyAmount extracted = storage.extract(key, amount, simulate, false);
+            if (!simulate) {
+                rebuildCache();
+            }
             if (extracted.isEmpty()) {
                 return ItemStack.EMPTY;
             }
@@ -192,6 +198,9 @@ public final class RtsBdCompat {
                 return ItemStack.EMPTY;
             }
             KeyAmount result = storage.extract(key, amount, simulate, false);
+            if (!simulate) {
+                rebuildCache();
+            }
             if (result.isEmpty()) {
                 return ItemStack.EMPTY;
             }

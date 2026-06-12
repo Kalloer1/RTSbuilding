@@ -1,12 +1,10 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 import com.rtsbuilding.rtsbuilding.util.RtsCountUtil;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
  * Maintains the player's recent item/fluid history for the RTS storage UI.
@@ -25,6 +23,8 @@ import net.neoforged.neoforge.fluids.FluidStack;
  * entry appears first, and the history is trimmed to the storage UI limit.
  */
 public final class RtsStorageRecentEntries {
+    public static final int RECENT_ENTRY_LIMIT = 24;
+
     private RtsStorageRecentEntries() {
     }
 
@@ -65,22 +65,6 @@ public final class RtsStorageRecentEntries {
             return;
         }
         pushRecentEntry(session, new RecentEntry(itemId, amount, 0L, kind));
-    }
-
-    /**
-     * Records a fluid by resolving its registry key. If the key cannot be
-     * resolved, the fluid is skipped; display names are never used because they
-     * change with language and resource packs.
-     */
-    static void recordRecentFluid(RtsStorageSession session, FluidStack stack, byte kind, long amount, long capacity) {
-        if (stack == null || stack.isEmpty()) {
-            return;
-        }
-        ResourceLocation id = BuiltInRegistries.FLUID.getKey(stack.getFluid());
-        if (id == null) {
-            return;
-        }
-        recordRecentFluid(session, id.toString(), kind, amount, capacity);
     }
 
     /**
@@ -129,7 +113,7 @@ public final class RtsStorageRecentEntries {
         final RecentEntry mergedEntry = merged;
         session.recentEntries.removeIf(existing -> sameRecentKey(existing, mergedEntry));
         session.recentEntries.addFirst(mergedEntry);
-        while (session.recentEntries.size() > RtsStorageManager.RECENT_ENTRY_LIMIT) {
+        while (session.recentEntries.size() > RECENT_ENTRY_LIMIT) {
             session.recentEntries.removeLast();
         }
     }

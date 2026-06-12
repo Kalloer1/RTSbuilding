@@ -5,10 +5,7 @@
   "client": [],
   "mixins": [
     "ChestMenuMixin",
-    "compat.generatorgalore.GeneratorMenuMixin",
-    "compat.ironfurnaces.IronFurnaceContainerMixin",
-    "compat.ironfurnaces.WirelessEnergyHeaterContainerMixin",
-    "compat.sophisticatedstorage.StorageContainerMenuMixin"
+    "ModdedRemoteStillValidMixin"
   ],
   "injectors": {
     "defaultRequire": 1

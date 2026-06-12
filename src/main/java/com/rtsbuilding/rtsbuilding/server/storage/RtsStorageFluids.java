@@ -1,14 +1,10 @@
 package com.rtsbuilding.rtsbuilding.server.storage;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsStoreFluidPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
-
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
+import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferExtractor;
+import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -32,6 +28,10 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
 import net.neoforged.neoforge.items.IItemHandler;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 /**
  * Owns RTS storage fluid mutation and linked-fluid behavior.
  *
@@ -39,10 +39,7 @@ import net.neoforged.neoforge.items.IItemHandler;
  * fluid handler fill/drain behavior, fluid container draining, target tank
  * filling, and world fluid placement rules. It deliberately does not own item
  * transfer, crafting, storage page dispatch, or packet registration; callers
- * pass already-resolved item handlers, use {@link RtsStorageTransfers} for item
  * extraction/refund, and keep session save/page refresh in
- * {@link RtsStorageManager}. Linked fluid capability probing stays in
- * {@link RtsLinkedStorageResolver}, not here.
  */
 public final class RtsStorageFluids {
     private static final int FLUID_TRANSFER_MB = FluidType.BUCKET_VOLUME;
@@ -147,38 +144,38 @@ public final class RtsStorageFluids {
         }
 
         Item item = BuiltInRegistries.ITEM.get(id);
-        ItemStack extracted = RtsStorageTransfers.extractOneFromNetwork(extractItemHandlers, player, item);
+        ItemStack extracted = RtsTransferExtractor.extractOneFromNetwork(extractItemHandlers, player, item);
         if (extracted.isEmpty()) {
             return false;
         }
 
         ContainerDrainOutcome simulated = drainContainer(extracted, FLUID_TRANSFER_MB, false);
         if (simulated.isEmpty() || simulated.fluid().getAmount() < FLUID_TRANSFER_MB) {
-            RtsStorageTransfers.refundToLinked(insertItemHandlers, player, extracted);
+            RtsTransferInserter.refundToLinked(insertItemHandlers, player, extracted);
             return false;
         }
         FluidStack targetFluid = simulated.fluid().copy();
         targetFluid.setAmount(FLUID_TRANSFER_MB);
         if (insertFluidIntoNetwork(player, session, fluidHandlers, targetFluid, false) < FLUID_TRANSFER_MB) {
-            RtsStorageTransfers.refundToLinked(insertItemHandlers, player, extracted);
+            RtsTransferInserter.refundToLinked(insertItemHandlers, player, extracted);
             return false;
         }
 
         ContainerDrainOutcome executed = drainContainer(extracted, FLUID_TRANSFER_MB, true);
         if (executed.isEmpty() || executed.fluid().getAmount() < FLUID_TRANSFER_MB) {
-            RtsStorageTransfers.refundToLinked(insertItemHandlers, player, extracted);
+            RtsTransferInserter.refundToLinked(insertItemHandlers, player, extracted);
             return false;
         }
         FluidStack insertFluid = executed.fluid().copy();
         insertFluid.setAmount(FLUID_TRANSFER_MB);
         int inserted = insertFluidIntoNetwork(player, session, fluidHandlers, insertFluid, true);
         if (inserted < FLUID_TRANSFER_MB) {
-            RtsStorageTransfers.refundToLinked(insertItemHandlers, player, extracted);
+            RtsTransferInserter.refundToLinked(insertItemHandlers, player, extracted);
             return false;
         }
 
         if (!executed.remainder().isEmpty()) {
-            RtsStorageTransfers.refundToLinked(insertItemHandlers, player, executed.remainder());
+            RtsTransferInserter.refundToLinked(insertItemHandlers, player, executed.remainder());
         }
         ResourceLocation fluidId = BuiltInRegistries.FLUID.getKey(insertFluid.getFluid());
         if (fluidId != null) {
@@ -549,7 +546,7 @@ public final class RtsStorageFluids {
     }
 
     private static void moveToPlayerInventoryOrDrop(ServerPlayer player, ItemStack stack) {
-        ItemStack remainder = RtsStorageTransfers.moveToPlayerInventoryOnly(player, stack);
+        ItemStack remainder = RtsTransferInserter.moveToPlayerInventoryOnly(player, stack);
         if (!remainder.isEmpty()) {
             player.drop(remainder, false);
         }

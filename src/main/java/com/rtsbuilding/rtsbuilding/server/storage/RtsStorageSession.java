@@ -2,24 +2,14 @@ package com.rtsbuilding.rtsbuilding.server.storage;
 
 import com.rtsbuilding.rtsbuilding.common.BuilderMode;
 import com.rtsbuilding.rtsbuilding.network.storage.RtsStorageSort;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
-import com.rtsbuilding.rtsbuilding.server.storage.placement.RtsPlacementBatch;
+import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementBatch;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
+
+import java.util.*;
 
 /**
  * 玩家 RTS 存储会话的<strong>可变状态容器</strong>。
@@ -42,6 +32,8 @@ import net.neoforged.neoforge.items.IItemHandler;
  * </pre>
  */
 public class RtsStorageSession {
+
+    public static final int CRAFTABLE_BATCH_SIZE = 12;
 
     // ======================================================================
     // §1  BD 网络缓存（NeoForge only）
@@ -121,7 +113,7 @@ public class RtsStorageSession {
     /** 是否显示不可合成的配方 */
     public boolean craftShowUnavailable;
     /** 已请求的合成配方总数（含偏移量和限制量，至少为 CRAFTABLE_BATCH_SIZE） */
-    public int craftRequestedCount = RtsStorageManager.CRAFTABLE_BATCH_SIZE;
+    public int craftRequestedCount = CRAFTABLE_BATCH_SIZE;
     /** 合成搜索的拼音模糊搜索开关 */
     public boolean craftPinyinSearchEnabled;
     /** 合成搜索的本地化命中 ID 集合 */
@@ -158,7 +150,7 @@ public class RtsStorageSession {
     // ======================================================================
     // §7  远程挖掘与连锁挖掘运行时状态
     //      单方块远程挖掘 + 连锁挖掘（Ultimine）的状态机数据。
-    //      注意：RtsToolLease 由 RtsStorageMining 管理（涉及 NBT 工具的借用与归还）。
+    //      注意：RtsToolLease 由 RtsMiningStateMachine 管理（涉及 NBT 工具的借用与归还）。
     // ======================================================================
 
     /** 当前挖掘目标坐标 */
@@ -207,6 +199,9 @@ public class RtsStorageSession {
     /** 待处理的放置批次作业队列 */
     public final Deque<RtsPlacementBatch.PlaceBatchJob> placeBatchJobs = new ArrayDeque<>();
 
+    /** 已放置方块被破坏后的掉率物回收作业队列 */
+    public final Deque<PlacedRecoveryJob> recoveryJobs = new ArrayDeque<>();
+
     // ======================================================================
     // §9  UI 记忆：最近条目、快捷槽与外部 GUI 绑定
     //      短时 UI 状态，用于改善玩家操作体验。
@@ -215,11 +210,11 @@ public class RtsStorageSession {
     /** 最近访问/移动的物品或流体记录队列（上限由客户端控制） */
     public final Deque<RecentEntry> recentEntries = new ArrayDeque<>();
     /** 快捷槽物品 ID 数组；空串 = 空槽，大小由 QUICK_SLOT_COUNT 固定 */
-    public final String[] quickSlotItemIds = new String[RtsStorageManager.QUICK_SLOT_COUNT];
+    public final String[] quickSlotItemIds = new String[RtsStorageBindings.QUICK_SLOT_COUNT];
     /** Full client-facing preview stacks for pinned quick slots. Keeps component-heavy tool icons intact. */
-    public final ItemStack[] quickSlotPreviews = new ItemStack[RtsStorageManager.QUICK_SLOT_COUNT];
+    public final ItemStack[] quickSlotPreviews = new ItemStack[RtsStorageBindings.QUICK_SLOT_COUNT];
     /** 外部方块 GUI 绑定数组（允许从 RTS 模式一键打开箱子/机器界面） */
-    public final GuiBinding[] guiBindings = new GuiBinding[RtsStorageManager.GUI_BINDING_SLOT_COUNT];
+    public final GuiBinding[] guiBindings = new GuiBinding[RtsStorageBindings.GUI_BINDING_SLOT_COUNT];
 
     // ======================================================================
     // 构造器
@@ -230,4 +225,11 @@ public class RtsStorageSession {
         Arrays.fill(this.quickSlotPreviews, ItemStack.EMPTY);
     }
 
+    /**
+     * 已放置方块被破坏后的掉率物回收作业。
+     *
+     * @param targetPos 原始方块坐标
+     * @param stacks    待回收的掉率物堆栈队列
+     */
+    public record PlacedRecoveryJob(BlockPos targetPos, Deque<ItemStack> stacks) {}
 }

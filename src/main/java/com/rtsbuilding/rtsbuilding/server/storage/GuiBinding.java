@@ -9,8 +9,6 @@ import net.minecraft.world.level.Level;
  * 玩家自定义的外部 GUI 快捷绑定。
  *
  * <p>存储一个目标方块和显示元数据，允许从 RTS 模式一键打开容器的 GUI。
- * 校验、菜单打开和朝向行为由 {@link com.rtsbuilding.rtsbuilding.server.RtsStorageManager} 处理。
- *
  * @param pos       目标方块坐标
  * @param dimension 目标方块所在维度
  * @param label     玩家自定义的显示标签

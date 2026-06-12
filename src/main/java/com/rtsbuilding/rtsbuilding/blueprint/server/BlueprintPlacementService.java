@@ -15,7 +15,8 @@ import com.rtsbuilding.rtsbuilding.blueprint.network.BlueprintNetworkHandlers;
 import com.rtsbuilding.rtsbuilding.blueprint.network.S2CBlueprintStatusPayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.RtsStorageManager;
+import com.rtsbuilding.rtsbuilding.server.service.RtsBlueprintService;
+import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.data.PlacedBlockTrackerData;
 
 import net.minecraft.core.BlockPos;
@@ -142,7 +143,7 @@ public final class BlueprintPlacementService {
                             continue;
                         }
                     } else if (fluidCost == Fluids.LAVA) {
-                        if (RtsStorageManager.countBlueprintFluidMb(player, Fluids.LAVA) < FluidType.BUCKET_VOLUME) {
+                        if (RtsBlueprintService.countBlueprintFluidMb(player, Fluids.LAVA) < FluidType.BUCKET_VOLUME) {
                             skippedMissing++;
                             continue;
                         }
@@ -153,7 +154,7 @@ public final class BlueprintPlacementService {
                 } else {
                     boolean missingMaterial = false;
                     for (Item item : materialItems) {
-                        ItemStack extracted = RtsStorageManager.extractBlueprintMaterial(player, item, 1);
+                        ItemStack extracted = RtsBlueprintService.extractBlueprintMaterial(player, item, 1);
                         if (extracted.isEmpty()) {
                             missingMaterial = true;
                             break;
@@ -177,7 +178,7 @@ public final class BlueprintPlacementService {
                 continue;
             }
             if (!player.isCreative() && fluidCost == Fluids.LAVA
-                    && !RtsStorageManager.extractBlueprintFluid(player, Fluids.LAVA, FluidType.BUCKET_VOLUME)) {
+                    && !RtsBlueprintService.extractBlueprintFluid(player, Fluids.LAVA, FluidType.BUCKET_VOLUME)) {
                 level.removeBlock(target, false);
                 refundExtractedMaterials(player, extractedMaterials);
                 skippedMissing++;
@@ -189,7 +190,7 @@ public final class BlueprintPlacementService {
             for (Item item : materialItems) {
                 ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
                 if (itemId != null) {
-                    RtsStorageManager.noteBlueprintBlockPlaced(player, target, itemId.toString());
+                    RtsBlueprintService.noteBlueprintBlockPlaced(player, target, itemId.toString());
                 }
             }
             placed++;
@@ -197,7 +198,7 @@ public final class BlueprintPlacementService {
 
         if (index >= job.blueprint().blocks().size()) {
             JOBS.remove(player.getUUID());
-            RtsStorageManager.refreshBlueprintStoragePage(player);
+            RtsBlueprintService.refreshBlueprintStoragePage(player);
             send(player, S2CBlueprintStatusPayload.SUCCESS, "screen.rtsbuilding.blueprints.status.complete_partial",
                     completionSummary(placed, job.blueprint().blockCount(), skippedMissing, skippedUnsupported, skippedMissingBlocks, skippedBlocked));
         } else {
@@ -236,7 +237,7 @@ public final class BlueprintPlacementService {
         }
         for (ItemStack stack : stacks) {
             if (!stack.isEmpty()) {
-                RtsStorageManager.refundBlueprintMaterial(player, stack);
+                RtsBlueprintService.refundBlueprintMaterial(player, stack);
             }
         }
     }
@@ -263,7 +264,7 @@ public final class BlueprintPlacementService {
     }
 
     private static boolean canStillPlace(ServerPlayer player, ServerLevel level, BlockPos target) {
-        if (!RtsStorageManager.canAccessBlueprintTarget(player, target)) {
+        if (!RtsLinkedStorageResolver.canAccessWorldTarget(player, target)) {
             return false;
         }
         if (level.getBlockEntity(target) != null) {
@@ -286,14 +287,14 @@ public final class BlueprintPlacementService {
     }
 
     private static boolean hasReusableWater(ServerPlayer player) {
-        long waterBuckets = RtsStorageManager.countBlueprintMaterial(player, Items.WATER_BUCKET);
-        long storedWaterBuckets = RtsStorageManager.countBlueprintFluidMb(player, Fluids.WATER) / FluidType.BUCKET_VOLUME;
+        long waterBuckets = RtsBlueprintService.countBlueprintMaterial(player, Items.WATER_BUCKET);
+        long storedWaterBuckets = RtsBlueprintService.countBlueprintFluidMb(player, Fluids.WATER) / FluidType.BUCKET_VOLUME;
         return waterBuckets + storedWaterBuckets >= 2L;
     }
 
     private static void abort(ServerPlayer player, String messageKey, String detail) {
         JOBS.remove(player.getUUID());
-        RtsStorageManager.refreshBlueprintStoragePage(player);
+        RtsBlueprintService.refreshBlueprintStoragePage(player);
         send(player, S2CBlueprintStatusPayload.ERROR, messageKey, detail);
     }
 

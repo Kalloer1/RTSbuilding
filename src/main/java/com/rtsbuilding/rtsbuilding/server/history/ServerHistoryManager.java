@@ -6,8 +6,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -31,10 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  */
 public final class ServerHistoryManager {
-
-    /** 默认过期时间 */
-    private static final long DEFAULT_EXPIRY_MS = 600_000L; // 10分钟
-
     /** 清理间隔 */
     private static final long CLEANUP_INTERVAL_MS = 120_000L; // 2分钟
 
