@@ -27,6 +27,7 @@ import com.rtsbuilding.rtsbuilding.network.storage.*;
 import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.gui.screens.inventory.CraftingScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -959,6 +960,13 @@ public final class ClientRtsController {
                 this.previousCameraType = minecraft.options.getCameraType();
                 this.previousBobView = minecraft.options.bobView().get();
                 this.previousFovEffectScale = minecraft.options.fovEffectScale().get();
+                // 清除残留的玩家输入，防止进入 RTS 前按着的 WASD 让实体继续走
+                if (minecraft.player instanceof LocalPlayer localPlayer) {
+                    localPlayer.input.forwardImpulse = 0.0F;
+                    localPlayer.input.leftImpulse = 0.0F;
+                    localPlayer.input.jumping = false;
+                    localPlayer.input.shiftKeyDown = false;
+                }
             }
 
             minecraft.options.setCameraType(CameraType.FIRST_PERSON);
@@ -1281,6 +1289,19 @@ public final class ClientRtsController {
                     hasCameraInput ? this.pendingRotateSteps : 0,
                     fast);
             this.cameraMoveHeartbeatTicks = 0;
+        }
+
+        // RTS 模式下不覆写 player.input，让玩家实体能正常响应击退和物理效果。
+        // BuilderScreen 拦截按键导致 KeyMapping 不更新，但实体自身的物理（击退、重力）
+        // 不受影响，因为在 ServerPlayer 上 input 始终为 null。
+        if (minecraft.player instanceof LocalPlayer localPlayer) {
+            // RTS 模式下阻止所有键盘控制玩家实体（包括跳跃和下蹲）。
+            // isControlledCamera() 已被 LocalPlayerMixin 覆写为返回 true，
+            // 所以 Minecraft 原生同步机制会自动处理位置、旋转等数据包的发送。
+            localPlayer.input.jumping = false;
+            localPlayer.input.shiftKeyDown = false;
+            localPlayer.input.forwardImpulse = 0.0F;
+            localPlayer.input.leftImpulse = 0.0F;
         }
 
         this.pendingPanX = 0.0F;
