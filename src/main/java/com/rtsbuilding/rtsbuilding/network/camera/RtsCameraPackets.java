@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.network.camera;
 
-import com.rtsbuilding.rtsbuilding.network.RtsClientPayloadBridge;
+import com.rtsbuilding.rtsbuilding.network.ClientPayloadDispatcher;
 
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -28,6 +28,6 @@ public final class RtsCameraPackets {
         registrar.playToClient(
                 S2CRtsCameraStatePayload.TYPE,
                 S2CRtsCameraStatePayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleCameraState);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchCamera(p, ctx));
     }
 }

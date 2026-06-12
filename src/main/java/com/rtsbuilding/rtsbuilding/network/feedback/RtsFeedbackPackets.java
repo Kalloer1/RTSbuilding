@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.network.feedback;
 
-import com.rtsbuilding.rtsbuilding.network.RtsClientPayloadBridge;
+import com.rtsbuilding.rtsbuilding.network.ClientPayloadDispatcher;
 
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -8,7 +8,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * Registers lightweight server-to-client RTS feedback packets.
  *
  * Feedback payloads are S2C-only and should still route through
- * RtsClientPayloadBridge to preserve dedicated-server classloading safety.
+ * ClientPayloadDispatcher to preserve dedicated-server classloading safety.
  */
 public final class RtsFeedbackPackets {
     private RtsFeedbackPackets() {
@@ -18,6 +18,6 @@ public final class RtsFeedbackPackets {
         registrar.playToClient(
                 S2CRtsDamageFeedbackPayload.TYPE,
                 S2CRtsDamageFeedbackPayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleDamageFeedback);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchFeedback(p, ctx));
     }
 }

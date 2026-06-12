@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.network.progression;
 
-import com.rtsbuilding.rtsbuilding.network.RtsClientPayloadBridge;
+import com.rtsbuilding.rtsbuilding.network.ClientPayloadDispatcher;
 
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -53,11 +53,11 @@ public final class RtsProgressionPackets {
         registrar.playToClient(
                 S2CRtsQuestDetectStatusPayload.TYPE,
                 S2CRtsQuestDetectStatusPayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleQuestDetectStatus);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchProgression(p, ctx));
 
         registrar.playToClient(
                 S2CRtsProgressionStatePayload.TYPE,
                 S2CRtsProgressionStatePayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleProgressionState);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchProgression(p, ctx));
     }
 }

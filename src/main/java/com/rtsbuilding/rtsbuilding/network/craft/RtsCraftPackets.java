@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.network.craft;
 
-import com.rtsbuilding.rtsbuilding.network.RtsClientPayloadBridge;
+import com.rtsbuilding.rtsbuilding.network.ClientPayloadDispatcher;
 
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -43,11 +43,11 @@ public final class RtsCraftPackets {
         registrar.playToClient(
                 S2CRtsCraftablesPayload.TYPE,
                 S2CRtsCraftablesPayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleCraftables);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchCraft(p, ctx));
 
         registrar.playToClient(
                 S2CRtsCraftFeedbackPayload.TYPE,
                 S2CRtsCraftFeedbackPayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleCraftFeedback);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchCraft(p, ctx));
     }
 }

@@ -1,6 +1,9 @@
 package com.rtsbuilding.rtsbuilding.network.storage;
 
-import com.rtsbuilding.rtsbuilding.network.RtsClientPayloadBridge;
+import com.rtsbuilding.rtsbuilding.network.ClientPayloadDispatcher;
+import com.rtsbuilding.rtsbuilding.network.storage.handler.RtsBindingHandlers;
+import com.rtsbuilding.rtsbuilding.network.storage.handler.RtsPageHandlers;
+import com.rtsbuilding.rtsbuilding.network.storage.handler.RtsTransferHandlers;
 
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -18,106 +21,106 @@ public final class RtsStoragePackets {
         registrar.playToServer(
                 C2SRtsSetFunnelPayload.TYPE,
                 C2SRtsSetFunnelPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleSetFunnel);
+                RtsBindingHandlers::handleSetFunnel);
 
         registrar.playToServer(
                 C2SRtsSetAutoStorePayload.TYPE,
                 C2SRtsSetAutoStorePayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleSetAutoStore);
+                RtsBindingHandlers::handleSetAutoStore);
 
         registrar.playToServer(
                 C2SRtsSetBdNetworkPayload.TYPE,
                 C2SRtsSetBdNetworkPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleSetBdNetwork);
+                RtsBindingHandlers::handleSetBdNetwork);
 
         registrar.playToServer(
                 C2SRtsLinkStoragePayload.TYPE,
                 C2SRtsLinkStoragePayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleLinkStorage);
+                RtsBindingHandlers::handleLinkStorage);
 
         registrar.playToServer(
                 C2SRtsUnlinkStoragePayload.TYPE,
                 C2SRtsUnlinkStoragePayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleUnlinkStorage);
+                RtsBindingHandlers::handleUnlinkStorage);
 
         registrar.playToServer(
                 C2SRtsUpdateLinkedStoragePayload.TYPE,
                 C2SRtsUpdateLinkedStoragePayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleUpdateLinkedStorage);
+                RtsBindingHandlers::handleUpdateLinkedStorage);
 
         registrar.playToServer(
                 C2SRtsStoreHotbarSlotPayload.TYPE,
                 C2SRtsStoreHotbarSlotPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleStoreHotbarSlot);
+                RtsBindingHandlers::handleStoreHotbarSlot);
 
         registrar.playToServer(
                 C2SRtsSetQuickSlotPayload.TYPE,
                 C2SRtsSetQuickSlotPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleSetQuickSlot);
+                RtsBindingHandlers::handleSetQuickSlot);
 
         registrar.playToServer(
                 C2SRtsSetGuiBindingPayload.TYPE,
                 C2SRtsSetGuiBindingPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleSetGuiBinding);
+                RtsBindingHandlers::handleSetGuiBinding);
 
         registrar.playToServer(
                 C2SRtsOpenGuiBindingPayload.TYPE,
                 C2SRtsOpenGuiBindingPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleOpenGuiBinding);
+                RtsBindingHandlers::handleOpenGuiBinding);
 
         registrar.playToServer(
                 C2SRtsRequestStoragePagePayload.TYPE,
                 C2SRtsRequestStoragePagePayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleRequestStoragePage);
+                RtsPageHandlers::handleRequestStoragePage);
 
         registrar.playToServer(
                 C2SRtsFunnelTargetPayload.TYPE,
                 C2SRtsFunnelTargetPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleFunnelTarget);
+                RtsBindingHandlers::handleFunnelTarget);
 
         registrar.playToServer(
                 C2SRtsFillInventoryPayload.TYPE,
                 C2SRtsFillInventoryPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleFillInventory);
+                RtsTransferHandlers::handleFillInventory);
 
         registrar.playToServer(
                 C2SRtsLinkedPickupPayload.TYPE,
                 C2SRtsLinkedPickupPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleLinkedPickup);
+                RtsTransferHandlers::handleLinkedPickup);
 
         registrar.playToServer(
                 C2SRtsLinkedQuickMovePayload.TYPE,
                 C2SRtsLinkedQuickMovePayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleLinkedQuickMove);
+                RtsTransferHandlers::handleLinkedQuickMove);
 
         registrar.playToServer(
                 C2SRtsReturnCarriedPayload.TYPE,
                 C2SRtsReturnCarriedPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleReturnCarried);
+                RtsTransferHandlers::handleReturnCarried);
 
         registrar.playToServer(
                 C2SRtsImportMenuSlotPayload.TYPE,
                 C2SRtsImportMenuSlotPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleImportMenuSlot);
+                RtsTransferHandlers::handleImportMenuSlot);
 
         registrar.playToServer(
                 C2SRtsCloseRemoteMenuPayload.TYPE,
                 C2SRtsCloseRemoteMenuPayload.STREAM_CODEC,
-                RtsStorageNetworkHandlers::handleCloseRemoteMenu);
+                RtsBindingHandlers::handleCloseRemoteMenu);
 
         registrar.playToClient(
                 S2CRtsStoragePagePayload.TYPE,
                 S2CRtsStoragePagePayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleStoragePage);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchStorage(p, ctx));
 
         registrar.playToClient(
                 S2CRtsStorageDirtyPayload.TYPE,
                 S2CRtsStorageDirtyPayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleStorageDirty);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchStorage(p, ctx));
 
         registrar.playToClient(
                 S2CRtsRemoteMenuHintPayload.TYPE,
                 S2CRtsRemoteMenuHintPayload.STREAM_CODEC,
-                RtsClientPayloadBridge::handleRemoteMenuHint);
+                (p, ctx) -> ClientPayloadDispatcher.dispatchStorage(p, ctx));
     }
 }
