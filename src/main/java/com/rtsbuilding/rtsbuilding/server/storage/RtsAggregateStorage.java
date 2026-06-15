@@ -6,6 +6,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandler;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Priority-ordered aggregate storage that mirrors AE2's {@code NetworkStorage}.
@@ -38,8 +39,8 @@ public final class RtsAggregateStorage {
     /** Changes accumulated across all handlers since last poll. */
     private final Set<String> pendingChanges = new HashSet<>();
 
-    /** Recursion guard for insert/extract. */
-    private volatile boolean inUse;
+    /** Atomic reentrancy guard for insert/extract. */
+    private final AtomicBoolean inUse = new AtomicBoolean(false);
 
     /**
      * Pending mount/unmount operations queued during inUse=true.
@@ -54,7 +55,7 @@ public final class RtsAggregateStorage {
      * Mounts a handler with the given priority and associates a cache with it.
      */
     public void mount(int priority, IItemHandler handler, RtsHandlerCache cache) {
-        if (inUse) {
+        if (inUse.get()) {
             this.pendingMutations.add(() -> {
                 doMount(priority, handler, cache);
             });
@@ -74,7 +75,7 @@ public final class RtsAggregateStorage {
      * Unmounts a handler by identity.
      */
     public void unmount(IItemHandler handler) {
-        if (inUse) {
+        if (inUse.get()) {
             this.pendingMutations.add(() -> doUnmount(handler));
             return;
         }
@@ -106,9 +107,7 @@ public final class RtsAggregateStorage {
         if (stack == null || stack.isEmpty() || this.flatOrdered.isEmpty()) {
             return stack == null ? ItemStack.EMPTY : stack;
         }
-        if (inUse) return stack; // Prevent recursive use
-
-        inUse = true;
+        if (!inUse.compareAndSet(false, true)) return stack; // Prevent concurrent/reentrant use
         try {
             ItemStack remain = stack.copy();
             List<CachedHandlerSlot> remaining = new ArrayList<>();
@@ -133,7 +132,7 @@ public final class RtsAggregateStorage {
 
             return remain;
         } finally {
-            inUse = false;
+            inUse.set(false);
             applyPendingMutations();
         }
     }
@@ -157,9 +156,7 @@ public final class RtsAggregateStorage {
         if (targetItem == null || limit <= 0 || this.flatOrdered.isEmpty()) {
             return ItemStack.EMPTY;
         }
-        if (inUse) return ItemStack.EMPTY;
-
-        inUse = true;
+        if (!inUse.compareAndSet(false, true)) return ItemStack.EMPTY;
         try {
             int remaining = limit;
             ItemStack out = ItemStack.EMPTY;
@@ -190,7 +187,7 @@ public final class RtsAggregateStorage {
 
             return out;
         } finally {
-            inUse = false;
+            inUse.set(false);
             applyPendingMutations();
         }
     }

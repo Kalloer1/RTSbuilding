@@ -47,16 +47,16 @@ public final class RtsSessionService {
 
     /**
      * 获取或创建玩家的 RTS 会话。
+     *
+     * <p>使用 {@link ConcurrentHashMap#computeIfAbsent} 保证原子性，
+     * 避免并发场景下 check-then-act 导致的会话静默覆盖。
      */
     public static RtsStorageSession getOrCreate(ServerPlayer player) {
-        RtsStorageSession existing = SESSIONS.get(player.getUUID());
-        if (existing != null) {
-            return existing;
-        }
-        RtsStorageSession created = new RtsStorageSession();
-        loadFromPersistentStorage(player, created);
-        SESSIONS.put(player.getUUID(), created);
-        return created;
+        return SESSIONS.computeIfAbsent(player.getUUID(), uuid -> {
+            RtsStorageSession session = new RtsStorageSession();
+            loadFromPersistentStorage(player, session);
+            return session;
+        });
     }
 
     /**
