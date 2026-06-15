@@ -7,9 +7,7 @@ import com.rtsbuilding.rtsbuilding.server.service.RtsStorageTickService;
 import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementSound;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
-import com.rtsbuilding.rtsbuilding.server.service.mining.RtsToolLease;
-import com.rtsbuilding.rtsbuilding.server.service.mining.RtsToolLeaseManager;
-import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -143,8 +141,11 @@ public final class RtsMiningStateMachine {
         // Single-block mode — finish
         RtsMiningNetworkHelper.clearMineProgress(player, pos);
         if (result.broken()) {
-            // Update workflow progress
-            RtsWorkflowManager.updateProgress(player, session, 1, null);
+            // Update workflow progress via handle
+            RtsWorkflowHandle lastActive = RtsWorkflowHandle.lastActive(player, session);
+            if (lastActive != null) {
+                lastActive.updateProgress(1, null);
+            }
             List<HistoryBlockRecord> allRecords = new ArrayList<>();
             if (preRecord != null) {
                 allRecords.add(preRecord);
@@ -160,12 +161,18 @@ public final class RtsMiningStateMachine {
                 ServerHistoryManager.recordBreakWithRecords(player, allRecords, session.mining.miningFace);
             }
         } else {
-            RtsWorkflowManager.recordFailure(player, session);
+            RtsWorkflowHandle lastActive = RtsWorkflowHandle.lastActive(player, session);
+            if (lastActive != null) {
+                lastActive.recordFailure();
+            }
         }
         if (result.broken() && RtsMiningValidator.canAutoStoreDrops(player, session)) {
             RtsDropAbsorber.absorbMinedDropsImmediately(player, session, pos);
         }
-        RtsWorkflowManager.completeWorkflow(player, session);
+        RtsWorkflowHandle lastActive2 = RtsWorkflowHandle.lastActive(player, session);
+        if (lastActive2 != null) {
+            lastActive2.complete();
+        }
         RtsToolLeaseManager.returnMiningTool(player, session, session.mining.miningToolLease);
         // 单方块挖掘完成：触发储存页面刷新以保证GUI实时更新
         RtsStorageTickService.INSTANCE.forceRefresh(player);
@@ -191,9 +198,12 @@ public final class RtsMiningStateMachine {
                 || !session.mining.miningToolLease.isEmpty();
         boolean hadUltimine = session.mining.ultimineProgressPos != null || !session.mining.ultimineTargets.isEmpty();
 
-        // Abort workflow tracking if ultimine was active (finishUltimineBatch handles its own completion)
-        if (session.mining.miningPos != null && session.workflow.hasActiveWorkflow()) {
-            RtsWorkflowManager.completeWorkflow(player, session);
+        // Complete workflow tracking via handle if single-block mining was active
+        if (session.mining.miningPos != null) {
+            RtsWorkflowHandle lastActive = RtsWorkflowHandle.lastActive(player, session);
+            if (lastActive != null) {
+                lastActive.complete();
+            }
         }
         BlockPos progressPos = session.mining.miningPos != null ? session.mining.miningPos : session.mining.ultimineProgressPos;
         if (progressPos != null) {

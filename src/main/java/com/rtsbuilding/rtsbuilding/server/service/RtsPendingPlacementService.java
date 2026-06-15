@@ -6,6 +6,7 @@ import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStoragePageBuilder;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowHandle;
 import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
 import com.rtsbuilding.rtsbuilding.util.RtsCountUtil;
 import net.minecraft.core.BlockPos;
@@ -15,11 +16,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.items.IItemHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -212,9 +211,9 @@ public final class RtsPendingPlacementService {
                     player.getName().getString(), count);
             // 恢复每个独立 job 对应的搁置工作流
             for (RtsPlacementBatch.PlaceBatchJob rj : resumed) {
-                int resumeIdx = RtsWorkflowManager.findWorkflowIndexByEntryId(session, rj.workflowEntryId());
-                if (resumeIdx >= 0) {
-                    RtsWorkflowManager.resumeWorkflow(player, session, resumeIdx);
+                RtsWorkflowHandle handle = RtsWorkflowHandle.from(player, session, rj.workflowEntryId());
+                if (handle != null) {
+                    handle.resume();
                 }
             }
             // 通知客户端刷新页面
@@ -310,9 +309,9 @@ public final class RtsPendingPlacementService {
         // 移到活跃队列（按 entry ID 删除正确的 job，而不是删第一个）
         session.placement.pendingJobs.remove(job);
         session.placement.placeBatchJobs.addLast(job);
-        int resumeIdx = RtsWorkflowManager.findWorkflowIndexByEntryId(session, job.workflowEntryId());
-        if (resumeIdx >= 0) {
-            RtsWorkflowManager.resumeWorkflow(player, session, resumeIdx);
+        RtsWorkflowHandle handle = RtsWorkflowHandle.from(player, session, job.workflowEntryId());
+        if (handle != null) {
+            handle.resume();
         }
         RtsPageService.markStorageViewDirty(player, session);
 

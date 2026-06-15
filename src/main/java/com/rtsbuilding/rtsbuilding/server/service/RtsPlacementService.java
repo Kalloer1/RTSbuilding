@@ -6,11 +6,10 @@ import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementBatch;
 import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementHelper;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowHandle;
 import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
 import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowStatus;
 import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowType;
-import com.rtsbuilding.rtsbuilding.server.service.RtsPendingPlacementService;
-import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -46,24 +45,14 @@ public final class RtsPlacementService {
         double hitOffsetZ = clickedPos == null ? 0.5D : hitZ - clickedPos.getZ();
         RtsStorageSession session = player == null ? null : RtsSessionService.getIfPresent(player);
 
-        // 工作流满额时阻止新的放置操作
-        if (session != null && RtsWorkflowManager.isWorkflowFull(session)) {
-            player.displayClientMessage(
-                    Component.literal("§c工作流已满 (8/8)，无法开始放置操作！"),
-                    true);
-            return;
-        }
-
+        // 用令牌启动工作流（容量检查内部自处理）
         int wfEntryId = -1;
         if (player != null && session != null && !forceEmptyHand) {
-            int wfIndex = RtsWorkflowManager.startPlacement(player, session,
+            RtsWorkflowHandle handle = RtsWorkflowHandle.startPlacement(player, session,
                     quickBuild ? RtsWorkflowType.QUICK_BUILD : RtsWorkflowType.PLACE_SINGLE,
                     1);
-            if (wfIndex >= 0) {
-                RtsWorkflowState.Entry entry = session.workflow.getEntry(wfIndex);
-                if (entry != null) {
-                    wfEntryId = entry.id;
-                }
+            if (handle != null) {
+                wfEntryId = handle.getEntryId();
             }
         }
         final int finalWfEntryId = wfEntryId;
@@ -102,25 +91,14 @@ public final class RtsPlacementService {
             double rayDirX, double rayDirY, double rayDirZ) {
         RtsStorageSession session = player == null ? null : RtsSessionService.getIfPresent(player);
 
-        // 工作流满额时阻止新的批次放置操作
-        if (session != null && RtsWorkflowManager.isWorkflowFull(session)) {
-            player.displayClientMessage(
-                    Component.literal("§c工作流已满 (8/8)，无法开始批量放置！"),
-                    true);
-            return;
-        }
-
+        // 用令牌启动工作流（容量检查内部自处理）
         int wfEntryId = -1;
-        // Start workflow for batch placement
         if (player != null && session != null && clickedPositions != null && !clickedPositions.isEmpty()) {
-            int wfIndex = RtsWorkflowManager.startPlacement(player, session,
+            RtsWorkflowHandle handle = RtsWorkflowHandle.startPlacement(player, session,
                     RtsWorkflowType.PLACE_BATCH,
                     clickedPositions.size());
-            if (wfIndex >= 0) {
-                RtsWorkflowState.Entry entry = session.workflow.getEntry(wfIndex);
-                if (entry != null) {
-                    wfEntryId = entry.id;
-                }
+            if (handle != null) {
+                wfEntryId = handle.getEntryId();
             }
         }
         final int finalWfEntryId = wfEntryId;

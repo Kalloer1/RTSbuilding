@@ -4,7 +4,6 @@ import com.rtsbuilding.rtsbuilding.Config;
 import com.rtsbuilding.rtsbuilding.blueprint.BlueprintTransform;
 import com.rtsbuilding.rtsbuilding.blueprint.RtsBlueprint;
 import com.rtsbuilding.rtsbuilding.blueprint.RtsBlueprintBlock;
-import com.rtsbuilding.rtsbuilding.blueprint.client.BlueprintPanelLayout.*;
 import com.rtsbuilding.rtsbuilding.blueprint.format.BlueprintReaders;
 import com.rtsbuilding.rtsbuilding.blueprint.format.BlueprintWriters;
 import com.rtsbuilding.rtsbuilding.blueprint.network.C2SBlueprintPlacePayload;

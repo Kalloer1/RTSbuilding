@@ -1,13 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.data;
 
 import com.rtsbuilding.rtsbuilding.network.storage.RtsStorageSort;
-import com.rtsbuilding.rtsbuilding.server.storage.GuiBinding;
-import com.rtsbuilding.rtsbuilding.server.storage.RecentEntry;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsBrowserState;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageBindings;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStoragePageBuilder;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageRecentEntries;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
+import com.rtsbuilding.rtsbuilding.server.storage.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -19,7 +13,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 
 import java.util.Arrays;
 

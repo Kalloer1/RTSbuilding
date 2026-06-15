@@ -10,7 +10,7 @@ import com.rtsbuilding.rtsbuilding.server.service.RtsSessionService;
 import com.rtsbuilding.rtsbuilding.server.service.RtsStorageTickService;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
-import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
@@ -194,10 +194,10 @@ public final class RtsPlacementBatch {
                     session.placement.placeBatchJobs.removeFirst();
                     session.placement.pendingJobs.addLast(job);
                     madeProgress = false;
-                    // 搁置当前工作流（使用 job 对应的工作流条目 ID）
-                    int suspendIdx = RtsWorkflowManager.findWorkflowIndexByEntryId(session, job.workflowEntryId());
-                    if (suspendIdx >= 0) {
-                        RtsWorkflowManager.suspendWorkflow(player, session, suspendIdx);
+                    // 搁置当前工作流（通过令牌从 job 的 entryId 重建）
+                    RtsWorkflowHandle handle = RtsWorkflowHandle.from(player, session, job.workflowEntryId());
+                    if (handle != null) {
+                        handle.suspend();
                     }
                     break;
                 }
@@ -218,16 +218,16 @@ public final class RtsPlacementBatch {
                 ServerHistoryManager.recordPlacement(player, completedJobRef.placedPositions, completedJobRef.face());
             }
             if (delta > 0) {
-                int entryIdx = RtsWorkflowManager.findWorkflowIndexByEntryId(session, completedJobRef.workflowEntryId());
-                if (entryIdx >= 0) {
-                    RtsWorkflowManager.updateProgress(player, session, entryIdx, delta, null);
+                RtsWorkflowHandle handle = RtsWorkflowHandle.from(player, session, completedJobRef.workflowEntryId());
+                if (handle != null) {
+                    handle.updateProgress(delta, null);
                 }
             }
             // 所有批次任务都完成后才结束工作流
             if (session.placement.placeBatchJobs.isEmpty()) {
-                int entryIdx = RtsWorkflowManager.findWorkflowIndexByEntryId(session, completedJobRef.workflowEntryId());
-                if (entryIdx >= 0) {
-                    RtsWorkflowManager.completeWorkflow(player, session, entryIdx);
+                RtsWorkflowHandle finishHandle = RtsWorkflowHandle.from(player, session, completedJobRef.workflowEntryId());
+                if (finishHandle != null) {
+                    finishHandle.complete();
                 }
             }
             RtsStorageTickService.INSTANCE.forceRefresh(player);
@@ -241,9 +241,9 @@ public final class RtsPlacementBatch {
             int before = placedBeforeTick.getOrDefault(j.workflowEntryId(), 0);
             int delta = j.placedPositions.size() - before;
             if (delta > 0) {
-                int entryIdx = RtsWorkflowManager.findWorkflowIndexByEntryId(session, j.workflowEntryId());
-                if (entryIdx >= 0) {
-                    RtsWorkflowManager.updateProgress(player, session, entryIdx, delta, null);
+                RtsWorkflowHandle handle = RtsWorkflowHandle.from(player, session, j.workflowEntryId());
+                if (handle != null) {
+                    handle.updateProgress(delta, null);
                 }
                 // 中途进度：放置方块消耗了储存物品，触发页面刷新以保证GUI实时更新
                 RtsStorageTickService.INSTANCE.forceRefresh(player);
