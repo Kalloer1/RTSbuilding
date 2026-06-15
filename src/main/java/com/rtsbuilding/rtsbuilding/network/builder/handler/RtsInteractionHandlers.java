@@ -1,16 +1,28 @@
 package com.rtsbuilding.rtsbuilding.network.builder.handler;
 
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsBreakPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsDeleteWorkflowPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsInteractPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsQuickDropPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsResumePlacementActionPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsScanResumePlacementPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsSubmitPendingPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsUndoPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsResumePlacementScanPayload;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.service.RtsInteractionService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsPendingPlacementService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsPlacementService;
 import com.rtsbuilding.rtsbuilding.server.service.RtsPlacedRecoveryService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsResumeScanResult;
 import com.rtsbuilding.rtsbuilding.server.service.RtsTransferService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsSessionService;
+import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
@@ -79,6 +91,55 @@ public final class RtsInteractionHandlers {
                 // Non-RTS mode undo requests are ignored
                 if (!RtsCameraManager.isActive(serverPlayer)) return;
                 ServerHistoryManager.executeUndo(serverPlayer);
+            }
+        });
+    }
+
+    public static void handleSubmitPending(C2SRtsSubmitPendingPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsPlacementService.submitPendingPlacement(serverPlayer);
+            }
+        });
+    }
+
+    public static void handleDeleteWorkflow(C2SRtsDeleteWorkflowPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageSession session = RtsSessionService.getIfPresent(serverPlayer);
+                if (session != null) {
+                    RtsWorkflowManager.deleteWorkflow(serverPlayer, session, payload.workflowIndex());
+                }
+            }
+        });
+    }
+
+    public static void handleScanResumePlacement(C2SRtsScanResumePlacementPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageSession session = RtsSessionService.getIfPresent(serverPlayer);
+                if (session != null) {
+                    RtsResumeScanResult result = RtsPendingPlacementService.scanPendingJob(serverPlayer, session, payload.workflowEntryId());
+                    if (result != null) {
+                        PacketDistributor.sendToPlayer(serverPlayer, new S2CRtsResumePlacementScanPayload(
+                                result.itemId(), result.itemLabel(),
+                                result.totalRemaining(), result.alreadyPlacedCount(),
+                                result.conflictCount(), result.availableItems(),
+                                result.neededItems(), result.missingItems(),
+                                result.workflowEntryId()));
+                    }
+                }
+            }
+        });
+    }
+
+    public static void handleResumePlacementAction(C2SRtsResumePlacementActionPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsStorageSession session = RtsSessionService.getIfPresent(serverPlayer);
+                if (session != null) {
+                    RtsPendingPlacementService.resumeWithStrategy(serverPlayer, session, payload.strategy(), payload.workflowEntryId());
+                }
             }
         });
     }

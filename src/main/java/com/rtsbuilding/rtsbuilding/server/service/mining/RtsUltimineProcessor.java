@@ -1,11 +1,13 @@
 package com.rtsbuilding.rtsbuilding.server.service.mining;
 
 import com.rtsbuilding.rtsbuilding.common.AreaOperationExecutor;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.history.HistoryBlockRecord;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
 import com.rtsbuilding.rtsbuilding.server.service.RtsPageService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsStorageTickService;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.service.mining.RtsToolLease;
@@ -101,10 +103,13 @@ public final class RtsUltimineProcessor {
         session.mining.ultimineProgressPos = targets.peekFirst();
         session.mining.ultimineTotalTargets = targets.size();
         session.mining.ultimineProcessedTargets = 0;
+        session.mining.ultimineBrokenTargets = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = face == null ? Direction.DOWN : face;
         session.mining.miningToolSlot = slot;
+        // Start workflow tracking
+        RtsWorkflowManager.startUltimine(player, session, targets.size());
         RtsMiningNetworkHelper.sendUltimineProgress(player, 0, targets.size());
         RtsMiningStateMachine.beginRemoteMining(player, session, targets.peekFirst(), face, slot);
     }
@@ -184,10 +189,13 @@ public final class RtsUltimineProcessor {
         session.mining.ultimineProgressPos = targets.peekFirst();
         session.mining.ultimineTotalTargets = targets.size();
         session.mining.ultimineProcessedTargets = 0;
+        session.mining.ultimineBrokenTargets = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = Direction.DOWN;
         session.mining.miningToolSlot = slot;
+        // Start workflow tracking for area mine
+        RtsWorkflowManager.startAreaMine(player, session, targets.size());
         RtsMiningNetworkHelper.sendUltimineProgress(player, 0, targets.size());
         RtsMiningStateMachine.beginRemoteMining(player, session, targets.peekFirst(), null, slot);
     }
@@ -245,10 +253,13 @@ public final class RtsUltimineProcessor {
         session.mining.ultimineProgressPos = targets.peekFirst();
         session.mining.ultimineTotalTargets = targets.size();
         session.mining.ultimineProcessedTargets = 0;
+        session.mining.ultimineBrokenTargets = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = Direction.DOWN;
         session.mining.miningToolSlot = slot;
+        // Start workflow tracking
+        RtsWorkflowManager.startAreaDestroy(player, session, targets.size());
         RtsMiningNetworkHelper.sendUltimineProgress(player, 0, targets.size());
         RtsMiningStateMachine.beginRemoteMining(player, session, targets.peekFirst(), null, slot);
     }
@@ -303,6 +314,8 @@ public final class RtsUltimineProcessor {
 
         ServerLevel level = player.serverLevel();
         int processedThisTick = 0;
+        int brokenBeforeThisTick = session.mining.ultimineBrokenTargets;
+
         while (processedThisTick < RtsMiningValidator.ULTIMINE_BLOCKS_PER_TICK && !session.mining.ultimineTargets.isEmpty()) {
             if (RtsMiningValidator.isToolNearBreak(player, session)) {
                 finishUltimineBatch(player, session);
@@ -334,6 +347,7 @@ public final class RtsUltimineProcessor {
 
             if (result.broken() && preRecord != null) {
                 session.mining.ultimineProcessedPositions.add(preRecord);
+                session.mining.ultimineBrokenTargets++;
                 // Record any collateral multi-block destruction
                 recordCollateralBlocks(level, session, neighborRecords, target);
             }
@@ -344,6 +358,19 @@ public final class RtsUltimineProcessor {
                 finishUltimineBatch(player, session);
                 return;
             }
+        }
+
+        // Report per-tick broken block delta to the workflow manager so the
+        // progress bar updates in real time instead of staying at 0 until
+        // the entire batch finishes.
+        int brokenDelta = session.mining.ultimineBrokenTargets - brokenBeforeThisTick;
+        if (brokenDelta > 0) {
+            RtsWorkflowManager.updateProgress(player, session, brokenDelta, null);
+            // 连锁挖掘中途进度：触发储存页面刷新以保证GUI实时更新
+            RtsStorageTickService.INSTANCE.forceRefresh(player);
+            session.transfer.pageDataVersion.incrementAndGet();
+            RtsPageService.requestPage(player, session.browser.page, session.browser.search,
+                    session.browser.category, session.browser.sort, session.browser.ascending);
         }
 
         RtsMiningNetworkHelper.sendUltimineBatchProgress(player, session);
@@ -361,9 +388,18 @@ public final class RtsUltimineProcessor {
             ServerHistoryManager.recordBreakWithRecords(player, new ArrayList<>(session.mining.ultimineProcessedPositions), session.mining.miningFace);
             session.mining.ultimineProcessedPositions.clear();
         }
+        // Update workflow progress (delta=0 since per-tick updates already
+        // reported the deltas in processUltimineTargets)
+        RtsWorkflowManager.updateProgress(player, session, 0, null);
+        // Complete workflow tracking
+        RtsWorkflowManager.completeWorkflow(player, session);
         RtsMiningNetworkHelper.sendUltimineProgress(player, -1, 0);
         RtsToolLeaseManager.returnMiningTool(player, session, session.mining.miningToolLease);
-        RtsPageService.markStorageViewDirty(player, session);
+        // 连锁挖掘完成：触发储存页面刷新以保证GUI实时更新
+        RtsStorageTickService.INSTANCE.forceRefresh(player);
+        session.transfer.pageDataVersion.incrementAndGet();
+        RtsPageService.requestPage(player, session.browser.page, session.browser.search,
+                session.browser.category, session.browser.sort, session.browser.ascending);
         if (session.mining.ultimineProgressPos != null) {
             RtsMiningNetworkHelper.clearMineProgress(player, session.mining.ultimineProgressPos);
         }

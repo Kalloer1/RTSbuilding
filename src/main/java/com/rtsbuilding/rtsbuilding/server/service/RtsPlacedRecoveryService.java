@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.service;
 
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
+import com.rtsbuilding.rtsbuilding.server.service.RtsPendingPlacementService;
 import com.rtsbuilding.rtsbuilding.server.data.PlacedBlockTrackerData;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
@@ -103,6 +104,8 @@ public final class RtsPlacedRecoveryService {
             RtsSessionService.saveToPlayerNbt(player, session);
         }
         RtsPageService.markStorageViewDirty(player, session);
+        // 破坏已放置方块后刷新放置工作流进度（更新进度条和重启所需方块数）
+        RtsPendingPlacementService.refreshWorkflowProgress(player, session);
     }
 
     /**

@@ -9,8 +9,11 @@ import com.rtsbuilding.rtsbuilding.server.service.mining.RtsUltimineProcessor;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.service.mining.RtsToolLeaseManager;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowStatus;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
@@ -56,15 +59,27 @@ public final class RtsMiningService {
         int slot = RtsMiningValidator.clampHotbarSlot(toolSlot);
 
         if (start) {
-            if (!RtsLinkedStorageResolver.canAccessWorldTarget(player, pos)) {
-                RtsMiningStateMachine.stopActiveMining(player, session);
+            // 工作流满额时阻止新的挖掘操作
+            if (RtsWorkflowManager.isWorkflowFull(session)) {
+                player.displayClientMessage(
+                        Component.literal("§c工作流已满 (8/8)，无法开始新的挖掘操作！"),
+                        true);
                 return;
             }
+            if (!RtsLinkedStorageResolver.canAccessWorldTarget(player, pos)) {
+                RtsMiningStateMachine.stopActiveMining(player, session);
+                RtsWorkflowManager.abortWorkflow(player, session);
+                return;
+            }
+
+            // Start workflow for single-block mining
+            RtsWorkflowManager.startMining(player, session, 1);
 
             // Placed block recovery
             if (allowPlacedBlockRecovery
                     && RtsMiningValidator.tryRecoverPlacedBlock(player, session, pos, face)) {
                 RtsMiningStateMachine.stopActiveMining(player, session);
+                RtsWorkflowManager.completeWorkflow(player, session);
                 return;
             }
 
@@ -74,6 +89,8 @@ public final class RtsMiningService {
                 ServerHistoryManager.recordBreak(
                         player, List.of(pos.immutable()), actualFace);
                 RtsMiningStateMachine.destroyMinedBlock(player, session, pos, slot);
+                RtsWorkflowManager.updateProgress(player, session, 1, null);
+                RtsWorkflowManager.completeWorkflow(player, session);
                 RtsPageService.requestPage(
                         player, session.browser.page, session.browser.search, session.browser.category, session.browser.sort, session.browser.ascending);
                 return;
@@ -84,9 +101,12 @@ public final class RtsMiningService {
                     player, session, toolItemId, toolPrototype, slot);
             if (session.mining.miningSelectedToolRequested && session.mining.miningToolLease.isEmpty()) {
                 RtsMiningStateMachine.resetMiningState(session);
+                RtsWorkflowManager.setDetailMessage(player, session, "Missing mining tool");
+                RtsWorkflowManager.completeWorkflow(player, session);
                 return;
             }
             session.mining.miningToolProtectionEnabled = toolProtectionEnabled;
+            RtsWorkflowManager.setDetailMessage(player, session, "Mining in progress");
             RtsMiningStateMachine.beginRemoteMining(player, session, pos, face, slot);
             return;
         }
@@ -94,6 +114,7 @@ public final class RtsMiningService {
         // Stop
         if (!RtsMiningValidator.isCommittedUltimineBatch(session)) {
             RtsMiningStateMachine.stopActiveMining(player, session);
+            RtsWorkflowManager.completeWorkflow(player, session);
         }
     }
 
@@ -107,8 +128,19 @@ public final class RtsMiningService {
     public static void startUltimine(ServerPlayer player, BlockPos pos, Direction face, byte toolSlot, String toolItemId,
             ItemStack toolPrototype, int requestedLimit, byte mode, boolean toolProtectionEnabled) {
         RtsStorageSession session = RtsSessionService.getIfPresent(player);
+        if (session == null) {
+            return;
+        }
+        // 工作流满额时阻止连锁挖掘
+        if (RtsWorkflowManager.isWorkflowFull(session)) {
+            player.displayClientMessage(
+                    Component.literal("§c工作流已满 (8/8)，无法开始连锁挖掘！"),
+                    true);
+            return;
+        }
         RtsUltimineProcessor.startUltimine(player, session, pos, face, toolSlot, toolItemId, toolPrototype,
                 requestedLimit, mode, toolProtectionEnabled);
+        // Workflow is started inside RtsUltimineProcessor after targets are collected
     }
 
     // =========================================================================
@@ -123,8 +155,19 @@ public final class RtsMiningService {
             byte toolSlot, String toolItemId, ItemStack toolPrototype,
             byte shapeType, byte fillType, boolean toolProtectionEnabled) {
         RtsStorageSession session = RtsSessionService.getIfPresent(player);
+        if (session == null) {
+            return;
+        }
+        // 工作流满额时阻止范围挖掘
+        if (RtsWorkflowManager.isWorkflowFull(session)) {
+            player.displayClientMessage(
+                    Component.literal("§c工作流已满 (8/8)，无法开始范围挖掘！"),
+                    true);
+            return;
+        }
         RtsUltimineProcessor.areaMine(player, session, minX, maxX, minY, maxY, minZ, maxZ,
                 toolSlot, toolItemId, toolPrototype, shapeType, fillType, toolProtectionEnabled);
+        // Workflow is started inside RtsUltimineProcessor after targets are collected
     }
 
     // =========================================================================
@@ -137,8 +180,56 @@ public final class RtsMiningService {
     public static void areaDestroy(ServerPlayer player, List<BlockPos> positions,
             byte toolSlot, String toolItemId, ItemStack toolPrototype, boolean toolProtectionEnabled) {
         RtsStorageSession session = RtsSessionService.getIfPresent(player);
+        if (session == null) {
+            return;
+        }
+        // 工作流满额时阻止范围破坏
+        if (RtsWorkflowManager.isWorkflowFull(session)) {
+            player.displayClientMessage(
+                    Component.literal("§c工作流已满 (8/8)，无法开始范围破坏！"),
+                    true);
+            return;
+        }
         RtsUltimineProcessor.areaDestroy(player, session, positions,
                 toolSlot, toolItemId, toolPrototype, toolProtectionEnabled);
+        // Workflow is started inside RtsUltimineProcessor after targets are collected
+    }
+
+    // =========================================================================
+    //  Area Destroy Progress Queries
+    // =========================================================================
+
+    /**
+     * 获取当前范围破坏的总方块数（破坏方块总数）。
+     *
+     * @return 总方块数，如果没有进行中的范围破坏则返回 0
+     */
+    public static int getAreaDestroyTotalBlocks(ServerPlayer player) {
+        RtsStorageSession session = RtsSessionService.getIfPresent(player);
+        RtsWorkflowStatus status = RtsWorkflowManager.getAreaDestroyProgress(session);
+        return status != null ? status.totalBlocks() : 0;
+    }
+
+    /**
+     * 获取当前范围破坏的已破坏方块数量。
+     *
+     * @return 已破坏方块数，如果没有进行中的范围破坏则返回 0
+     */
+    public static int getAreaDestroyCompletedBlocks(ServerPlayer player) {
+        RtsStorageSession session = RtsSessionService.getIfPresent(player);
+        RtsWorkflowStatus status = RtsWorkflowManager.getAreaDestroyProgress(session);
+        return status != null ? status.completedBlocks() : 0;
+    }
+
+    /**
+     * 获取当前范围破坏的未破坏方块数（剩余待破坏方块）。
+     *
+     * @return 未破坏方块数，如果没有进行中的范围破坏则返回 0
+     */
+    public static int getAreaDestroyRemainingBlocks(ServerPlayer player) {
+        RtsStorageSession session = RtsSessionService.getIfPresent(player);
+        RtsWorkflowStatus status = RtsWorkflowManager.getAreaDestroyProgress(session);
+        return status != null ? status.remainingBlocks() : 0;
     }
 
     // =========================================================================

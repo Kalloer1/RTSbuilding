@@ -109,9 +109,39 @@ public final class RtsBuilderPackets {
                 C2SRtsUndoPayload.STREAM_CODEC,
                 RtsInteractionHandlers::handleUndo);
 
+        registrar.playToServer(
+                C2SRtsSubmitPendingPayload.TYPE,
+                C2SRtsSubmitPendingPayload.STREAM_CODEC,
+                RtsInteractionHandlers::handleSubmitPending);
+
+        registrar.playToServer(
+                C2SRtsDeleteWorkflowPayload.TYPE,
+                C2SRtsDeleteWorkflowPayload.STREAM_CODEC,
+                RtsInteractionHandlers::handleDeleteWorkflow);
+
+        registrar.playToServer(
+                C2SRtsScanResumePlacementPayload.TYPE,
+                C2SRtsScanResumePlacementPayload.STREAM_CODEC,
+                RtsInteractionHandlers::handleScanResumePlacement);
+
+        registrar.playToServer(
+                C2SRtsResumePlacementActionPayload.TYPE,
+                C2SRtsResumePlacementActionPayload.STREAM_CODEC,
+                RtsInteractionHandlers::handleResumePlacementAction);
+
         registrar.playToClient(
                 S2CRtsHistorySyncPayload.TYPE,
                 S2CRtsHistorySyncPayload.STREAM_CODEC,
+                ClientPayloadDispatcher::dispatchBuilder);
+
+        registrar.playToClient(
+                S2CRtsWorkflowProgressPayload.TYPE,
+                S2CRtsWorkflowProgressPayload.STREAM_CODEC,
+                ClientPayloadDispatcher::dispatchBuilder);
+
+        registrar.playToClient(
+                S2CRtsResumePlacementScanPayload.TYPE,
+                S2CRtsResumePlacementScanPayload.STREAM_CODEC,
                 ClientPayloadDispatcher::dispatchBuilder);
     }
 }

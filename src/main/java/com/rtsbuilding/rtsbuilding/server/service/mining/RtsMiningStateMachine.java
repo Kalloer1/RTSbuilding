@@ -3,11 +3,13 @@ package com.rtsbuilding.rtsbuilding.server.service.mining;
 import com.rtsbuilding.rtsbuilding.server.history.HistoryBlockRecord;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.service.RtsPageService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsStorageTickService;
 import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementSound;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.service.mining.RtsToolLease;
 import com.rtsbuilding.rtsbuilding.server.service.mining.RtsToolLeaseManager;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -119,12 +121,18 @@ public final class RtsMiningStateMachine {
             // Part of an ultimine batch — advance to next target
             removeUltimineTarget(session, pos);
             session.mining.ultimineProcessedTargets = Math.max(session.mining.ultimineProcessedTargets, 1);
+            session.mining.ultimineBrokenTargets++;
             session.mining.ultimineProcessedPositions.add(preRecord);
             // Record any collateral blocks (multi-block structures)
             recordCollateralBlocks(session, neighborRecords, pos);
             if (RtsMiningValidator.canAutoStoreDrops(player, session)) {
                 RtsDropAbsorber.absorbMinedDropsImmediately(player, session, pos);
             }
+            // 连锁挖掘中途进度：触发储存页面刷新以保证GUI实时更新
+            RtsStorageTickService.INSTANCE.forceRefresh(player);
+            session.transfer.pageDataVersion.incrementAndGet();
+            RtsPageService.requestPage(player, session.browser.page, session.browser.search,
+                    session.browser.category, session.browser.sort, session.browser.ascending);
             session.mining.miningPos = null;
             session.mining.miningProgress = 0.0F;
             session.mining.miningStage = -1;
@@ -135,6 +143,8 @@ public final class RtsMiningStateMachine {
         // Single-block mode — finish
         RtsMiningNetworkHelper.clearMineProgress(player, pos);
         if (result.broken()) {
+            // Update workflow progress
+            RtsWorkflowManager.updateProgress(player, session, 1, null);
             List<HistoryBlockRecord> allRecords = new ArrayList<>();
             if (preRecord != null) {
                 allRecords.add(preRecord);
@@ -149,12 +159,19 @@ public final class RtsMiningStateMachine {
             if (!allRecords.isEmpty()) {
                 ServerHistoryManager.recordBreakWithRecords(player, allRecords, session.mining.miningFace);
             }
+        } else {
+            RtsWorkflowManager.recordFailure(player, session);
         }
         if (result.broken() && RtsMiningValidator.canAutoStoreDrops(player, session)) {
             RtsDropAbsorber.absorbMinedDropsImmediately(player, session, pos);
         }
+        RtsWorkflowManager.completeWorkflow(player, session);
         RtsToolLeaseManager.returnMiningTool(player, session, session.mining.miningToolLease);
-        RtsPageService.markStorageViewDirty(player, session);
+        // 单方块挖掘完成：触发储存页面刷新以保证GUI实时更新
+        RtsStorageTickService.INSTANCE.forceRefresh(player);
+        session.transfer.pageDataVersion.incrementAndGet();
+        RtsPageService.requestPage(player, session.browser.page, session.browser.search,
+                session.browser.category, session.browser.sort, session.browser.ascending);
         resetMiningState(session);
     }
 
@@ -173,6 +190,11 @@ public final class RtsMiningStateMachine {
                 || !session.mining.ultimineTargets.isEmpty()
                 || !session.mining.miningToolLease.isEmpty();
         boolean hadUltimine = session.mining.ultimineProgressPos != null || !session.mining.ultimineTargets.isEmpty();
+
+        // Abort workflow tracking if ultimine was active (finishUltimineBatch handles its own completion)
+        if (session.mining.miningPos != null && session.workflow.hasActiveWorkflow()) {
+            RtsWorkflowManager.completeWorkflow(player, session);
+        }
         BlockPos progressPos = session.mining.miningPos != null ? session.mining.miningPos : session.mining.ultimineProgressPos;
         if (progressPos != null) {
             player.serverLevel().destroyBlockProgress(player.getId(), progressPos, -1);
@@ -434,6 +456,7 @@ public final class RtsMiningStateMachine {
         session.mining.ultimineProgressPos = null;
         session.mining.ultimineTotalTargets = 0;
         session.mining.ultimineProcessedTargets = 0;
+        session.mining.ultimineBrokenTargets = 0;
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = Direction.DOWN;
         session.mining.miningProgress = 0.0F;

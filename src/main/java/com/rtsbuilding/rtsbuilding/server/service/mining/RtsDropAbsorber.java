@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.service.mining;
 
 import com.rtsbuilding.rtsbuilding.server.service.QuestService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsPendingPlacementService;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
 import com.rtsbuilding.rtsbuilding.server.storage.LinkedHandler;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
@@ -85,5 +86,7 @@ public final class RtsDropAbsorber {
         if (absorbNearbyMinedDrops(player, pos, session)) {
             QuestService.runQuestDetect(player, session, false);
         }
+        // 挖掘吸物后自动尝试恢复挂起放置作业
+        RtsPendingPlacementService.tryResumeAfterStorageChange(player);
     }
 }

@@ -56,6 +56,8 @@ public class RtsMiningState {
     public int ultimineProcessedTargets;
     /** 连锁挖掘已成功破坏的位置记录（预捕获的 HistoryBlockRecord，用于批量记录历史） */
     public final List<HistoryBlockRecord> ultimineProcessedPositions = new ArrayList<>();
+    /** 连锁挖掘已成功破坏的目标方块数（不含连带破坏），用于工作流进度统计 */
+    public int ultimineBrokenTargets;
     /** 连锁挖掘是否已吸收掉落物（防止重复收集，由管理器控制） */
     public boolean ultimineAbsorbedDrops;
 }

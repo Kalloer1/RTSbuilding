@@ -27,6 +27,8 @@ import com.rtsbuilding.rtsbuilding.client.screen.layout.BottomPanelLayoutTypes;
 import com.rtsbuilding.rtsbuilding.client.screen.layout.PanelLayouts;
 import com.rtsbuilding.rtsbuilding.client.screen.overlay.PlayerStatusRenderer;
 import com.rtsbuilding.rtsbuilding.client.screen.overlay.RtsScreenOverlayRenderer;
+import com.rtsbuilding.rtsbuilding.client.screen.workflow.RtsWorkflowPanel;
+import com.rtsbuilding.rtsbuilding.client.screen.workflow.RtsResumePlacementPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.BottomPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsFloatingWindowLayer;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
@@ -143,6 +145,10 @@ public final class BuilderScreen extends Screen {
     private final RtsFloatingWindowLayer floatingWindowLayer;
     /** Handler for storage link detail action rendering and clicks. */
     private final StorageLinkDetailHandler storageLinkDetailHandler;
+    /** Movable window panel for workflow progress and controls. */
+    private final RtsWorkflowPanel workflowPanel = new RtsWorkflowPanel();
+    /** Panel for reviewing and resuming suspended placement jobs. */
+    private final RtsResumePlacementPanel resumePlacementPanel = new RtsResumePlacementPanel();
     /** Whether the user is currently dragging the input sensitivity slider. */
     private boolean draggingInputSensitivity = false;
     /** Whether the funnel hotkey (quick-activate funnel mode) is currently held down. */
@@ -198,7 +204,9 @@ public final class BuilderScreen extends Screen {
                 this.craftQuantityWindowPanel,
                 this.gearMenuPanel,
                 this.guidePanel,
-                this.quickBuildPanel);
+                this.quickBuildPanel,
+                this.workflowPanel,
+                this.resumePlacementPanel);
         this.uiStateManager.registerWindowPanel("settings", this.gearMenuPanel);
         this.uiStateManager.registerWindowPanel("blueprints", this.blueprintWindowPanel);
         this.uiStateManager.registerWindowPanel("guide", this.guidePanel);
@@ -215,6 +223,8 @@ public final class BuilderScreen extends Screen {
         this.craftQuantityWindowPanel.init(this, this.controller);
         this.funnelBufferPanel.init(this, this.controller);
         this.quickBuildPanel.init(this, this.controller);
+        this.workflowPanel.init(this, this.controller);
+        this.resumePlacementPanel.init(this, this.controller);
         this.linkedStoragePanel.init(this, this.controller);
         this.topBarPanel.init(this, this.controller);
         this.bottomPanel.init(this, this.controller);
@@ -289,6 +299,13 @@ public final class BuilderScreen extends Screen {
     /** Returns the Minecraft client instance for access by sub-panels and utilities. */
     public net.minecraft.client.Minecraft getMinecraft() {
         return this.minecraft;
+    }
+
+    /**
+     * Returns the resume placement panel, so external handlers can open it.
+     */
+    public RtsResumePlacementPanel getResumePlacementPanel() {
+        return this.resumePlacementPanel;
     }
     /** Returns the last recorded mouse X position (updated each render frame). */
     public double getCurrentMouseX() {

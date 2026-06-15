@@ -200,6 +200,8 @@ public final class RtsSessionService {
                 if (!RtsProgressionManager.canUse(player, RtsFeature.STORAGE_BROWSER)) continue;
                 RtsPageService.requestPage(player, session.browser.page, session.browser.search,
                         session.browser.category, session.browser.sort, session.browser.ascending);
+                // 存储变化后自动尝试恢复挂起放置作业
+                RtsPendingPlacementService.tryResumeAfterStorageChange(player);
             }
         }
 

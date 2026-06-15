@@ -20,6 +20,11 @@ import com.rtsbuilding.rtsbuilding.common.shape.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsMineProgressPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsUltimineProgressPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsResumePlacementScanPayload;
+import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsWorkflowProgressPayload;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowPriority;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowStatus;
+import com.rtsbuilding.rtsbuilding.server.workflow.RtsWorkflowType;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraAnchorPayload;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraStatePayload;
 import com.rtsbuilding.rtsbuilding.network.craft.S2CRtsCraftFeedbackPayload;
@@ -84,6 +89,19 @@ public final class ClientRtsController {
     private int questDetectTotalTasks;
     private int questDetectCompletedTasks;
     private boolean chunkCurtainVisible;
+
+    /** Maximum concurrent workflows tracked on client. */
+    private static final int CLIENT_MAX_WORKFLOWS = 8;
+
+    /** Workflow progress array, indexed by slot (0-7). idle entries have null type. */
+    private final RtsWorkflowStatus[] workflowStatuses = new RtsWorkflowStatus[CLIENT_MAX_WORKFLOWS];
+    /** Total active workflow count (from server). */
+    private int workflowActiveCount;
+    /** Whether the server has pending placement jobs waiting for items. */
+    private boolean hasPendingJobs;
+
+    /** Cached resume placement scan data (from server). */
+    private S2CRtsResumePlacementScanPayload resumeScanData;
 
     private final StorageStateManager storageStateManager = new StorageStateManager();
     private final ProgressionStateManager progressionStateManager = new ProgressionStateManager();
@@ -496,6 +514,142 @@ public final class ClientRtsController {
 
     public boolean isChunkCurtainVisible() {
         return this.chunkCurtainVisible;
+    }
+
+    // ======================================================================
+    //  Workflow Progress (from WorkflowManager)
+    // ======================================================================
+
+    /**
+     * Applies a workflow progress update from the server.
+     * Updates the slot at {@code payload.workflowIndex()}.
+     */
+    public void applyWorkflowProgress(S2CRtsWorkflowProgressPayload payload) {
+        if (payload.isIdle()) {
+            // Clear all
+            for (int i = 0; i < CLIENT_MAX_WORKFLOWS; i++) {
+                this.workflowStatuses[i] = null;
+            }
+            this.workflowActiveCount = 0;
+            return;
+        }
+        this.workflowActiveCount = payload.workflowCount() & 0xFF;
+        int idx = payload.workflowIndex() & 0xFF;
+        if (idx < 0 || idx >= CLIENT_MAX_WORKFLOWS) {
+            return;
+        }
+        byte wt = payload.workflowType();
+        RtsWorkflowType[] types = RtsWorkflowType.values();
+        RtsWorkflowType type = wt >= 0 && wt < types.length
+                ? types[wt]
+                : null;
+        if (type == null) {
+            // Slot is idle
+            this.workflowStatuses[idx] = RtsWorkflowStatus.idle();
+            return;
+        }
+        RtsWorkflowPriority[] priorities = RtsWorkflowPriority.values();
+        byte pri = payload.priority();
+        RtsWorkflowPriority priority = pri >= 0 && pri < priorities.length
+                ? priorities[pri]
+                : RtsWorkflowPriority.NORMAL;
+        this.workflowStatuses[idx] = new RtsWorkflowStatus(
+                type,
+                priority,
+                payload.totalBlocks(),
+                payload.completedBlocks(),
+                payload.failedBlocks(),
+                payload.missingItems(),
+                payload.detailMessage(),
+                payload.suspended() != 0,
+                payload.workflowEntryId());
+    }
+
+    /**
+     * Returns the workflow progress status for a specific slot.
+     * Returns {@link RtsWorkflowStatus#idle()} if the slot is empty.
+     */
+    public RtsWorkflowStatus getWorkflowStatus(int slot) {
+        if (slot < 0 || slot >= CLIENT_MAX_WORKFLOWS || this.workflowStatuses[slot] == null) {
+            return RtsWorkflowStatus.idle();
+        }
+        return this.workflowStatuses[slot];
+    }
+
+    /**
+     * Returns all non-idle workflow statuses (for UI iteration).
+     */
+    public List<RtsWorkflowStatus> getActiveWorkflows() {
+        List<RtsWorkflowStatus> result = new java.util.ArrayList<>();
+        int count = Math.min(workflowActiveCount, CLIENT_MAX_WORKFLOWS);
+        for (int i = 0; i < count; i++) {
+            RtsWorkflowStatus status = this.workflowStatuses[i];
+            if (status != null && status.type() != null) {
+                result.add(status);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Returns the total number of active workflows.
+     */
+    public int getWorkflowActiveCount() {
+        return this.workflowActiveCount;
+    }
+
+    /**
+     * Returns the raw workflow statuses array for UI iteration.
+     */
+    public RtsWorkflowStatus[] getWorkflowStatuses() {
+        return this.workflowStatuses;
+    }
+
+    /**
+     * Returns {@code true} if the server has pending placement jobs.
+     */
+    public boolean hasPendingJobs() {
+        return this.hasPendingJobs;
+    }
+
+    /**
+     * Sets whether there are pending placement jobs (called from server sync).
+     */
+    public void setHasPendingJobs(boolean hasPendingJobs) {
+        this.hasPendingJobs = hasPendingJobs;
+    }
+
+    /**
+     * Applies a resume placement scan result from the server.
+     */
+    public void applyResumePlacementScan(S2CRtsResumePlacementScanPayload payload) {
+        this.resumeScanData = payload;
+    }
+
+    /**
+     * Returns the cached resume placement scan data, or null.
+     */
+    public S2CRtsResumePlacementScanPayload getResumeScanData() {
+        return this.resumeScanData;
+    }
+
+    /**
+     * Clears the cached resume placement scan data.
+     */
+    public void clearResumeScanData() {
+        this.resumeScanData = null;
+    }
+
+    /**
+     * Returns {@code true} if any workflow is currently active.
+     */
+    public boolean hasActiveWorkflow() {
+        for (int i = 0; i < CLIENT_MAX_WORKFLOWS; i++) {
+            if (this.workflowStatuses[i] != null && this.workflowStatuses[i].type() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void setChunkCurtainVisible(boolean visible) {
