@@ -2,7 +2,7 @@ package com.rtsbuilding.rtsbuilding;
 
 
 import com.mojang.logging.LogUtils;
-import com.rtsbuilding.rtsbuilding.blueprint.server.BlueprintPlacementService;
+import com.rtsbuilding.rtsbuilding.server.service.BlueprintPlacementService;
 import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.server.api.impl.RtsAPIImpl;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;

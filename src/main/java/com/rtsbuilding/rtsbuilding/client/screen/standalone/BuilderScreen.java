@@ -1,10 +1,10 @@
 package com.rtsbuilding.rtsbuilding.client.screen.standalone;
 
 
-import com.rtsbuilding.rtsbuilding.blueprint.client.BlueprintMaterialWindowPanel;
-import com.rtsbuilding.rtsbuilding.blueprint.client.BlueprintNameWindowPanel;
-import com.rtsbuilding.rtsbuilding.blueprint.client.BlueprintPanel;
-import com.rtsbuilding.rtsbuilding.blueprint.client.BlueprintWindowPanel;
+import com.rtsbuilding.rtsbuilding.client.screen.blueprint.BlueprintMaterialWindowPanel;
+import com.rtsbuilding.rtsbuilding.client.screen.blueprint.BlueprintNameWindowPanel;
+import com.rtsbuilding.rtsbuilding.client.screen.blueprint.BlueprintPanel;
+import com.rtsbuilding.rtsbuilding.client.screen.blueprint.BlueprintWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.bootstrap.ClientKeyMappings;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.network.RtsClientPacketGateway;

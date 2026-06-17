@@ -1,6 +1,8 @@
 package com.rtsbuilding.rtsbuilding.client.network;
 
 
+import com.rtsbuilding.rtsbuilding.client.screen.blueprint.BlueprintPanel;
+import com.rtsbuilding.rtsbuilding.network.blueprint.S2CBlueprintStatusPayload;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.rendering.animation.ClientFakeAirBlocks;
 import com.rtsbuilding.rtsbuilding.client.rendering.animation.PlacementAnimationRenderer;
@@ -110,5 +112,9 @@ public final class RtsClientNetworkHandlers {
                 panel.openWithData(payload);
             }
         });
+    }
+
+    public static void handleBlueprintStatus(S2CBlueprintStatusPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> BlueprintPanel.setStatus(payload.status(), payload.messageKey(), payload.detail()));
     }
 }
