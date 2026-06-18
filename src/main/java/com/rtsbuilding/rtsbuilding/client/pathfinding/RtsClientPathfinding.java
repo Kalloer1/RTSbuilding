@@ -35,6 +35,9 @@ public final class RtsClientPathfinding {
 
     private static BlockPos target = null;
     private static MovementModeHandler previousMode = null;
+    private static BlockPos highlightedTarget = null;
+    private static long highlightFadeStartedAtMs = 0L;
+    private static boolean highlightFading = false;
     /**
      * 当 &gt; 0 时，目标点 Y 轴偏移量（单位：格）。
      * 用于「飞到目标上方」模式（Ctrl + 双击右键），
@@ -46,6 +49,7 @@ public final class RtsClientPathfinding {
     private static final double REACH_DISTANCE_SQ = 0.1 * 0.1;
     /** 向量零长度判断阈值，避免除零。 */
     private static final double EPSILON = 0.01;
+    private static final long TARGET_HIGHLIGHT_FADE_MS = 350L;
 
     private RtsClientPathfinding() {}
 
@@ -78,6 +82,7 @@ public final class RtsClientPathfinding {
     public static void goTo(BlockPos target) {
         RtsClientPathfinding.target = target.immutable();
         targetYOffset = 0;
+        setHighlightedTarget(RtsClientPathfinding.target);
         RtsClientPacketGateway.sendPathfindingGoTo(target);
     }
 
@@ -97,6 +102,7 @@ public final class RtsClientPathfinding {
     public static void goToAbove(BlockPos target, int yOffset) {
         RtsClientPathfinding.target = target.immutable();
         targetYOffset = Math.max(1, yOffset);
+        setHighlightedTarget(RtsClientPathfinding.target);
         RtsClientPacketGateway.sendPathfindingGoTo(target);
     }
 
@@ -104,6 +110,11 @@ public final class RtsClientPathfinding {
      * Cancels any active movement and cleans up the previous mode.
      */
     public static void cancel() {
+        stopMovement();
+        clearHighlightedTarget();
+    }
+
+    private static void stopMovement() {
         target = null;
         targetYOffset = 0;
         if (previousMode != null && Minecraft.getInstance().player instanceof LocalPlayer lp) {
@@ -112,11 +123,33 @@ public final class RtsClientPathfinding {
         previousMode = null;
     }
 
+    private static void finishArrived() {
+        stopMovement();
+        beginHighlightFade();
+    }
+
     /**
      * Returns {@code true} if movement is currently active.
      */
     public static boolean isMoving() {
         return target != null;
+    }
+
+    @Nullable
+    public static MoveTargetHighlight getMoveTargetHighlight() {
+        if (highlightedTarget == null) {
+            return null;
+        }
+        if (!highlightFading) {
+            return new MoveTargetHighlight(highlightedTarget, 1.0F);
+        }
+        long elapsed = System.currentTimeMillis() - highlightFadeStartedAtMs;
+        if (elapsed >= TARGET_HIGHLIGHT_FADE_MS) {
+            clearHighlightedTarget();
+            return null;
+        }
+        float alpha = 1.0F - (elapsed / (float) TARGET_HIGHLIGHT_FADE_MS);
+        return new MoveTargetHighlight(highlightedTarget, Math.max(0.0F, alpha));
     }
 
    /**
@@ -155,7 +188,7 @@ public final class RtsClientPathfinding {
 
         // ── Arrival check ──
         if (isArrived(player, playerPos, targetPos, params)) {
-            cancel();
+            finishArrived();
             return;
         }
 
@@ -433,5 +466,28 @@ public final class RtsClientPathfinding {
                 player.hurtMarked = true;
             }
         }
+    }
+
+    private static void setHighlightedTarget(BlockPos pos) {
+        highlightedTarget = pos == null ? null : pos.immutable();
+        highlightFadeStartedAtMs = 0L;
+        highlightFading = false;
+    }
+
+    private static void beginHighlightFade() {
+        if (highlightedTarget == null) {
+            return;
+        }
+        highlightFadeStartedAtMs = System.currentTimeMillis();
+        highlightFading = true;
+    }
+
+    private static void clearHighlightedTarget() {
+        highlightedTarget = null;
+        highlightFadeStartedAtMs = 0L;
+        highlightFading = false;
+    }
+
+    public record MoveTargetHighlight(BlockPos target, float alpha) {
     }
 }

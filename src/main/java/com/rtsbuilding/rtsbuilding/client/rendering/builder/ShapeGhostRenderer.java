@@ -65,8 +65,10 @@ public final class ShapeGhostRenderer {
             renderGhostPreview(minecraft, preview, poseStack, lineBuffer, fillBuffer);
         }
         ShapeDataRecords.GhostPreview currentPreview = screen.getShapeGhostPreview();
-        sawConfirmedDestructiveWorkArea |= isConfirmedDestructiveWorkArea(currentPreview);
-        renderGhostPreview(minecraft, currentPreview, poseStack, lineBuffer, fillBuffer);
+        if (!(sawConfirmedDestructiveWorkArea && isUnconfirmedDestructivePreview(currentPreview))) {
+            sawConfirmedDestructiveWorkArea |= isConfirmedDestructiveWorkArea(currentPreview);
+            renderGhostPreview(minecraft, currentPreview, poseStack, lineBuffer, fillBuffer);
+        }
         if (!sawConfirmedDestructiveWorkArea) {
             MergedSkeletonRenderer.clearCache();
         }
@@ -113,10 +115,7 @@ public final class ShapeGhostRenderer {
             }
             if (com.rtsbuilding.rtsbuilding.Config.isRangeDestroySkeletonEnabled()) {
                 renderConfirmedRangeDestroyWorkArea(preview, poseStack, lineBuffer, fillBuffer, visual);
-                return;
             }
-            DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer,
-                    visual.progress(), visual.alpha());
             return;
         }
 
@@ -146,29 +145,14 @@ public final class ShapeGhostRenderer {
 
     private static void renderConfirmedRangeDestroyWorkArea(ShapeDataRecords.GhostPreview preview, PoseStack poseStack,
             VertexConsumer lineBuffer, VertexConsumer fillBuffer, DestroyVisualState visual) {
-        ClientRtsController controller = ClientRtsController.get();
-
         if (visual.fading()) {
             MergedSkeletonRenderer.renderCachedSkeleton(preview, poseStack, lineBuffer, fillBuffer,
                     1.0F, 0.30F, 0.030F, visual.alpha());
             return;
         }
-        if (hasStartedDestroyBatch(controller, preview)) {
-            MergedSkeletonRenderer.renderMergedSkeletonFast(preview, poseStack, lineBuffer, fillBuffer,
-                    visual.progress(), 0.30F, 0.030F, visual.alpha());
-            return;
-        }
-        if (MergedSkeletonRenderer.hasCachedSkeleton(preview)) {
-            if (MergedSkeletonRenderer.renderCachedSkeleton(preview, poseStack, lineBuffer, fillBuffer,
-                    visual.progress(), 0.30F, 0.030F, visual.alpha())) {
-                return;
-            }
-        }
-        if (MergedSkeletonRenderer.hasSkeletonCacheForPreview(preview)) {
-            return;
-        }
-        DestructiveGhostRenderer.render(preview, poseStack, lineBuffer, fillBuffer,
-                visual.progress(), visual.alpha());
+        // 已确认的范围破坏从第一帧就应该是合并骨架；服务端进度只负责驱动缺口和淡出。
+        MergedSkeletonRenderer.renderMergedSkeletonFast(preview, poseStack, lineBuffer, fillBuffer,
+                visual.progress(), 0.30F, 0.030F, visual.alpha());
     }
 
     // ===== Smoothed destroy progress =====
@@ -259,13 +243,8 @@ public final class ShapeGhostRenderer {
         return preview != null && preview.destructive() && preview.confirmedWorkArea();
     }
 
-    static boolean hasStartedDestroyBatch(ClientRtsController controller, ShapeDataRecords.GhostPreview preview) {
-        if (controller == null || preview == null) return false;
-        BlockPos progressPos = controller.getMineProgressPos();
-        return progressPos != null
-                && previewContains(preview, progressPos)
-                && controller.getUltimineProgressProcessed() > 0
-                && controller.getUltimineProgressTotal() > 0;
+    private static boolean isUnconfirmedDestructivePreview(ShapeDataRecords.GhostPreview preview) {
+        return preview != null && preview.destructive() && !preview.confirmedWorkArea();
     }
 
     private static boolean hasActiveDestroyProgress(ClientRtsController controller, ShapeDataRecords.GhostPreview preview) {

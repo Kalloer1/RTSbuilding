@@ -2,7 +2,6 @@ package com.rtsbuilding.rtsbuilding.client.rendering.builder;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.rendering.util.RenderingUtil;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeDataRecords;
 import net.minecraft.client.Minecraft;
@@ -128,26 +127,11 @@ public final class MergedSkeletonRenderer {
                 alphaMultiplier);
     }
 
-    /**
-     * Renders the confirmed range-destroy work area. Falls back to
-     * per-cell rendering when the merged skeleton cache is cold.
-     */
+    /** 渲染已确认的范围破坏工作区；确认后立即使用合并骨架，不再等待服务端 processed 进度。 */
     static void renderConfirmedRangeDestroy(ShapeDataRecords.GhostPreview preview, PoseStack poseStack,
             VertexConsumer lineBuffer, VertexConsumer fillBuffer, float progress) {
-        if (ShapeGhostRenderer.hasStartedDestroyBatch(ClientRtsController.get(), preview)) {
-            renderMergedDestroySkeleton(preview, poseStack, lineBuffer, fillBuffer, 1.0F, 0.30F, 0.030F,
-                    1.0F);
-            return;
-        }
-        if (cachedMergedSkeleton.matchesPreview(preview)) {
-            CachedMergedSkeleton skeleton = getCachedSkeleton(preview);
-            if (!skeleton.isEmpty()) {
-                renderMergedDestroySkeleton(skeleton, poseStack, lineBuffer, fillBuffer, 1.0F, 0.30F, 0.030F,
-                        1.0F);
-            }
-            return;
-        }
-        // Fall back to per-cell rendering (handled by caller via DestructiveGhostRenderer)
+        renderMergedDestroySkeleton(preview, poseStack, lineBuffer, fillBuffer, progress, 0.30F, 0.030F,
+                1.0F);
     }
 
     // ===== Merged skeleton rendering =====
