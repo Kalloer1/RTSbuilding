@@ -1,5 +1,6 @@
 package com.rtsbuilding.rtsbuilding.client.screen.workflow;
 
+import com.rtsbuilding.rtsbuilding.Config;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
@@ -13,6 +14,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
+
+import static com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreenConstants.TOP_H;
 
 /**
  * A movable window panel showing active workflows, progress bars, delete buttons,
@@ -59,12 +62,15 @@ public final class RtsWorkflowPanel extends RtsWindowPanel {
     @Override
     protected void computeDefaultPosition() {
         if (this.screen == null) return;
-        this.windowX = this.screen.width - PANEL_W - 8;
-        this.windowY = 8;
+        this.windowX = Math.max(8, this.screen.width - PANEL_W - 8);
+        this.windowY = TOP_H + 8;
     }
 
     @Override
     protected boolean canShowWindow() {
+        if (!Config.isShowWorkflowPanelEnabled()) {
+            return false;
+        }
         return getActiveCount() > 0 || getSuspendedCount() > 0 || hasPending();
     }
 
@@ -112,7 +118,12 @@ public final class RtsWorkflowPanel extends RtsWindowPanel {
         cachedVisibleRows = totalRows;
         int contentH = PADDING + visibleRows * ROW_H + PADDING;
         int totalH = getTitleBarHeight() + 1 + contentH;
-        setTransientBounds(this.windowX, this.windowY, PANEL_W, totalH);
+        if (hasUserBoundsPreference()) {
+            setBounds(this.windowX, this.windowY, PANEL_W, totalH);
+        } else {
+            computeDefaultPosition();
+            setTransientBounds(this.windowX, this.windowY, PANEL_W, totalH);
+        }
     }
 
     @Override

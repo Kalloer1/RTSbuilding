@@ -82,6 +82,11 @@ public class Config {
             .translation("rtsbuilding.configuration.showStorageReadyPopup")
             .define("showStorageReadyPopup", false);
 
+    public static final ModConfigSpec.BooleanValue SHOW_WORKFLOW_PANEL = BUILDER
+            .comment("Show the technical workflow progress panel for background RTS jobs.")
+            .translation("rtsbuilding.configuration.showWorkflowPanel")
+            .define("showWorkflowPanel", false);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     public static void setSurvivalProgressionEnabled(boolean enabled) {
@@ -122,6 +127,7 @@ public class Config {
                 isDestroyWireframeAnimationEnabled(),
                 isRangeDestroySkeletonEnabled(),
                 isShowStorageReadyPopupEnabled(),
+                isShowWorkflowPanelEnabled(),
                 costOverrides);
     }
 
@@ -130,6 +136,7 @@ public class Config {
             boolean placeBlockGhostAnimation, boolean destroyBlockGhostAnimation, boolean placementWireframePreview,
             boolean placeWireframeAnimation, boolean destroyWireframeAnimation, boolean rangeDestroySkeleton,
             boolean showStorageReadyPopup,
+            boolean showWorkflowPanel,
             Map<String, String> costOverrides) {
         ENABLE_SURVIVAL_PROGRESSION.set(survivalEnabled);
         SHARE_SURVIVAL_PROGRESSION_WITH_TEAMS.set(shareWithTeams);
@@ -144,6 +151,7 @@ public class Config {
         USE_DESTROY_WIREFRAME_ANIMATION.set(destroyWireframeAnimation);
         USE_RANGE_DESTROY_SKELETON.set(rangeDestroySkeleton);
         SHOW_STORAGE_READY_POPUP.set(showStorageReadyPopup);
+        SHOW_WORKFLOW_PANEL.set(showWorkflowPanel);
         setProgressionCostOverrides(costOverrides);
         SPEC.save();
     }
@@ -236,6 +244,15 @@ public class Config {
 
     public static void setShowStorageReadyPopupEnabled(boolean enabled) {
         SHOW_STORAGE_READY_POPUP.set(enabled);
+        SPEC.save();
+    }
+
+    public static boolean isShowWorkflowPanelEnabled() {
+        return SHOW_WORKFLOW_PANEL.getAsBoolean();
+    }
+
+    public static void setShowWorkflowPanelEnabled(boolean enabled) {
+        SHOW_WORKFLOW_PANEL.set(enabled);
         SPEC.save();
     }
 
