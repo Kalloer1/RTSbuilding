@@ -5,7 +5,7 @@ import com.rtsbuilding.rtsbuilding.common.AreaOperationExecutor;
 import com.rtsbuilding.rtsbuilding.server.history.HistoryBlockRecord;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.service.ServiceOperationTemplate;
+import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
 import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.workflow.core.RtsWorkflowEngine;
@@ -92,6 +92,7 @@ public final class RtsUltimineProcessor {
         session.mining.ultimineTotalTargets = targets.size();
         session.mining.ultimineProcessedTargets = 0;
         session.mining.ultimineBrokenTargets = 0;
+        session.mining.ultimineNotifyAccumulator = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = face == null ? Direction.DOWN : face;
@@ -163,6 +164,7 @@ public final class RtsUltimineProcessor {
         session.mining.ultimineTotalTargets = targets.size();
         session.mining.ultimineProcessedTargets = 0;
         session.mining.ultimineBrokenTargets = 0;
+        session.mining.ultimineNotifyAccumulator = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = Direction.DOWN;
@@ -219,6 +221,7 @@ public final class RtsUltimineProcessor {
         session.mining.ultimineTotalTargets = targets.size();
         session.mining.ultimineProcessedTargets = 0;
         session.mining.ultimineBrokenTargets = 0;
+        session.mining.ultimineNotifyAccumulator = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = Direction.DOWN;
@@ -527,13 +530,22 @@ public final class RtsUltimineProcessor {
             }
         }
 
-        // Report per-tick broken block delta to the workflow manager so the
-        // progress bar updates in real time instead of staying at 0 until
-        // the entire batch finishes.
         int brokenDelta = session.mining.ultimineBrokenTargets - brokenBeforeThisTick;
+        // ── Throttled workflow progress ────────────────────────────────
+        // 累计破坏数达到阈值或挖掘结束时，一次性向 workflow engine 汇报
         if (brokenDelta > 0) {
-            // 连锁挖掘中途进度：触发储存页面刷新以保证GUI实时更新
-            ServiceOperationTemplate.afterModification(player, session);
+            ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
+
+            session.mining.ultimineNotifyAccumulator += brokenDelta;
+            int entryId = RtsMiningStateMachine.getWorkflowEntryId(player.getUUID());
+            if (entryId >= 0
+                    && (session.mining.ultimineTargets.isEmpty()
+                        || session.mining.ultimineNotifyAccumulator >= 5)) {
+                RtsWorkflowEngine.getInstance().from(player, entryId)
+                        .ifPresent(token -> token.updateProgress(
+                                session.mining.ultimineNotifyAccumulator, null));
+                session.mining.ultimineNotifyAccumulator = 0;
+            }
         }
 
         RtsMiningNetworkHelper.sendUltimineBatchProgress(player, session);
@@ -554,7 +566,6 @@ public final class RtsUltimineProcessor {
         List<HistoryBlockRecord> records = new ArrayList<>(session.mining.ultimineProcessedPositions);
         session.mining.ultimineProcessedPositions.clear();
 
-        RtsMiningNetworkHelper.sendUltimineProgress(player, -1, 0);
         if (session.mining.ultimineProgressPos != null) {
             RtsMiningNetworkHelper.clearMineProgress(player, session.mining.ultimineProgressPos);
         }

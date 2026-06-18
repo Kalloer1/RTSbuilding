@@ -53,11 +53,6 @@ public final class MiningOperationService {
     /** System timestamp of the most recent mine progress completion */
     private long mineProgressCompletedAtMs;
 
-    /** Ultimine overall progress: processed blocks. Negative means inactive. */
-    private int ultimineProgressProcessed = -1;
-    /** Ultimine overall progress: total target blocks. */
-    private int ultimineProgressTotal = 0;
-
     // =========================================================================
     //  Area mine state
     // =========================================================================
@@ -105,17 +100,6 @@ public final class MiningOperationService {
         minecraft.level.destroyBlockProgress(RTS_MINE_RENDER_ID, pos, Math.min(9, stage));
         this.mineRenderPos = pos.immutable();
         this.mineRenderStage = Math.min(9, stage);
-    }
-
-    /**
-     * Applies an ultimine overall progress update from the server.
-     */
-    public void applyUltimineProgress(int processed, int total) {
-        if (total > 0 && processed >= total && this.mineRenderPos != null) {
-            rememberMineProgressCompleted(this.mineRenderPos);
-        }
-        this.ultimineProgressProcessed = processed;
-        this.ultimineProgressTotal = total;
     }
 
     private void rememberMineProgressCompleted(BlockPos pos) {
@@ -380,14 +364,6 @@ public final class MiningOperationService {
         return this.mineRenderStage;
     }
 
-    public int getUltimineProgressProcessed() {
-        return this.ultimineProgressProcessed;
-    }
-
-    public int getUltimineProgressTotal() {
-        return this.ultimineProgressTotal;
-    }
-
     public BlockPos getMineProgressPos() {
         return this.mineRenderPos;
     }
@@ -422,8 +398,6 @@ public final class MiningOperationService {
         this.activeMineFace = -1;
         this.mineRenderPos = null;
         this.mineRenderStage = -1;
-        this.ultimineProgressProcessed = -1;
-        this.ultimineProgressTotal = 0;
     }
 
     /** Clears mining render (including destroyBlockProgress) and resets all mining state. */

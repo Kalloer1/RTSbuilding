@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -92,6 +93,25 @@ public final class RtsRemoteMenuService {
         } else {
             RtsRemoteMenuCompat.clearServerRemoteMenu(player);
         }
+    }
+
+    public static void clearValidation(ServerPlayer player, RtsStorageSession session) {
+        if (session != null) {
+            session.transfer.remoteMenuContainerId = -1;
+            session.transfer.remoteMenuPos = null;
+        }
+        RtsRemoteMenuCompat.clearServerRemoteMenu(player);
+    }
+
+    public static void closeTracked(ServerPlayer player, RtsStorageSession session) {
+        if (player == null || session == null || session.transfer.remoteMenuContainerId < 0) return;
+        if (player.containerMenu != null
+                && player.containerMenu.containerId == session.transfer.remoteMenuContainerId
+                && !(player.containerMenu instanceof InventoryMenu)) {
+            player.closeContainer();
+        }
+        session.transfer.remoteMenuContainerId = -1;
+        session.transfer.remoteMenuPos = null;
     }
 
     public static void sendRemoteMenuOpenHint(ServerPlayer player, BlockPos pos) {

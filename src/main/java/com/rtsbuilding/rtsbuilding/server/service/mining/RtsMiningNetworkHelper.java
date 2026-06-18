@@ -63,9 +63,8 @@ public final class RtsMiningNetworkHelper {
             return;
         }
         int total = Math.max(1, session.mining.ultimineTotalTargets);
-        int processed = session.mining.ultimineProcessedTargets;
-        int stage = Math.min(9, (int) (processed / (double) total * 10.0D));
+        int broken = session.mining.ultimineBrokenTargets;
+        int stage = Math.min(9, (int) (broken / (double) total * 10.0D));
         sendMineProgress(player, session.mining.ultimineProgressPos, stage);
-        sendUltimineProgress(player, processed, total);
     }
 }

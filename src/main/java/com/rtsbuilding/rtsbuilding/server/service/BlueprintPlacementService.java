@@ -27,6 +27,8 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidType;
 
+import com.rtsbuilding.rtsbuilding.server.service.api.BlueprintService;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class BlueprintPlacementService {
     private static final int BLOCKS_PER_TICK = 64;
     private static final Map<UUID, PlacementJob> JOBS = new ConcurrentHashMap<>();
+
+    private static final BlueprintService BLUEPRINT = ServiceRegistry.getInstance().blueprint();
 
     private BlueprintPlacementService() {
     }
@@ -141,7 +145,7 @@ public final class BlueprintPlacementService {
                             continue;
                         }
                     } else if (fluidCost == Fluids.LAVA) {
-                        if (RtsBlueprintService.countBlueprintFluidMb(player, Fluids.LAVA) < FluidType.BUCKET_VOLUME) {
+                        if (BLUEPRINT.countFluidMb(player, Fluids.LAVA) < FluidType.BUCKET_VOLUME) {
                             skippedMissing++;
                             continue;
                         }
@@ -152,7 +156,7 @@ public final class BlueprintPlacementService {
                 } else {
                     boolean missingMaterial = false;
                     for (Item item : materialItems) {
-                        ItemStack extracted = RtsBlueprintService.extractBlueprintMaterial(player, item, 1);
+                        ItemStack extracted = BLUEPRINT.extractMaterial(player, item, 1);
                         if (extracted.isEmpty()) {
                             missingMaterial = true;
                             break;
@@ -176,7 +180,7 @@ public final class BlueprintPlacementService {
                 continue;
             }
             if (!player.isCreative() && fluidCost == Fluids.LAVA
-                    && !RtsBlueprintService.extractBlueprintFluid(player, Fluids.LAVA, FluidType.BUCKET_VOLUME)) {
+                    && !BLUEPRINT.extractFluid(player, Fluids.LAVA, FluidType.BUCKET_VOLUME)) {
                 level.removeBlock(target, false);
                 refundExtractedMaterials(player, extractedMaterials);
                 skippedMissing++;
@@ -188,7 +192,7 @@ public final class BlueprintPlacementService {
             for (Item item : materialItems) {
                 ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
                 if (itemId != null) {
-                    RtsBlueprintService.noteBlueprintBlockPlaced(player, target, itemId.toString());
+                    BLUEPRINT.noteBlockPlaced(player, target, itemId.toString());
                 }
             }
             placed++;
@@ -196,7 +200,7 @@ public final class BlueprintPlacementService {
 
         if (index >= job.blueprint().blocks().size()) {
             JOBS.remove(player.getUUID());
-            RtsBlueprintService.refreshBlueprintStoragePage(player);
+            BLUEPRINT.refreshPage(player);
             send(player, S2CBlueprintStatusPayload.SUCCESS, "screen.rtsbuilding.blueprints.status.complete_partial",
                     completionSummary(placed, job.blueprint().blockCount(), skippedMissing, skippedUnsupported, skippedMissingBlocks, skippedBlocked));
         } else {
@@ -235,7 +239,7 @@ public final class BlueprintPlacementService {
         }
         for (ItemStack stack : stacks) {
             if (!stack.isEmpty()) {
-                RtsBlueprintService.refundBlueprintMaterial(player, stack);
+                BLUEPRINT.refundMaterial(player, stack);
             }
         }
     }
@@ -285,14 +289,14 @@ public final class BlueprintPlacementService {
     }
 
     private static boolean hasReusableWater(ServerPlayer player) {
-        long waterBuckets = RtsBlueprintService.countBlueprintMaterial(player, Items.WATER_BUCKET);
-        long storedWaterBuckets = RtsBlueprintService.countBlueprintFluidMb(player, Fluids.WATER) / FluidType.BUCKET_VOLUME;
+        long waterBuckets = BLUEPRINT.countMaterial(player, Items.WATER_BUCKET);
+        long storedWaterBuckets = BLUEPRINT.countFluidMb(player, Fluids.WATER) / FluidType.BUCKET_VOLUME;
         return waterBuckets + storedWaterBuckets >= 2L;
     }
 
     private static void abort(ServerPlayer player, String messageKey, String detail) {
         JOBS.remove(player.getUUID());
-        RtsBlueprintService.refreshBlueprintStoragePage(player);
+        BLUEPRINT.refreshPage(player);
         send(player, S2CBlueprintStatusPayload.ERROR, messageKey, detail);
     }
 

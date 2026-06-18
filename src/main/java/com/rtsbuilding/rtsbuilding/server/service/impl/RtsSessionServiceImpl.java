@@ -5,7 +5,7 @@ import com.rtsbuilding.rtsbuilding.server.data.RtsStorageSessionCodec;
 import com.rtsbuilding.rtsbuilding.server.data.RtsStorageSessionStore;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.pipeline.core.TickablePipelineRegistry;
-import com.rtsbuilding.rtsbuilding.server.service.RtsMenuRemoteService;
+import com.rtsbuilding.rtsbuilding.server.service.RtsRemoteMenuService;
 import com.rtsbuilding.rtsbuilding.server.service.RtsStorageTickService;
 import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
 import com.rtsbuilding.rtsbuilding.server.service.api.PageService;
@@ -66,21 +66,10 @@ public final class RtsSessionServiceImpl implements SessionService {
     @Override
     public void onRtsDisabled(ServerPlayer player) {
         RtsStorageSession session = getOrCreate(player);
-
-        // Release mining resources without cancelling workflow entry
-        RtsMiningStateMachine.releaseMiningResources(player, session);
-
-        // Pause active workflow threads for resumability
+        cleanupSession(player, session, true);
         RtsWorkflowEngine.getInstance().pauseAllActive(player.getUUID(), true);
-
-        registry.pathfinding().cancel(player);
-        registry.funnel().disableAndFlush(player, session);
-        RtsMenuRemoteService.closeTracked(player, session);
-        RtsMenuRemoteService.clearValidation(player, session);
-        session.bdCache.release();
         saveToPlayerNbt(player, session);
-        RtsStorageTickService.INSTANCE.unregisterPlayer(player);
-        RtsPageCore.clearCache(player.getUUID());
+        cleanupPlayerCaches(player);
     }
 
     @Override
@@ -89,22 +78,13 @@ public final class RtsSessionServiceImpl implements SessionService {
         RtsStorageSession session = sessions.get(player.getUUID());
 
         if (session != null) {
-            RtsMiningStateMachine.releaseMiningResources(player, session);
-        }
-
-        RtsWorkflowEngine.getInstance().pauseAllActive(player.getUUID(), false);
-
-        if (session != null) {
+            cleanupSession(player, session, false);
             saveToPlayerNbt(player, session);
             session.placement.placeBatchJobs.clear();
-            registry.funnel().disableAndFlush(player, session);
-            RtsMenuRemoteService.closeTracked(player, session);
-            RtsMenuRemoteService.clearValidation(player, session);
-            session.bdCache.release();
         }
+
         sessions.remove(player.getUUID());
-        RtsStorageTickService.INSTANCE.unregisterPlayer(player);
-        RtsPageCore.clearCache(player.getUUID());
+        cleanupPlayerCaches(player);
         TickablePipelineRegistry.removeAll(player.getUUID());
         RtsWorkflowEngine.getInstance().saveAll(player.getServer());
     }
@@ -118,6 +98,27 @@ public final class RtsSessionServiceImpl implements SessionService {
     // ────────────────────────────────────────────────────────────────
     //  Internal helpers
     // ────────────────────────────────────────────────────────────────
+
+    /**
+     * 清理会话资源——释放挖掘、路径规划、漏斗、远程菜单和 BD 缓存。
+     * 注意：不会保存会话或清除玩家缓存。
+     */
+    private void cleanupSession(ServerPlayer player, RtsStorageSession session, boolean notify) {
+        RtsMiningStateMachine.releaseMiningResources(player, session);
+        registry.pathfinding().cancel(player);
+        registry.funnel().disableAndFlush(player, session);
+        RtsRemoteMenuService.closeTracked(player, session);
+        RtsRemoteMenuService.clearValidation(player, session);
+        session.bdCache.release();
+    }
+
+    /**
+     * 清理玩家级别的缓存——存储 tick 服务和页面缓存。
+     */
+    private void cleanupPlayerCaches(ServerPlayer player) {
+        RtsStorageTickService.INSTANCE.unregisterPlayer(player);
+        RtsPageCore.clearCache(player.getUUID());
+    }
 
     private void loadFromPersistentStorage(ServerPlayer player, RtsStorageSession session) {
         var root = RtsStorageSessionStore.loadSession(player);

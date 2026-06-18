@@ -19,6 +19,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -125,31 +126,14 @@ public final class RtsPendingPlacementService {
         }
 
         // 统计存储系统中可用物品数
-        ItemStack template = job.itemPrototype();
-        if (template.isEmpty() && itemId != null && !itemId.isBlank()) {
-            // 当 prototype 为空时从 itemId 构造 fallback 模板
-            ResourceLocation fallbackId = ResourceLocation.tryParse(itemId);
-            if (fallbackId != null && BuiltInRegistries.ITEM.containsKey(fallbackId)) {
-                template = new ItemStack(BuiltInRegistries.ITEM.get(fallbackId));
-            }
-        }
+        ItemStack template = resolveTemplate(job.itemPrototype(), itemId);
         final ItemStack finalTemplate = template;
         long availableItems = 0;
         if (!finalTemplate.isEmpty()) {
             availableItems = ServiceRegistry.getInstance().transfer().countLinkedItemsMatching(player,
                     stack -> ItemStack.isSameItemSameComponents(stack, finalTemplate));
-            // 也统计玩家主背包中的物品（placement 可以从背包取物）
-            boolean includePlayerInventory = RtsStoragePageBuilder.shouldIncludePlayerMainInventoryInStorageView(player, session);
-            if (includePlayerInventory) {
-                int start = RtsStoragePageBuilder.getPlayerMainInventoryStart(player);
-                int end = RtsStoragePageBuilder.getPlayerMainInventoryEndExclusive(player);
-                for (int slot = start; slot < end; slot++) {
-                    ItemStack stack = player.getInventory().getItem(slot);
-                    if (!stack.isEmpty() && ItemStack.isSameItemSameComponents(stack, finalTemplate)) {
-                        availableItems = RtsCountUtil.saturatedAdd(availableItems, stack.getCount());
-                    }
-                }
-            }
+            availableItems = RtsCountUtil.saturatedAdd(availableItems,
+                    countItemsInPlayerInventory(player, finalTemplate));
         }
 
         // 创造模式下无限物品
@@ -228,14 +212,7 @@ public final class RtsPendingPlacementService {
         if (itemId == null || itemId.isBlank()) {
             return false;
         }
-        ItemStack template = job.itemPrototype();
-        if (template.isEmpty() && itemId != null && !itemId.isBlank()) {
-            // 当 prototype 为空时从 itemId 构造 fallback 模板
-            ResourceLocation fallbackId = ResourceLocation.tryParse(itemId);
-            if (fallbackId != null && BuiltInRegistries.ITEM.containsKey(fallbackId)) {
-                template = new ItemStack(BuiltInRegistries.ITEM.get(fallbackId));
-            }
-        }
+        ItemStack template = resolveTemplate(job.itemPrototype(), itemId);
         final ItemStack finalTemplate = template;
         if (finalTemplate.isEmpty()) {
             return false;
@@ -243,18 +220,8 @@ public final class RtsPendingPlacementService {
         // 统计链接存储中该物品的数量
         long available = ServiceRegistry.getInstance().transfer().countLinkedItemsMatching(player,
                 stack -> ItemStack.isSameItemSameComponents(stack, finalTemplate));
-        // 也统计玩家主背包中的物品
-        boolean includePlayerInventory = RtsStoragePageBuilder.shouldIncludePlayerMainInventoryInStorageView(player, session);
-        if (includePlayerInventory) {
-            int start = RtsStoragePageBuilder.getPlayerMainInventoryStart(player);
-            int end = RtsStoragePageBuilder.getPlayerMainInventoryEndExclusive(player);
-            for (int slot = start; slot < end; slot++) {
-                ItemStack stack = player.getInventory().getItem(slot);
-                if (!stack.isEmpty() && ItemStack.isSameItemSameComponents(stack, finalTemplate)) {
-                    available = RtsCountUtil.saturatedAdd(available, stack.getCount());
-                }
-            }
-        }
+        available = RtsCountUtil.saturatedAdd(available,
+                countItemsInPlayerInventory(player, finalTemplate));
         // 至少需要 1 个才能继续
         return available >= 1;
     }
@@ -458,4 +425,43 @@ public final class RtsPendingPlacementService {
         }
     }
 
+    // ======================================================================
+    //  辅助方法
+    // ======================================================================
+
+    /**
+     * 当模板 ItemStack 为空时，从 itemId 构造 fallback 模板。
+     */
+    @Nullable
+    private static ItemStack resolveTemplate(ItemStack template, String itemId) {
+        if (!template.isEmpty() || itemId == null || itemId.isBlank()) {
+            return template;
+        }
+        ResourceLocation fallbackId = ResourceLocation.tryParse(itemId);
+        if (fallbackId != null && BuiltInRegistries.ITEM.containsKey(fallbackId)) {
+            return new ItemStack(BuiltInRegistries.ITEM.get(fallbackId));
+        }
+        return template;
+    }
+
+    /**
+     * 统计玩家主背包中与模板匹配的物品总量。
+     */
+    private static long countItemsInPlayerInventory(ServerPlayer player, ItemStack template) {
+        if (player == null || template == null || template.isEmpty()) return 0;
+        boolean includePlayerInventory = RtsStoragePageBuilder.shouldIncludePlayerMainInventoryInStorageView(player,
+                ServiceRegistry.getInstance().session().getIfPresent(player));
+        if (!includePlayerInventory) return 0;
+
+        int start = RtsStoragePageBuilder.getPlayerMainInventoryStart(player);
+        int end = RtsStoragePageBuilder.getPlayerMainInventoryEndExclusive(player);
+        long count = 0;
+        for (int slot = start; slot < end; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (!stack.isEmpty() && ItemStack.isSameItemSameComponents(stack, template)) {
+                count = RtsCountUtil.saturatedAdd(count, stack.getCount());
+            }
+        }
+        return count;
+    }
 }

@@ -53,7 +53,7 @@ public final class RtsFluidServiceImpl implements FluidService {
                 toolSlot,
                 itemId);
         if (changed) {
-            ServiceOperationTemplate.afterModification(player, session);
+            registry.serviceOp().afterModification(player, session);
         }
     }
 
@@ -72,7 +72,7 @@ public final class RtsFluidServiceImpl implements FluidService {
         RtsLinkedStorageResolver.sanitizeSessionDimension(player, session);
         List<LinkedFluidHandler> activeFluidHandlers = RtsLinkedStorageResolver.resolveLinkedFluidHandlers(player, session);
         if (RtsStorageFluids.placeFluid(player, session, activeFluidHandlers, clickedPos, face, hitX, hitY, hitZ, fluidId)) {
-            ServiceOperationTemplate.afterModification(player, session);
+            registry.serviceOp().afterModification(player, session);
         }
     }
 

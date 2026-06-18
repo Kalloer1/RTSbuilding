@@ -7,7 +7,7 @@ import com.rtsbuilding.rtsbuilding.server.service.ServiceOperationTemplate;
 import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferExtractor;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageRecentEntries;
+import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
 import com.rtsbuilding.rtsbuilding.server.storage.model.LinkedHandler;
 import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
@@ -62,7 +62,7 @@ public final class RtsCraftingGridFiller {
         Ingredient[] ingredients = recipe == null ? null : RtsCraftingUtils.mapCraftingIngredients(recipe);
         refillCraftGridFromBlueprint(craftingMenu, handlers, player, blueprint, ingredients, false, true);
         craftingMenu.broadcastChanges();
-        ServiceOperationTemplate.refreshPage(player, session);
+        ServiceRegistry.getInstance().serviceOp().refreshPage(player, session);
     }
 
     // ---- refill from ids / stacks (network packets) ------------------------------
@@ -83,8 +83,8 @@ public final class RtsCraftingGridFiller {
             return;
         }
         if (session != null && craftedItemId != null && !craftedItemId.isBlank() && craftedCount > 0) {
-            RtsStorageRecentEntries.recordRecentItem(session, craftedItemId,
-                    com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, craftedCount);
+            ServiceRegistry.getInstance().page().recordRecentItem(session, craftedItemId,
+                    S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, craftedCount);
             ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
         }
         ItemStack[] blueprint = new ItemStack[9];
@@ -120,8 +120,8 @@ public final class RtsCraftingGridFiller {
             return;
         }
         if (session != null && craftedItemId != null && !craftedItemId.isBlank() && craftedCount > 0) {
-            RtsStorageRecentEntries.recordRecentItem(session, craftedItemId,
-                    com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, craftedCount);
+            ServiceRegistry.getInstance().page().recordRecentItem(session, craftedItemId,
+                    S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, craftedCount);
             ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
         }
         ItemStack[] blueprint = new ItemStack[9];
@@ -256,7 +256,7 @@ public final class RtsCraftingGridFiller {
         }
         RtsCraftingUtils.refreshCraftingResult(craftingMenu);
         craftingMenu.broadcastChanges();
-        ServiceOperationTemplate.refreshPage(player, session);
+        ServiceRegistry.getInstance().serviceOp().refreshPage(player, session);
         if (anyInserted) {
             QuestService.runQuestDetect(player, session, false);
         }

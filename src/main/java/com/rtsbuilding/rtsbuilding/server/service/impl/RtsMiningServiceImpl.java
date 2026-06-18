@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class RtsMiningServiceImpl implements MiningService {
@@ -99,28 +100,24 @@ public final class RtsMiningServiceImpl implements MiningService {
 
     @Override
     public int getAreaDestroyTotalBlocks(ServerPlayer player) {
-        return RtsWorkflowEngine.getInstance().getAllProgress(player).stream()
-                .filter(d -> d.type() == RtsWorkflowType.AREA_DESTROY)
-                .findFirst()
-                .map(RtsWorkflowStatus::totalBlocks)
-                .orElse(0);
+        return getAreaDestroyMetric(player, RtsWorkflowStatus::totalBlocks);
     }
 
     @Override
     public int getAreaDestroyCompletedBlocks(ServerPlayer player) {
-        return RtsWorkflowEngine.getInstance().getAllProgress(player).stream()
-                .filter(d -> d.type() == RtsWorkflowType.AREA_DESTROY)
-                .findFirst()
-                .map(RtsWorkflowStatus::completedBlocks)
-                .orElse(0);
+        return getAreaDestroyMetric(player, RtsWorkflowStatus::completedBlocks);
     }
 
     @Override
     public int getAreaDestroyRemainingBlocks(ServerPlayer player) {
+        return getAreaDestroyMetric(player, RtsWorkflowStatus::remainingBlocks);
+    }
+
+    private static int getAreaDestroyMetric(ServerPlayer player, Function<RtsWorkflowStatus, Integer> metric) {
         return RtsWorkflowEngine.getInstance().getAllProgress(player).stream()
                 .filter(d -> d.type() == RtsWorkflowType.AREA_DESTROY)
                 .findFirst()
-                .map(RtsWorkflowStatus::remainingBlocks)
+                .map(metric)
                 .orElse(0);
     }
 

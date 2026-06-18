@@ -6,7 +6,7 @@ import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.data.PlacedBlockTrackerData;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.service.RtsMenuRemoteService;
+
 import com.rtsbuilding.rtsbuilding.server.service.RtsRemoteMenuService;
 import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
 import com.rtsbuilding.rtsbuilding.server.service.SoundService;
@@ -17,7 +17,6 @@ import com.rtsbuilding.rtsbuilding.server.service.interaction.RtsToolSlotInterac
 import com.rtsbuilding.rtsbuilding.server.service.mining.RtsMiningValidator;
 import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementHelper;
 import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementSound;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageRecentEntries;
 import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.util.TemporaryContextSwitcher;
@@ -117,7 +116,7 @@ public final class RtsInteractionServiceImpl implements InteractionService {
 
         AbstractContainerMenu menuAfterInteract = player.containerMenu;
         if (menuAfterInteract != menuBeforeInteract) {
-            RtsMenuRemoteService.markOpen(player, session, menuAfterInteract, effectiveBlockPos);
+            RtsRemoteMenuService.markRemoteMenuOpen(player, session, menuAfterInteract, effectiveBlockPos);
         }
 
         boolean playedSpecificSound = false;
@@ -140,11 +139,11 @@ public final class RtsInteractionServiceImpl implements InteractionService {
                 SoundService.playRemoteUseSound(player, level, targetEntity, effectiveBlockPos, soundStack);
             }
             if (sourceType == C2SRtsInteractPayload.SOURCE_PIN_ITEM && itemId != null && !itemId.isBlank()) {
-                RtsStorageRecentEntries.recordRecentItem(session, itemId, S2CRtsStoragePagePayload.RECENT_ITEM_USED, 1L);
+                registry.page().recordRecentItem(session, itemId, S2CRtsStoragePagePayload.RECENT_ITEM_USED, 1L);
             } else if (!toolSnapshot.isEmpty()) {
                 ResourceLocation toolId = BuiltInRegistries.ITEM.getKey(toolSnapshot.getItem());
                 if (toolId != null) {
-                    RtsStorageRecentEntries.recordRecentItem(session, toolId.toString(), S2CRtsStoragePagePayload.RECENT_ITEM_USED, 1L);
+                    registry.page().recordRecentItem(session, toolId.toString(), S2CRtsStoragePagePayload.RECENT_ITEM_USED, 1L);
                 }
             }
         }

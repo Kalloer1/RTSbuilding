@@ -123,6 +123,7 @@ public final class RtsMiningStateMachine {
         session.mining.ultimineProgressPos = job.targets().peekFirst();
         session.mining.ultimineProcessedTargets = 0;
         session.mining.ultimineBrokenTargets = 0;
+        session.mining.ultimineNotifyAccumulator = 0;
         session.mining.ultimineProcessedPositions.clear();
         session.mining.ultimineAbsorbedDrops = false;
         // Point the active workflow tracking to this job's entry
@@ -239,7 +240,7 @@ public final class RtsMiningStateMachine {
                 RtsDropAbsorber.absorbMinedDropsImmediately(player, session, pos);
             }
             // 连锁挖掘中途进度：触发储存页面刷新以保证GUI实时更新
-            ServiceOperationTemplate.afterModification(player, session);
+            ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
             session.mining.miningPos = null;
             session.mining.miningProgress = 0.0F;
             session.mining.miningStage = -1;
@@ -681,7 +682,7 @@ public final class RtsMiningStateMachine {
         WorkflowPipeline.runCleanupSequence(ctx, cleanupPipes);
 
         // 触发储存页面刷新以保证GUI实时更新
-        ServiceOperationTemplate.afterModification(player, session);
+        ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
         resetMiningState(session, hasQueuedJobs);
     }
 
@@ -707,6 +708,7 @@ public final class RtsMiningStateMachine {
         session.mining.ultimineTotalTargets = 0;
         session.mining.ultimineProcessedTargets = 0;
         session.mining.ultimineBrokenTargets = 0;
+        session.mining.ultimineNotifyAccumulator = 0;
         session.mining.ultimineAbsorbedDrops = false;
         session.mining.miningFace = Direction.DOWN;
         session.mining.miningProgress = 0.0F;

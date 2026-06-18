@@ -82,10 +82,6 @@ public final class RtsClientNetworkHandlers {
         });
     }
 
-    public static void handleUltimineProgress(S2CRtsUltimineProgressPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> ClientRtsController.get().applyUltimineProgress(payload));
-    }
-
     public static void handleProgressionState(S2CRtsProgressionStatePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> ClientRtsController.get().applyProgressionState(payload));
     }

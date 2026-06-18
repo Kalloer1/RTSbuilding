@@ -21,6 +21,8 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
+import com.rtsbuilding.rtsbuilding.server.workflow.model.RtsWorkflowStatus;
+
 import static com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreenConstants.*;
 
 /**
@@ -402,10 +404,11 @@ public final class QuickBuildPanel extends RtsWindowPanel {
         int barW = this.windowWidth - 16;
         int barH = 4;
         g.fill(barX, barY, barX + barW, barY + barH, 0xFF0B1118);
-        int processed = this.controller.getUltimineProgressProcessed();
-        int total = this.controller.getUltimineProgressTotal();
-        if (processed >= 0 && total > 0) {
-            int filled = Math.max(1, Math.min(barW, Math.round(barW * (processed / (float) total))));
+        RtsWorkflowStatus workflow = this.controller.findActiveDestroyWorkflow();
+        int processed = workflow != null ? workflow.completedBlocks() : -1;
+        int total = workflow != null ? workflow.totalBlocks() : 0;
+        if (processed >= 0 && total > 0 && workflow.remainingBlocks() > 0) {
+            int filled = Math.min(barW, Math.round(barW * (processed / (float) total)));
             g.fill(barX, barY, barX + filled, barY + barH, 0xFFFF8EAD);
         } else {
             g.fill(barX, barY, barX + 1, barY + barH, 0xFF5F6F7F);
@@ -513,11 +516,18 @@ public final class QuickBuildPanel extends RtsWindowPanel {
             int itemY = textY - 4;
 
             if (effectiveMode() == QuickBuildMode.DESTROY) {
-                String hintKey = isRangeDestroyChainMode()
-                        ? "screen.rtsbuilding.quick_build.chain_hint"
-                        : "screen.rtsbuilding.quick_build.destroy_hint";
-                renderBottomInfoText(g, Component.translatable(hintKey),
-                        x + 8, textY, this.windowWidth - 16, 0xFFB8B8);
+                RtsWorkflowStatus workflow = this.controller.findActiveDestroyWorkflow();
+                if (workflow != null && workflow.remainingBlocks() > 0) {
+                    String fullText = workflow.progressText() + "    "
+                            + screen.text("screen.rtsbuilding.quick_build.destroy_remaining", workflow.remainingBlocks());
+                    g.drawString(screen.font(), fullText, x + 8, textY, 0xFFB8FFB8, false);
+                } else {
+                    String hintKey = isRangeDestroyChainMode()
+                            ? "screen.rtsbuilding.quick_build.chain_hint"
+                            : "screen.rtsbuilding.quick_build.destroy_hint";
+                    renderBottomInfoText(g, Component.translatable(hintKey),
+                            x + 8, textY, this.windowWidth - 16, 0xFFB8B8);
+                }
                 return;
             }
 

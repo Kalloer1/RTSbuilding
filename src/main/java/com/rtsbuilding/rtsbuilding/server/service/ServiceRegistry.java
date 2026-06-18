@@ -2,6 +2,7 @@ package com.rtsbuilding.rtsbuilding.server.service;
 
 import com.rtsbuilding.rtsbuilding.server.service.api.*;
 import com.rtsbuilding.rtsbuilding.server.service.impl.*;
+import javax.annotation.Nullable;
 
 /**
  * 服务注册中心——管理所有 RTS 服务的实例化与生命周期。
@@ -25,6 +26,8 @@ public final class ServiceRegistry {
     private PlacementService placementService;
     private FluidService fluidService;
     private SessionService sessionService;
+    private BlueprintService blueprintService;
+    private ServiceOperationTemplate serviceOperationTemplate;
 
     private ServiceRegistry() {
     }
@@ -52,6 +55,8 @@ public final class ServiceRegistry {
         this.placementService = new RtsPlacementServiceImpl();
         this.fluidService = new RtsFluidServiceImpl();
         this.sessionService = new RtsSessionServiceImpl();
+        this.blueprintService = new RtsBlueprintServiceImpl();
+        this.serviceOperationTemplate = new ServiceOperationTemplate(this);
     }
 
     /**
@@ -110,5 +115,14 @@ public final class ServiceRegistry {
 
     public SessionService session() {
         return sessionService;
+    }
+
+    @Nullable
+    public BlueprintService blueprint() {
+        return blueprintService;
+    }
+
+    public ServiceOperationTemplate serviceOp() {
+        return serviceOperationTemplate;
     }
 }

@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.service.interaction;
 
-import com.rtsbuilding.rtsbuilding.server.service.ServiceOperationTemplate;
+import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferExtractor;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
 import com.rtsbuilding.rtsbuilding.server.storage.model.LinkedHandler;
@@ -101,7 +101,7 @@ public final class RtsLinkedItemInteractor {
             RtsTransferInserter.refundToLinked(insertHandlers, player, outcome.remainder());
         }
         // Force-refresh slot cache and invalidate page cache after linked-item interaction
-        ServiceOperationTemplate.markDirty(player, session);
+        ServiceRegistry.getInstance().serviceOp().markDirty(player, session);
         return outcome.result();
     }
 }

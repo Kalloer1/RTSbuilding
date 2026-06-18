@@ -24,13 +24,6 @@ public interface PageService {
                      RtsStorageSort sort, boolean ascending, boolean pinyinSearchEnabled);
 
     /**
-     * 请求页面（带拼音和本地化搜索匹配）。
-     */
-    void requestPage(ServerPlayer player, int page, String search, String category,
-                     RtsStorageSort sort, boolean ascending, boolean pinyinSearchEnabled,
-                     List<String> localizedSearchMatches);
-
-    /**
      * 请求页面（完整参数）。
      */
     void requestPage(ServerPlayer player, int page, String search, String category,

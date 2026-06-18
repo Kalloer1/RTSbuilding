@@ -628,6 +628,27 @@ public final class ClientRtsController {
     }
 
     /**
+     * 查找当前活跃的破坏类工作流（AREA_DESTROY / ULTIMINE / AREA_MINE），
+     * 用于 QuickBuildPanel 进度条和 ShapeGhostRenderer 渲染。
+     */
+    @javax.annotation.Nullable
+    public RtsWorkflowStatus findActiveDestroyWorkflow() {
+        for (RtsWorkflowStatus status : workflowStatuses) {
+            if (status != null && status.type() != null) {
+                switch (status.type()) {
+                    case AREA_DESTROY:
+                    case ULTIMINE:
+                    case AREA_MINE:
+                        return status;
+                    default:
+                        break;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns {@code true} if the server has pending placement jobs.
      */
     public boolean hasPendingJobs() {
@@ -1439,10 +1460,6 @@ public final class ClientRtsController {
         this.miningOperationService.applyMineProgress(payload.pos(), payload.stage());
     }
 
-    public void applyUltimineProgress(S2CRtsUltimineProgressPayload payload) {
-        this.miningOperationService.applyUltimineProgress(payload.processed(), payload.total());
-    }
-
     public void applyProgressionState(S2CRtsProgressionStatePayload payload) {
         this.progressionStateManager.applyProgressionState(payload, () -> this.homeSelectionMode = false);
     }
@@ -1723,14 +1740,6 @@ public final class ClientRtsController {
 
     public int getMineProgressStage() {
         return this.miningOperationService.getMineProgressStage();
-    }
-
-    public int getUltimineProgressProcessed() {
-        return this.miningOperationService.getUltimineProgressProcessed();
-    }
-
-    public int getUltimineProgressTotal() {
-        return this.miningOperationService.getUltimineProgressTotal();
     }
 
     public BlockPos getMineProgressPos() {

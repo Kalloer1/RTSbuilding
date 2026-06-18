@@ -8,7 +8,6 @@ import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
 import com.rtsbuilding.rtsbuilding.server.service.*;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferExtractor;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageRecentEntries;
 import com.rtsbuilding.rtsbuilding.server.storage.model.LinkedHandler;
 import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
@@ -75,7 +74,7 @@ public final class RtsCraftingExecutor {
                         }),
                 Component.literal("RTS Craft Terminal")));
         RtsRemoteMenuService.relaxOpenedMenuValidation(player.containerMenu);
-        ServiceOperationTemplate.refreshPage(player, session);
+        ServiceRegistry.getInstance().serviceOp().refreshPage(player, session);
     }
 
     /**
@@ -145,7 +144,7 @@ public final class RtsCraftingExecutor {
             RtsCraftingUtils.mergeConsumedCounts(consumedCounts, result.consumedCounts());
         }
 
-        ServiceOperationTemplate.refreshPage(player, session);
+        ServiceRegistry.getInstance().serviceOp().refreshPage(player, session);
         RtsCraftingSearch.refreshCraftables(player, session);
         if (completedCrafts <= 0) {
             if (storageFull) {
@@ -156,7 +155,7 @@ public final class RtsCraftingExecutor {
             return;
         }
 
-        RtsStorageRecentEntries.recordRecentItem(session, craftedItemId,
+        ServiceRegistry.getInstance().page().recordRecentItem(session, craftedItemId,
                 S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, totalCraftedCount);
         ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
         PacketDistributor.sendToPlayer(player, new S2CRtsCraftFeedbackPayload(

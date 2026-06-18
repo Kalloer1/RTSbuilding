@@ -12,7 +12,7 @@ import net.minecraft.world.item.ItemStack;
  * Maintains the player's recent item/fluid history for the RTS storage UI.
  *
  * <p>This class owns only the short "recently seen or used" history stored in
- * {@link RtsStorageSession#recentEntries}. Recent entries are UI memory, not
+ * {@link RtsUiMemory#getRecentEntries()}. Recent entries are UI memory, not
  * authoritative inventory quantities, and must never be used as storage counts.
  *
  * <p>It deliberately does not serialize NBT, search storage, build storage page

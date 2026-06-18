@@ -206,7 +206,7 @@ public final class HistoryExecutor {
         if (!isCreative) {
             RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
             if (session != null) {
-                ServiceOperationTemplate.afterModification(player, session);
+                ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
             }
         }
 

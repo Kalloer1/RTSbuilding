@@ -52,11 +52,7 @@ public final class RtsLinkedStorageBlockEventHandler {
             }
             RtsStorageSession session = entry.getValue();
             if (markOrRemoveBrokenLinkedStorageRef(session, level, dimension, pos)) {
-                ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
-                RtsStorageTickService.INSTANCE.forceRefresh(player);
-                session.transfer.pageDataVersion.incrementAndGet();
-                ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search,
-                        session.browser.category, session.browser.sort, session.browser.ascending);
+                ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
             }
         }
     }
@@ -84,11 +80,7 @@ public final class RtsLinkedStorageBlockEventHandler {
             }
             RtsStorageSession session = entry.getValue();
             if (moveBackpackLinkedStorageRef(session, backpackUuid, backpackItemId, newRef, displayName)) {
-                ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
-                RtsStorageTickService.INSTANCE.forceRefresh(player);
-                session.transfer.pageDataVersion.incrementAndGet();
-                ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search,
-                        session.browser.category, session.browser.sort, session.browser.ascending);
+                ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
             }
         }
     }
@@ -192,7 +184,7 @@ public final class RtsLinkedStorageBlockEventHandler {
 
     /**
      * Removes orphaned metadata entries whose {@link LinkedStorageRef} is no
-     * longer present in {@code session.linkedStorages}. Called after any
+     * longer present in {@code session.linkedStorageInfo}. Called after any
      * operation that removes refs from the list.
      */
     public static void cleanupOrphanRefs(RtsStorageSession session) {

@@ -26,7 +26,7 @@ public final class RtsBindingServiceImpl implements BindingService {
         RtsStorageSession session = registry.session().getOrCreate(player);
         if (RtsStorageBindings.setMode(session, mode)) {
             registry.funnel().disableAndFlush(player, session);
-            ServiceOperationTemplate.refreshPage(player, session);
+            registry.serviceOp().refreshPage(player, session);
         }
     }
 
@@ -43,7 +43,7 @@ public final class RtsBindingServiceImpl implements BindingService {
         if (player == null || pos == null) return;
         RtsStorageSession session = registry.session().getOrCreate(player);
         if (removeLinkedRef(session, player.serverLevel().dimension(), pos)) {
-            ServiceOperationTemplate.afterModification(player, session);
+            registry.serviceOp().afterModification(player, session);
         }
     }
 
@@ -73,7 +73,7 @@ public final class RtsBindingServiceImpl implements BindingService {
         } else {
             registry.funnel().disableAndFlush(player, session);
         }
-        ServiceOperationTemplate.refreshPage(player, session);
+        registry.serviceOp().refreshPage(player, session);
     }
 
     @Override
@@ -88,7 +88,7 @@ public final class RtsBindingServiceImpl implements BindingService {
         if (enabled && !RtsProgressionManager.canUse(player, RtsFeature.AUTO_STORE_MINED_DROPS)) return;
         RtsStorageSession session = registry.session().getOrCreate(player);
         session.sessionFlags.autoStoreMinedDrops = enabled;
-        ServiceOperationTemplate.simpleSave(player, session);
+        registry.serviceOp().simpleSave(player, session);
     }
 
     @Override
@@ -98,7 +98,7 @@ public final class RtsBindingServiceImpl implements BindingService {
         session.sessionFlags.useBdNetwork = enabled;
         session.bdCache.handler = null;
         session.bdCache.fluidHandler = null;
-        ServiceOperationTemplate.afterModification(player, session);
+        registry.serviceOp().afterModification(player, session);
     }
 
     @Override
@@ -144,7 +144,7 @@ public final class RtsBindingServiceImpl implements BindingService {
 
         player.getInventory().setItem(slot, remaining.isEmpty() ? ItemStack.EMPTY : remaining);
         player.containerMenu.broadcastChanges();
-        ServiceOperationTemplate.afterModification(player, session);
+        registry.serviceOp().afterModification(player, session);
         QuestService.runQuestDetect(player, session, false);
     }
 
@@ -152,8 +152,8 @@ public final class RtsBindingServiceImpl implements BindingService {
     public void closeRemoteMenu(ServerPlayer player) {
         RtsStorageSession session = registry.session().getIfPresent(player);
         if (session == null || session.transfer.remoteMenuContainerId < 0) return;
-        RtsMenuRemoteService.closeTracked(player, session);
-        RtsMenuRemoteService.clearValidation(player, session);
+        RtsRemoteMenuService.closeTracked(player, session);
+        RtsRemoteMenuService.clearValidation(player, session);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -166,8 +166,7 @@ public final class RtsBindingServiceImpl implements BindingService {
             registry.session().saveToPlayerNbt(player, session);
         }
         if (update.refreshPage()) {
-            RtsStorageTickService.INSTANCE.forceRefresh(player);
-            session.transfer.pageDataVersion.incrementAndGet();
+            registry.serviceOp().markDirty(player, session);
             registry.page().requestPage(player, update.page(), session.browser.search, session.browser.category, session.browser.sort, session.browser.ascending);
         }
     }

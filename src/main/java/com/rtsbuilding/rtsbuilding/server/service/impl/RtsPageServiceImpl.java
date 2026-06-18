@@ -26,22 +26,22 @@ public final class RtsPageServiceImpl implements PageService {
     @Override
     public void requestPage(ServerPlayer player, int page, String search, String category,
                             RtsStorageSort sort, boolean ascending) {
-        requestPage(player, page, search, category, sort, ascending, currentPinyinSearchEnabled(player));
+        RtsStorageSession session = player == null ? null : registry.session().getIfPresent(player);
+        boolean pinyinSearchEnabled = session != null && session.browser.pinyinSearchEnabled;
+        List<String> localizedSearchMatches = session == null ? List.of() : List.copyOf(session.browser.localizedSearchMatches);
+        int pageSize = session == null ? RtsStoragePageBuilder.DEFAULT_PAGE_SIZE : session.browser.pageSize;
+        requestPage(player, page, search, category, sort, ascending,
+                pageSize, pinyinSearchEnabled, localizedSearchMatches);
     }
 
     @Override
     public void requestPage(ServerPlayer player, int page, String search, String category,
                             RtsStorageSort sort, boolean ascending, boolean pinyinSearchEnabled) {
+        RtsStorageSession session = player == null ? null : registry.session().getIfPresent(player);
+        List<String> localizedSearchMatches = session == null ? List.of() : List.copyOf(session.browser.localizedSearchMatches);
+        int pageSize = session == null ? RtsStoragePageBuilder.DEFAULT_PAGE_SIZE : session.browser.pageSize;
         requestPage(player, page, search, category, sort, ascending,
-                pinyinSearchEnabled, currentLocalizedSearchMatches(player));
-    }
-
-    @Override
-    public void requestPage(ServerPlayer player, int page, String search, String category,
-                            RtsStorageSort sort, boolean ascending, boolean pinyinSearchEnabled,
-                            List<String> localizedSearchMatches) {
-        requestPage(player, page, search, category, sort, ascending,
-                sessionPageSize(player), pinyinSearchEnabled, localizedSearchMatches);
+                pageSize, pinyinSearchEnabled, localizedSearchMatches);
     }
 
     @Override
@@ -101,16 +101,6 @@ public final class RtsPageServiceImpl implements PageService {
         if (RtsStorageBindings.refreshMissingGuiBindingIcons(player, session)) {
             registry.session().saveToPlayerNbt(player, session);
         }
-    }
-
-    private boolean currentPinyinSearchEnabled(ServerPlayer player) {
-        RtsStorageSession session = player == null ? null : registry.session().getIfPresent(player);
-        return session != null && session.browser.pinyinSearchEnabled;
-    }
-
-    private List<String> currentLocalizedSearchMatches(ServerPlayer player) {
-        RtsStorageSession session = player == null ? null : registry.session().getIfPresent(player);
-        return session == null ? List.of() : List.copyOf(session.browser.localizedSearchMatches);
     }
 
     private int sessionPageSize(ServerPlayer player) {

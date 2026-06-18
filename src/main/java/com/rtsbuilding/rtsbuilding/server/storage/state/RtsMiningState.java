@@ -62,6 +62,8 @@ public class RtsMiningState {
     public final List<HistoryBlockRecord> ultimineProcessedPositions = new ArrayList<>();
     /** 连锁挖掘已成功破坏的目标方块数（不含连带破坏），用于工作流进度统计 */
     public int ultimineBrokenTargets;
+    /** 累计未同步的破坏数（用于节流防闪，累计 ≥ 5 或挖掘结束时才触发 notifyPlayer） */
+    public int ultimineNotifyAccumulator;
     /** 连锁挖掘是否已吸收掉落物（防止重复收集，由管理器控制） */
     public boolean ultimineAbsorbedDrops;
 

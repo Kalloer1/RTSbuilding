@@ -1,5 +1,7 @@
-package com.rtsbuilding.rtsbuilding.server.service;
+package com.rtsbuilding.rtsbuilding.server.service.impl;
 
+import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
+import com.rtsbuilding.rtsbuilding.server.service.api.BlueprintService;
 import com.rtsbuilding.rtsbuilding.server.service.placement.RtsPlacementSound;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferExtractor;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
@@ -20,29 +22,18 @@ import net.neoforged.neoforge.items.IItemHandler;
 import java.util.List;
 
 /**
- * 蓝图材料服务——管理蓝图所需的材料统计、提取、退还和页面刷新。
- *
- * <p>职责范围：
- * <ul>
- *   <li>统计/提取蓝图所需的物品材料</li>
- *   <li>统计/提取蓝图所需的流体材料</li>
- *   <li>退还已提取的多余材料</li>
- *   <li>记录已放置的蓝图方块并刷新页面</li>
- * </ul>
+ * {@link BlueprintService} 的默认实现。
  */
-public final class RtsBlueprintService {
+public final class RtsBlueprintServiceImpl implements BlueprintService {
 
-    private RtsBlueprintService() {
-    }
+    private final ServiceRegistry registry = ServiceRegistry.getInstance();
 
-    /**
-     * 统计指定物品在链接网络和玩家背包中的总量。
-     */
-    public static long countBlueprintMaterial(ServerPlayer player, Item item) {
+    @Override
+    public long countMaterial(ServerPlayer player, Item item) {
         if (player == null || item == null || item == Items.AIR) {
             return 0L;
         }
-        RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
+        RtsStorageSession session = registry.session().getIfPresent(player);
         if (session == null) {
             return 0L;
         }
@@ -69,14 +60,12 @@ public final class RtsBlueprintService {
         return total;
     }
 
-    /**
-     * 从链接网络提取指定物品。
-     */
-    public static ItemStack extractBlueprintMaterial(ServerPlayer player, Item item, int count) {
+    @Override
+    public ItemStack extractMaterial(ServerPlayer player, Item item, int count) {
         if (player == null || item == null || item == Items.AIR || count <= 0) {
             return ItemStack.EMPTY;
         }
-        RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
+        RtsStorageSession session = registry.session().getIfPresent(player);
         if (session == null) {
             return ItemStack.EMPTY;
         }
@@ -85,28 +74,24 @@ public final class RtsBlueprintService {
         return RtsTransferExtractor.extractMatchingFromNetwork(handlers, player, item, count);
     }
 
-    /**
-     * 统计指定流体在链接网络中的总量（mB）。
-     */
-    public static long countBlueprintFluidMb(ServerPlayer player, Fluid fluid) {
+    @Override
+    public long countFluidMb(ServerPlayer player, Fluid fluid) {
         if (player == null || fluid == null) {
             return 0L;
         }
-        RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
+        RtsStorageSession session = registry.session().getIfPresent(player);
         if (session == null) {
             return 0L;
         }
         return RtsStorageFluids.countFluidInNetwork(session, RtsLinkedStorageResolver.resolveLinkedFluidHandlers(player, session), fluid);
     }
 
-    /**
-     * 从链接网络提取指定流体。
-     */
-    public static boolean extractBlueprintFluid(ServerPlayer player, Fluid fluid, int amountMb) {
+    @Override
+    public boolean extractFluid(ServerPlayer player, Fluid fluid, int amountMb) {
         if (player == null || fluid == null || amountMb <= 0) {
             return false;
         }
-        RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
+        RtsStorageSession session = registry.session().getIfPresent(player);
         if (session == null) {
             return false;
         }
@@ -118,43 +103,37 @@ public final class RtsBlueprintService {
                 true) >= amountMb;
     }
 
-    /**
-     * 退还材料到链接存储或玩家背包。
-     */
-    public static void refundBlueprintMaterial(ServerPlayer player, ItemStack stack) {
+    @Override
+    public void refundMaterial(ServerPlayer player, ItemStack stack) {
         if (player == null || stack == null || stack.isEmpty()) {
             return;
         }
-        RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
+        RtsStorageSession session = registry.session().getIfPresent(player);
         List<IItemHandler> handlers = session == null
                 ? List.of()
                 : RtsLinkedStorageResolver.resolveLinkedHandlers(player, session).stream().map(LinkedHandler::handler).toList();
         RtsTransferInserter.refundToLinked(handlers, player, stack);
     }
 
-    /**
-     * 记录已放置的蓝图方块并播放音效。
-     */
-    public static void noteBlueprintBlockPlaced(ServerPlayer player, BlockPos pos, String itemId) {
+    @Override
+    public void noteBlockPlaced(ServerPlayer player, BlockPos pos, String itemId) {
         if (player == null || pos == null) {
             return;
         }
-        RtsStorageSession session = ServiceRegistry.getInstance().session().getIfPresent(player);
+        RtsStorageSession session = registry.session().getIfPresent(player);
         if (session == null) {
             return;
         }
         RtsPlacementSound.playRemotePlacedBlockSound(player, player.serverLevel(), pos);
-        ServiceRegistry.getInstance().page().recordRecentItem(session, itemId, (byte) 1, 1L);
+        registry.page().recordRecentItem(session, itemId, (byte) 1, 1L);
     }
 
-    /**
-     * 刷新蓝图对应的存储页面。
-     */
-    public static void refreshBlueprintStoragePage(ServerPlayer player) {
-        RtsStorageSession session = player == null ? null : ServiceRegistry.getInstance().session().getIfPresent(player);
+    @Override
+    public void refreshPage(ServerPlayer player) {
+        RtsStorageSession session = player == null ? null : registry.session().getIfPresent(player);
         if (session == null) {
             return;
         }
-        ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search, session.browser.category, session.browser.sort, session.browser.ascending);
+        registry.serviceOp().refreshPage(player, session);
     }
 }

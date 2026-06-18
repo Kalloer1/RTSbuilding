@@ -44,11 +44,11 @@ public final class ServerTickOrchestrator {
         }
         if (session.transfer.remoteMenuContainerId < 0
                 && !RtsRemoteMenuCompat.isSupportedRemoteMenu(player.containerMenu)) {
-            RtsMenuRemoteService.clearValidation(player, session);
+            RtsRemoteMenuService.clearValidation(player, session);
         }
         if (session.transfer.remoteMenuContainerId >= 0
                 && (player.containerMenu == null || player.containerMenu.containerId != session.transfer.remoteMenuContainerId)) {
-            RtsMenuRemoteService.clearValidation(player, session);
+            RtsRemoteMenuService.clearValidation(player, session);
         }
         RtsPlacementBatch.tickPlaceBatchJobs(player, session);
     }
@@ -75,8 +75,7 @@ public final class ServerTickOrchestrator {
                 // knows the storage data has changed and should rebuild.
                 session.transfer.pageDataVersion.incrementAndGet();
                 if (!RtsProgressionManager.canUse(player, RtsFeature.STORAGE_BROWSER)) continue;
-                ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search,
-                        session.browser.category, session.browser.sort, session.browser.ascending);
+                ServiceRegistry.getInstance().serviceOp().refreshPage(player, session);
                 // 存储变化后自动尝试恢复挂起放置作业
                 RtsPendingPlacementService.tryResumeAfterStorageChange(player);
             }

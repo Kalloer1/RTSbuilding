@@ -257,12 +257,16 @@ public final class LinkedStorageInfo {
      * 清除所有不在 linkedStorages 中的孤儿元数据键。
      */
     public void cleanupOrphans() {
-        linkedNames.keySet().removeIf(ref -> ref == null || !linkedStorages.contains(ref));
-        linkedModes.keySet().removeIf(ref -> ref == null || !linkedStorages.contains(ref));
-        linkedPriorities.keySet().removeIf(ref -> ref == null || !linkedStorages.contains(ref));
-        linkedBackpackUuids.keySet().removeIf(ref -> ref == null || !linkedStorages.contains(ref));
-        linkedBackpackItemIds.keySet().removeIf(ref -> ref == null || !linkedStorages.contains(ref));
-        detachedBackpackRefs.removeIf(ref -> ref == null || !linkedStorages.contains(ref));
+        linkedNames.keySet().removeIf(this::isOrphan);
+        linkedModes.keySet().removeIf(this::isOrphan);
+        linkedPriorities.keySet().removeIf(this::isOrphan);
+        linkedBackpackUuids.keySet().removeIf(this::isOrphan);
+        linkedBackpackItemIds.keySet().removeIf(this::isOrphan);
+        detachedBackpackRefs.removeIf(this::isOrphan);
+    }
+
+    private boolean isOrphan(LinkedStorageRef ref) {
+        return ref == null || !linkedStorages.contains(ref);
     }
 
     /**

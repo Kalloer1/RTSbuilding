@@ -96,9 +96,9 @@ public final class RtsPlacementHelper {
      */
     public static void requestSessionPage(ServerPlayer player, RtsStorageSession session, boolean refreshStoragePage) {
         if (refreshStoragePage) {
-            RtsStorageTickService.INSTANCE.forceRefresh(player);
-            session.transfer.pageDataVersion.incrementAndGet();
-            ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search, session.browser.category, session.browser.sort, session.browser.ascending);
+            var reg = ServiceRegistry.getInstance();
+            reg.serviceOp().markDirty(player, session);
+            reg.serviceOp().refreshPage(player, session);
         }
     }
 }

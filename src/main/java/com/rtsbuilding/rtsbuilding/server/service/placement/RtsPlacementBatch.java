@@ -255,11 +255,8 @@ public final class RtsPlacementBatch {
         }
         // 只要此 tick 有 job 完成，就刷新一次储存页面（合并刷新）
         if (!fullyCompletedJobs.isEmpty()) {
-            RtsStorageTickService.INSTANCE.forceRefresh(player);
-            session.transfer.pageDataVersion.incrementAndGet();
-            ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
-            ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search,
-                    session.browser.category, session.browser.sort, session.browser.ascending);
+            var reg = ServiceRegistry.getInstance();
+            reg.serviceOp().afterModification(player, session);
         }
 
         // 更新仍在活跃队列中的 job 的中途进度（尚未完成但此 tick 有放置进展）
@@ -269,10 +266,9 @@ public final class RtsPlacementBatch {
             if (delta > 0) {
                 RtsWorkflowEngine.getInstance().from(player, j.workflowEntryId()).ifPresent(token -> token.updateProgress(delta, null));
                 // 中途进度：放置方块消耗了储存物品，触发页面刷新以保证GUI实时更新
-                RtsStorageTickService.INSTANCE.forceRefresh(player);
-                session.transfer.pageDataVersion.incrementAndGet();
-                ServiceRegistry.getInstance().page().requestPage(player, session.browser.page, session.browser.search,
-                        session.browser.category, session.browser.sort, session.browser.ascending);
+                var reg = ServiceRegistry.getInstance();
+                reg.serviceOp().markDirty(player, session);
+                reg.serviceOp().refreshPage(player, session);
             }
         }
 

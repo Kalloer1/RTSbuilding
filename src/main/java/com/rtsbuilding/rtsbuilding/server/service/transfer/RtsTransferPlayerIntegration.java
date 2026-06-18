@@ -74,7 +74,7 @@ public final class RtsTransferPlayerIntegration {
             RtsTransferInserter.sendStorageOverflowHint(player, "Import", overflow);
         }
         player.containerMenu.broadcastChanges();
-        ServiceOperationTemplate.afterModification(player, session);
+        ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
         QuestService.runQuestDetect(player, session, false);
     }
 
@@ -113,14 +113,14 @@ public final class RtsTransferPlayerIntegration {
                 || !RtsCameraManager.isWithinActionRadius(player, dropBlock)
                 || !RtsProgressionManager.canAccessHomeRadius(player, dropBlock)) {
             RtsTransferInserter.refundToLinked(insertHandlers, player, extracted);
-            ServiceOperationTemplate.afterModification(player, session);
+            ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
             return;
         }
         ItemEntity dropped = new ItemEntity(player.serverLevel(), dropPos.x, dropPos.y, dropPos.z, extracted);
         dropped.setDeltaMovement(Vec3.ZERO);
         dropped.setPickUpDelay(10);
         player.serverLevel().addFreshEntity(dropped);
-        ServiceOperationTemplate.afterModification(player, session);
+        ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
     }
 
     public static void importMenuSlotToLinked(ServerPlayer player, RtsStorageSession session, int menuSlot) {
@@ -214,7 +214,7 @@ public final class RtsTransferPlayerIntegration {
             RtsTransferInserter.sendStorageOverflowHint(player, "Import", overflow);
         }
         menu.broadcastChanges();
-        ServiceOperationTemplate.afterModification(player, session);
+        ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
         QuestService.runQuestDetect(player, session, false);
     }
 
@@ -262,7 +262,7 @@ public final class RtsTransferPlayerIntegration {
             player.containerMenu.setCarried(carried);
         }
         player.containerMenu.broadcastChanges();
-        ServiceOperationTemplate.afterModification(player, session);
+        ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
     }
 
     public static void quickMoveLinkedItem(ServerPlayer player, RtsStorageSession session, ItemStack prototype) {
@@ -301,7 +301,7 @@ public final class RtsTransferPlayerIntegration {
             RtsTransferInserter.refundToLinked(insertHandlers, player, remain);
         }
         player.containerMenu.broadcastChanges();
-        ServiceOperationTemplate.afterModification(player, session);
+        ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
         QuestService.runQuestDetect(player, session, false);
     }
 
@@ -349,7 +349,7 @@ public final class RtsTransferPlayerIntegration {
         }
         if (movedCount > 0) {
             player.containerMenu.broadcastChanges();
-            ServiceOperationTemplate.afterModification(player, session);
+            ServiceRegistry.getInstance().serviceOp().afterModification(player, session);
             player.displayClientMessage(
                     Component.literal(inventoryFull
                             ? "Moved " + movedCount + " items to inventory. Inventory is full."
