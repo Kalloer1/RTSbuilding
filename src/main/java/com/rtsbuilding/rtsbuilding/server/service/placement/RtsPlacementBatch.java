@@ -4,18 +4,16 @@ import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsPlaceBatchPayload;
 import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
-import com.rtsbuilding.rtsbuilding.server.service.RtsPageService;
 import com.rtsbuilding.rtsbuilding.server.service.RtsPendingPlacementService;
-import com.rtsbuilding.rtsbuilding.server.service.RtsSessionService;
 import com.rtsbuilding.rtsbuilding.server.service.RtsStorageTickService;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsLinkedStorageResolver;
-import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageSession;
+import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
+import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
+import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import com.rtsbuilding.rtsbuilding.server.workflow.core.RtsWorkflowEngine;
 import com.rtsbuilding.rtsbuilding.server.workflow.core.RtsWorkflowToken;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -28,13 +26,18 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Batch job queuing and tick processing for RTS remote block placement.
+ * 批处理放置作业管理器，负责远程方块放置的排队和每 tick 节流处理。
  *
- * <p>This helper owns the batch-job lifecycle: queueing placement requests,
- * throttling per-tick block-processing via {@link #tickPlaceBatchJobs}, and
- * the {@link PlaceBatchJob} data holder. It deliberately does not execute
- * individual placement logic, resolve quick-build state plans, play sounds,
- * or extract items — those responsibilities live in their dedicated helpers.
+ * <p>管理批处理作业的完整生命周期：将放置请求排队为 {@link PlaceBatchJob}，
+ * 通过 {@link #tickPlaceBatchJobs} 以每 tick 最多 {@value #BUILD_BATCH_MAX_BLOCKS_PER_TICK}
+ * 个方块的速度节流处理，以及作业的暂停/恢复/完成流程。
+ *
+ * <p>快速建造作业（形状建造）受 {@link #BUILD_BATCH_MAX_QUEUED_JOBS}=4 限制，
+ * 单个方块放置无限制。作业通过 NBT 序列化支持会话持久化。
+ *
+ * <p>不负责：单方块放置逻辑（{@link RtsPlacementExecutor}）、
+ * 状态计划预解析（{@link RtsPlacementQuickBuild}）、
+ * 物品提取（{@link RtsPlacementExtractor}）、声音（{@link RtsPlacementSound}）。
  */
 public final class RtsPlacementBatch {
     private static final int BUILD_BATCH_MAX_BLOCKS_PER_TICK = 64;
@@ -118,11 +121,10 @@ public final class RtsPlacementBatch {
     }
 
     /**
-     * Tick handler that processes up to {@link #BUILD_BATCH_MAX_BLOCKS_PER_TICK}
-     * blocks from queued batch jobs. Quick-build jobs use the pre-resolved
-     * state plan fast path; all others fall through to the interactive single
-     * placement path. Saves and refreshes the session when a full job
-     * completes.
+     * Tick 处理器，从排队的批处理作业中处理最多 {@link #BUILD_BATCH_MAX_BLOCKS_PER_TICK}
+     * 个方块。快速建造作业使用预解析的状态计划快速路径；
+     * 其他所有作业走交互式单放置路径。
+     * 当一个完整作业完成时保存并刷新会话。
      */
     public static void tickPlaceBatchJobs(ServerPlayer player, RtsStorageSession session) {
         if (player == null || session == null) {
@@ -176,10 +178,12 @@ public final class RtsPlacementBatch {
                     BlockPos trackedPos = clickedPos;
                     BlockState beforeState = player.serverLevel().getBlockState(trackedPos);
                     keepGoing = RtsPlacementQuickBuild.placeStateBatchEntry(player, session, clickedPos, statePlan);
-                    // 如果方块状态发生了变化（空气→方块），说明放置成功
                     if (keepGoing && (beforeState.isAir() || beforeState.canBeReplaced())
                             && !player.serverLevel().getBlockState(trackedPos).isAir()) {
                         job.placedPositions.add(trackedPos);
+                    } else if (keepGoing) {
+                        // keepGoing=true 但方块状态未变化（已存在/放置在其他位置）→ 计为跳过
+                        job.skippedWhileProcessing++;
                     }
                 } else {
                     Vec3 hitLocation = new Vec3(
@@ -220,6 +224,9 @@ public final class RtsPlacementBatch {
                                 player.serverLevel(), clickedPos, beforeClicked, adjPos, beforeAdjacent);
                         if (actualPos != null) {
                             job.placedPositions.add(actualPos);
+                        } else {
+                            // placeSelectedInternal 报告成功但检测不到实际放置位置 → 计为跳过
+                            job.skippedWhileProcessing++;
                         }
                     }
                 }
@@ -261,16 +268,21 @@ public final class RtsPlacementBatch {
             if (delta > 0) {
                 workflowToken(player, completedJob).ifPresent(token -> token.updateProgress(delta, null));
             }
+            // 报告失败（keepGoing=true 但方块未被实际放置）
+            int failed = completedJob.skippedWhileProcessing;
+            if (failed > 0) {
+                var token = RtsWorkflowEngine.getInstance().from(player, completedJob.workflowEntryId());
+                for (int i = 0; i < failed; i++) {
+                    token.ifPresent(t -> t.recordFailure());
+                }
+            }
             // 每个job独立complete自己的workflow entry，避免已完成job的entry泄漏
             workflowToken(player, completedJob).ifPresent(token -> token.complete());
         }
         // 只要此 tick 有 job 完成，就刷新一次储存页面（合并刷新）
         if (!fullyCompletedJobs.isEmpty()) {
-            RtsStorageTickService.INSTANCE.forceRefresh(player);
-            session.transfer.pageDataVersion.incrementAndGet();
-            RtsSessionService.saveToPlayerNbt(player, session);
-            RtsPageService.requestPage(player, session.browser.page, session.browser.search,
-                    session.browser.category, session.browser.sort, session.browser.ascending);
+            var reg = ServiceRegistry.getInstance();
+            reg.serviceOp().afterModification(player, session);
         }
 
         // 更新仍在活跃队列中的 job 的中途进度（尚未完成但此 tick 有放置进展）
@@ -280,10 +292,9 @@ public final class RtsPlacementBatch {
             if (delta > 0) {
                 workflowToken(player, j).ifPresent(token -> token.updateProgress(delta, null));
                 // 中途进度：放置方块消耗了储存物品，触发页面刷新以保证GUI实时更新
-                RtsStorageTickService.INSTANCE.forceRefresh(player);
-                session.transfer.pageDataVersion.incrementAndGet();
-                RtsPageService.requestPage(player, session.browser.page, session.browser.search,
-                        session.browser.category, session.browser.sort, session.browser.ascending);
+                var reg = ServiceRegistry.getInstance();
+                reg.serviceOp().markDirty(player, session);
+                reg.serviceOp().refreshPage(player, session);
             }
         }
 
@@ -302,10 +313,9 @@ public final class RtsPlacementBatch {
     }
 
     /**
-     * A single batch placement job that holds the shared placement parameters
-     * and an ordered list of target positions. Each job is processed by
-     * {@link #tickPlaceBatchJobs} at a rate of up to
-     * {@link #BUILD_BATCH_MAX_BLOCKS_PER_TICK} blocks per tick.
+     * 单个批处理放置作业，持有共享的放置参数和有序的目标位置列表。
+     * 每个作业由 {@link #tickPlaceBatchJobs} 以每 tick 最多
+     * {@link #BUILD_BATCH_MAX_BLOCKS_PER_TICK} 个方块的速度处理。
      */
     public static final class PlaceBatchJob {
         private final List<BlockPos> clickedPositions;
@@ -333,6 +343,12 @@ public final class RtsPlacementBatch {
         private boolean statePlanResolved;
         private RtsPlacementQuickBuild.StatePlacementPlan statePlan;
         final List<BlockPos> placedPositions = new ArrayList<>();
+
+        /**
+         * 因方块已存在/检测不到放置位置而跳过的数量，
+         * 在 job 完成时报告为 failedBlocks。
+         */
+        int skippedWhileProcessing;
 
         private PlaceBatchJob(List<BlockPos> clickedPositions, Direction face, double hitOffsetX, double hitOffsetY,
                 double hitOffsetZ, byte rotateSteps, boolean forcePlace, boolean skipIfOccupied, String itemId,
@@ -378,7 +394,7 @@ public final class RtsPlacementBatch {
         }
 
         /**
-         * Returns an immutable list of remaining (unprocessed) positions.
+         * 返回剩余（未处理）位置的不可变列表。
          */
         public List<BlockPos> remainingPositions() {
             return this.clickedPositions.subList(this.index, this.clickedPositions.size());
@@ -421,7 +437,7 @@ public final class RtsPlacementBatch {
         }
 
         // ──────────────────────────────────────────────────────────
-        //  NBT serialization — used for session persistence
+        //  NBT 序列化——用于会话持久化
         // ──────────────────────────────────────────────────────────
 
         private static final String NBT_POSITIONS = "positions";
@@ -447,7 +463,7 @@ public final class RtsPlacementBatch {
         private static final String NBT_INDEX = "index";
 
         /**
-         * Serialises this batch job to a {@link CompoundTag} for persistent storage.
+         * 将此批处理作业序列化为 {@link CompoundTag} 用于持久化存储。
          */
         public CompoundTag toNbt(net.minecraft.core.RegistryAccess registryAccess) {
             CompoundTag tag = new CompoundTag();
@@ -482,7 +498,7 @@ public final class RtsPlacementBatch {
         }
 
         /**
-         * Deserialises a {@link PlaceBatchJob} from a {@link CompoundTag}.
+         * 从 {@link CompoundTag} 反序列化 {@link PlaceBatchJob}。
          */
         public static PlaceBatchJob fromNbt(CompoundTag tag, net.minecraft.core.RegistryAccess registryAccess) {
             long[] posArray = tag.getLongArray(NBT_POSITIONS);
