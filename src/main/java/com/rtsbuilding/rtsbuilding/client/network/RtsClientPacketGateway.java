@@ -8,6 +8,7 @@ import com.rtsbuilding.rtsbuilding.network.craft.C2SRtsCraftRecipePayload;
 import com.rtsbuilding.rtsbuilding.network.craft.C2SRtsOpenCraftTerminalPayload;
 import com.rtsbuilding.rtsbuilding.network.craft.C2SRtsRequestCraftablesPayload;
 import com.rtsbuilding.rtsbuilding.network.pathfinding.C2SRtsPathfindingPayload;
+import com.rtsbuilding.rtsbuilding.network.plugin.*;
 import com.rtsbuilding.rtsbuilding.network.progression.*;
 import com.rtsbuilding.rtsbuilding.network.storage.*;
 import com.rtsbuilding.rtsbuilding.util.RtsPinyinSearch;
@@ -39,16 +40,8 @@ public final class RtsClientPacketGateway {
         PacketDistributor.sendToServer(new C2SRtsRequestProgressionStatePayload());
     }
 
-    public static void sendUnlockProgressionNode(net.minecraft.resources.ResourceLocation nodeId) {
-        PacketDistributor.sendToServer(new C2SRtsUnlockProgressionNodePayload(nodeId));
-    }
-
     public static void sendSetSurvivalProgression(boolean enabled) {
         PacketDistributor.sendToServer(new C2SRtsSetSurvivalProgressionPayload(enabled));
-    }
-
-    public static void sendSetProgressionCost(net.minecraft.resources.ResourceLocation nodeId, String costsText) {
-        PacketDistributor.sendToServer(new C2SRtsSetProgressionCostPayload(nodeId, costsText == null ? "" : costsText));
     }
 
     public static void sendSetHome(BlockPos pos) {
@@ -57,6 +50,18 @@ public final class RtsClientPacketGateway {
 
     public static void sendBeginHomeSelection() {
         PacketDistributor.sendToServer(new C2SRtsBeginHomeSelectionPayload());
+    }
+
+    public static void sendRequestPlugins() {
+        PacketDistributor.sendToServer(new C2SRtsRequestPluginsPayload());
+    }
+
+    public static void sendInstallPluginFromInventorySlot(int inventorySlot) {
+        PacketDistributor.sendToServer(new C2SRtsInstallPluginPayload(inventorySlot));
+    }
+
+    public static void sendUninstallPlugin(String pluginId) {
+        PacketDistributor.sendToServer(new C2SRtsUninstallPluginPayload(pluginId == null ? "" : pluginId));
     }
 
     public static void sendToggleCamera(boolean startAtPlayerHead) {

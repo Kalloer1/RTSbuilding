@@ -10,7 +10,6 @@ import com.rtsbuilding.rtsbuilding.client.util.RtsTextureRenderer;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowButton;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowSlider;
 import com.rtsbuilding.rtsbuilding.common.shape.ShapeFillMode;
-import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -696,8 +695,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     @Override
     protected boolean canShowWindow() {
-        return super.canShowWindow()
-                && screen.hasProgressionNode(RtsProgressionNodes.REMOTE_PLACE);
+        return super.canShowWindow();
     }
 
     // ======================== 抽象方法实现 & API ========================
@@ -812,7 +810,7 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     }
 
     private boolean canUseRangeDestroy() {
-        return screen == null || screen.hasProgressionNode(RtsProgressionNodes.AREA_DESTROY);
+        return true;
     }
 
     private void applyActiveShapeToController() {

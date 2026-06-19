@@ -49,7 +49,6 @@ import com.rtsbuilding.rtsbuilding.common.BuilderMode;
 import com.rtsbuilding.rtsbuilding.common.RtsUltimineCollector;
 import com.rtsbuilding.rtsbuilding.common.shape.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2IconResolver;
-import com.rtsbuilding.rtsbuilding.progression.RtsProgressionNodes;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -1123,8 +1122,8 @@ public final class BuilderScreen extends Screen {
         }
         if (!isSearchFocused()
                 && ClientKeyMappings.OPEN_CRAFT_TERMINAL.matches(keyCode, scanCode)
-                && !hasControlDown()
-                && hasProgressionNode(RtsProgressionNodes.CRAFT_TERMINAL)) {
+                && !hasControlDown()) {
+            persistUiState();
             this.controller.openCraftTerminal();
             return true;
         }
@@ -1561,15 +1560,6 @@ public final class BuilderScreen extends Screen {
         int y = mouseY + 8;
         RtsClientUiUtil.drawPanelFrame(g, x, y, CRAFT_DOCK_SLOT_SIZE, CRAFT_DOCK_SLOT_SIZE, 0xCC2D6B47, 0xFF78B28C, 0xFF0F151C);
         g.drawCenteredString(this.font, "+", x + CRAFT_DOCK_SLOT_SIZE / 2, y + 1, 0xFFFFFF);
-    }
-    /**
-     * Checks whether the given progression node has been unlocked by the player.
-     * If progression is disabled, all nodes are considered unlocked.
-     */
-    public boolean hasProgressionNode(ResourceLocation nodeId) {
-        return !this.controller.isProgressionEnabled()
-                || nodeId == null
-                || this.controller.getUnlockedProgressionNodes().contains(nodeId.toString());
     }
     /** Returns true if any recipe viewer mod (JEI, EMI, REI) is loaded. */
     private static boolean hasRecipeViewerLoaded() {

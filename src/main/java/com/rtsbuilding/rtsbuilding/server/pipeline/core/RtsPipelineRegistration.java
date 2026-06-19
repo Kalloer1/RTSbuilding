@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.pipeline.core;
 
-import com.rtsbuilding.rtsbuilding.progression.RtsFeature;
+import com.rtsbuilding.rtsbuilding.server.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.pipeline.blueprint.BlueprintExecutePipe;
 import com.rtsbuilding.rtsbuilding.server.pipeline.blueprint.BlueprintPersistence;
 import com.rtsbuilding.rtsbuilding.server.pipeline.blueprint.BlueprintTickPipe;

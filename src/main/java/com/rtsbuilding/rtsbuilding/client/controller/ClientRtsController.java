@@ -9,7 +9,6 @@ import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.RtsCraftTerminalScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.RtsHomeScreen;
-import com.rtsbuilding.rtsbuilding.client.screen.standalone.RtsProgressionScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
 import com.rtsbuilding.rtsbuilding.client.service.BuildPlacementService;
 import com.rtsbuilding.rtsbuilding.client.service.CameraOrbitService;
@@ -24,6 +23,7 @@ import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraStatePayload;
 import com.rtsbuilding.rtsbuilding.network.craft.S2CRtsCraftFeedbackPayload;
 import com.rtsbuilding.rtsbuilding.network.craft.S2CRtsCraftablesPayload;
 import com.rtsbuilding.rtsbuilding.network.feedback.S2CRtsDamageFeedbackPayload;
+import com.rtsbuilding.rtsbuilding.network.plugin.S2CRtsPluginStatePayload;
 import com.rtsbuilding.rtsbuilding.network.progression.S2CRtsProgressionStatePayload;
 import com.rtsbuilding.rtsbuilding.network.progression.S2CRtsQuestDetectStatusPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.RtsStorageSort;
@@ -39,7 +39,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -51,7 +50,6 @@ import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
-import java.util.Set;
 
 public final class ClientRtsController {
     private static final ClientRtsController INSTANCE = new ClientRtsController();
@@ -102,6 +100,7 @@ public final class ClientRtsController {
 
     private final StorageStateManager storageStateManager = new StorageStateManager();
     private final ProgressionStateManager progressionStateManager = new ProgressionStateManager();
+    private final PluginStateManager pluginStateManager = new PluginStateManager();
     private final CameraOrbitService cameraOrbitService = new CameraOrbitService();
     private final MiningOperationService miningOperationService = new MiningOperationService();
     private final BuildPlacementService buildPlacementService = new BuildPlacementService();
@@ -199,12 +198,12 @@ public final class ClientRtsController {
         return this.progressionStateManager.isProgressionBypassHomeRadius();
     }
 
-    public Set<String> getUnlockedProgressionNodes() {
-        return this.progressionStateManager.getUnlockedProgressionNodes();
+    public List<PluginStateManager.InstalledPluginView> getInstalledPlugins() {
+        return this.pluginStateManager.installedPlugins();
     }
 
-    public Set<String> getUnlockableProgressionNodes() {
-        return this.progressionStateManager.getUnlockableProgressionNodes();
+    public boolean hasInstalledPlugin(String pluginId) {
+        return this.pluginStateManager.hasPlugin(pluginId);
     }
 
     public BuilderMode getMode() {
@@ -1169,7 +1168,6 @@ public final class ClientRtsController {
 
         if (minecraft.screen instanceof BuilderScreen
                 || minecraft.screen instanceof RtsHomeScreen
-                || minecraft.screen instanceof RtsProgressionScreen
                 || minecraft.screen instanceof RtsCraftTerminalScreen) {
             minecraft.setScreen(null);
         }
@@ -1475,20 +1473,28 @@ public final class ClientRtsController {
         this.progressionStateManager.applyProgressionState(payload, () -> this.homeSelectionMode = false);
     }
 
+    public void applyPluginState(S2CRtsPluginStatePayload payload) {
+        this.pluginStateManager.applyPluginState(payload);
+    }
+
+    public void requestPluginState() {
+        RtsClientPacketGateway.sendRequestPlugins();
+    }
+
+    public void installPluginFromInventorySlot(int inventorySlot) {
+        RtsClientPacketGateway.sendInstallPluginFromInventorySlot(inventorySlot);
+    }
+
+    public void uninstallPlugin(String pluginId) {
+        RtsClientPacketGateway.sendUninstallPlugin(pluginId);
+    }
+
     public void requestProgressionState() {
         this.progressionStateManager.requestProgressionState();
     }
 
-    public void unlockProgressionNode(ResourceLocation nodeId) {
-        this.progressionStateManager.unlockProgressionNode(nodeId);
-    }
-
     public void setSurvivalProgressionEnabled(boolean enabled) {
         this.progressionStateManager.setSurvivalProgressionEnabled(enabled, () -> this.homeSelectionMode = false);
-    }
-
-    public void setProgressionCost(ResourceLocation nodeId, String costsText) {
-        this.progressionStateManager.setProgressionCost(nodeId, costsText);
     }
 
     public void setHome(BlockPos pos) {
