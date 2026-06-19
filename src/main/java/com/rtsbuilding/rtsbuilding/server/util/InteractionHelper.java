@@ -75,6 +75,31 @@ public final class InteractionHelper {
         return new TemporaryContextSwitcher.UseOnOutcome(result, remainder);
     }
 
+    /**
+     * 使用玩家真实主手执行 {@code useItemOn}，不替换堆叠；用于普通右键保持耐久、能量和 NBT 变异。
+     */
+    public static TemporaryContextSwitcher.UseOnOutcome useItemOnWithRealMainHand(ServerPlayer player,
+            ServerLevel level, BlockHitResult hit, boolean forceSecondaryUse) {
+        InteractionResult result = TemporaryContextSwitcher.withTemporaryShiftKey(player, forceSecondaryUse,
+                () -> player.gameMode.useItemOn(
+                        player,
+                        level,
+                        player.getMainHandItem(),
+                        InteractionHand.MAIN_HAND,
+                        hit));
+        return new TemporaryContextSwitcher.UseOnOutcome(result, player.getMainHandItem().copy());
+    }
+
+    /**
+     * 使用玩家真实主手执行 {@code useItem}，不替换堆叠；用于方块交互失败后的原版空中使用回退。
+     */
+    public static TemporaryContextSwitcher.UseOnOutcome useItemWithRealMainHand(ServerPlayer player,
+            ServerLevel level, boolean forceSecondaryUse) {
+        InteractionResult result = TemporaryContextSwitcher.withTemporaryShiftKey(player, forceSecondaryUse,
+                () -> player.gameMode.useItem(player, level, player.getMainHandItem(), InteractionHand.MAIN_HAND));
+        return new TemporaryContextSwitcher.UseOnOutcome(result, player.getMainHandItem().copy());
+    }
+
     // ======================================================================
     //  实体交互
     // ======================================================================
