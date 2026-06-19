@@ -1,7 +1,7 @@
 package com.rtsbuilding.rtsbuilding.common;
 
 import com.rtsbuilding.rtsbuilding.RtsbuildingMod;
-import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
+import com.rtsbuilding.rtsbuilding.common.entity.RtsCameraEntity;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;

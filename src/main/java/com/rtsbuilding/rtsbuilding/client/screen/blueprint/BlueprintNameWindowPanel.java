@@ -3,10 +3,13 @@ package com.rtsbuilding.rtsbuilding.client.screen.blueprint;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
 
 /**
  * Window-layer shell for blueprint save/rename naming.
@@ -129,5 +132,14 @@ public final class BlueprintNameWindowPanel extends RtsWindowPanel {
         this.windowX = Math.max(8, (this.screen.width - this.windowWidth) / 2);
         this.windowY = Mth.clamp((this.screen.height - this.windowHeight) / 2,
                 24, Math.max(24, this.screen.height - this.windowHeight - 8));
+    }
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("blueprint_name", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
     }
 }

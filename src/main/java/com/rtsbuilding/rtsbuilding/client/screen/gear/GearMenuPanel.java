@@ -4,7 +4,8 @@ import com.rtsbuilding.rtsbuilding.Config;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
-import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
+import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -148,13 +149,6 @@ public final class GearMenuPanel extends RtsWindowPanel {
         this.windowY = Mth.clamp((this.screen.height - this.windowHeight) / 2,
                 TOP_H + 6,
                 Math.max(TOP_H + 6, this.screen.height - this.windowHeight - 8));
-    }
-
-    @Override
-    protected void onBoundsChanged() {
-        if (this.screen != null) {
-            this.screen.persistUiState();
-        }
     }
 
     private void renderControls(GuiGraphics g, int mouseX, int mouseY, int x, int controlsY, int w) {
@@ -480,7 +474,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
                     hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.container_overlay.hint"))) {
-                RtsClientUiStateStore.setContainerOverlayEnabled(!RtsClientUiStateStore.isContainerOverlayEnabled());
+                screen.toggleContainerOverlayEnabled();
                 return;
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.container_overlay.hint");
@@ -490,7 +484,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
                     hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.shift_import.hint"))) {
-                RtsClientUiStateStore.setOverlayShiftImportEnabled(!RtsClientUiStateStore.isOverlayShiftImportEnabled());
+                screen.toggleOverlayShiftImportEnabled();
                 return;
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.shift_import.hint");
@@ -500,8 +494,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
                     hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.show_storage_ready_popup.hint"))) {
-                RtsClientUiStateStore.setShowStorageReadyPopupEnabled(
-                        !RtsClientUiStateStore.isShowStorageReadyPopupEnabled());
+                screen.toggleShowStorageReadyPopup();
                 return;
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.show_storage_ready_popup.hint");
@@ -511,8 +504,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
                     hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.show_workflow_panel.hint"))) {
-                RtsClientUiStateStore.setShowWorkflowPanelEnabled(
-                        !RtsClientUiStateStore.isShowWorkflowPanelEnabled());
+                screen.toggleShowWorkflowPanelEnabled();
                 return;
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.show_workflow_panel.hint");
@@ -537,7 +529,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
                     hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.storage_refresh_quiet.hint"))) {
-                RtsClientUiStateStore.setStorageRefreshQuietEnabled(!RtsClientUiStateStore.isStorageRefreshQuietEnabled());
+                screen.toggleStorageRefreshQuietEnabled();
                 return;
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.storage_refresh_quiet.hint");
@@ -547,7 +539,7 @@ public final class GearMenuPanel extends RtsWindowPanel {
             }
             if (inside(mouseX, contentMouseY, x + 12, rowY, w - 24,
                     hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.storage_auto_refresh.hint"))) {
-                RtsClientUiStateStore.setStorageAutoRefreshEnabled(!RtsClientUiStateStore.isStorageAutoRefreshEnabled());
+                screen.toggleStorageAutoRefreshEnabled();
                 return;
             }
             rowY += hintToggleRowHeight(x, w, "screen.rtsbuilding.settings.storage_auto_refresh.hint");
@@ -868,4 +860,12 @@ public final class GearMenuPanel extends RtsWindowPanel {
                 x + w / 2, y + 7, 0xF2F6FB);
     }
 
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("settings", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
+    }
 }

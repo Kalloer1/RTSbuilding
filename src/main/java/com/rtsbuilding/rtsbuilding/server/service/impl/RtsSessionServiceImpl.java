@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.service.impl;
 
-import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.common.build.BuilderMode;
 import com.rtsbuilding.rtsbuilding.server.data.RtsStorageSessionCodec;
 import com.rtsbuilding.rtsbuilding.server.data.RtsStorageSessionStore;
 import com.rtsbuilding.rtsbuilding.server.history.ServerHistoryManager;

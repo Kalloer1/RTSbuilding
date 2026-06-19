@@ -3,8 +3,11 @@ package com.rtsbuilding.rtsbuilding.client.screen.workflow;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
-import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
+import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
+
+import java.util.List;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsDeleteWorkflowPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsPauseWorkflowPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsScanBlueprintResumePayload;
@@ -355,5 +358,14 @@ public final class RtsWorkflowPanel extends RtsWindowPanel {
 
     private static boolean isInside(double mx, double my, double x, double y, double w, double h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("workflow", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
     }
 }

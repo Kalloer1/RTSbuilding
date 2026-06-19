@@ -1,4 +1,4 @@
-package com.rtsbuilding.rtsbuilding.entity;
+package com.rtsbuilding.rtsbuilding.common.entity;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.SynchedEntityData;

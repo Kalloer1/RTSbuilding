@@ -3,6 +3,7 @@ package com.rtsbuilding.rtsbuilding.client.screen.workflow;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsResumePlacementActionPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsBlueprintResumeScanPayload;
@@ -227,5 +228,14 @@ public final class RtsBlueprintResumePanel extends RtsWindowPanel {
             if (available.get(i) < required.get(i)) return false;
         }
         return true;
+    }
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("blueprint_resume", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
     }
 }

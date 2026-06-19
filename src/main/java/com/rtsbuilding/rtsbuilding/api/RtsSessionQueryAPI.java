@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.api;
 
-import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.common.build.BuilderMode;
 import net.minecraft.server.level.ServerPlayer;
 
 /**

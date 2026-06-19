@@ -3,7 +3,10 @@ package com.rtsbuilding.rtsbuilding.client.screen.workflow;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
+
+import java.util.List;
 import com.rtsbuilding.rtsbuilding.network.builder.C2SRtsResumePlacementActionPayload;
 import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsResumePlacementScanPayload;
 import net.minecraft.client.gui.Font;
@@ -254,5 +257,14 @@ public final class RtsResumePlacementPanel extends RtsWindowPanel {
 
     private boolean isInsideBtn(double mx, double my, double bx, double by, double bw, double bh) {
         return mx >= bx && mx < bx + bw && my >= by && my < by + bh;
+    }
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("resume_placement", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
     }
 }

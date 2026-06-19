@@ -1,10 +1,11 @@
-package com.rtsbuilding.rtsbuilding.client.state;
+package com.rtsbuilding.rtsbuilding.common.persist;
 
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
 import net.neoforged.fml.loading.FMLPaths;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -14,182 +15,207 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Persistent storage layer for client UI state.
+ * 客户端 UI 状态的持久化存储层。
  *
- * <p>Responsible for reading/writing {@link UiState} as JSON to the
- * {@code config/rts_building/rtsbuilding-client-ui.json} file.
- * All public methods are {@code synchronized} for thread safety.
+ * <p>负责将 {@link UiState} 以 JSON 格式读写到
+ * {@code config/rts_building/rtsbuilding-client-ui.json} 文件。
  *
- * <p>This class handles I/O and data validation only; it contains no business logic.
- * Batch load/save coordination is handled by {@link RtsScreenUiStateManager}.
+ * <p>此层只做 I/O 和数据校验，不含业务逻辑。
+ * 批量的加载/保存协调由 {@link com.rtsbuilding.rtsbuilding.client.state.RtsScreenUiStateManager} 负责。
+ * {@link UiStateCache} 提供内存缓存以避免冗余的文件读写。
  *
- * <h3>Architecture</h3>
+ * <h3>架构</h3>
  * <ul>
- *   <li><b>Store</b> — pure I/O + deserialisation, see {@link #load()} / {@link #save(UiState)}</li>
- *   <li><b>Convenience methods</b> — lightweight access for callers that don't need the Manager (e.g. intro popups, container overlay toggle)</li>
- *   <li><b>Validation</b> — {@link UiState#sanitized()} cleans invalid values on every load/save</li>
+ *   <li><b>I/O 层</b> — 纯 I/O + 反序列化，见 {@link #readFromFile()} / {@link #writeToFile(UiState)}</li>
+ *   <li><b>便捷方法</b> — 通过内部缓存代理，供不需要 Manager 的调用方使用</li>
+ *   <li><b>校验</b> — {@link UiState#sanitized()} 在每次写入前清理非法值</li>
  * </ul>
  *
- * @see RtsScreenUiStateManager
+ * @see com.rtsbuilding.rtsbuilding.client.state.RtsScreenUiStateManager
+ * @see UiStateCache
  * @see UiState
  */
 public final class RtsClientUiStateStore {
+    private static final Logger LOG = LoggerFactory.getLogger("RtsClientUiState");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    /** Persistent config file path: config/rts_building/rtsbuilding-client-ui.json */
+
+    /** 当前数据版本，用于未来兼容性迁移 */
+    static final int CURRENT_STORE_VERSION = 1;
+
+    /** 持久化配置文件路径：config/rts_building/rtsbuilding-client-ui.json */
     private static final Path CONFIG_PATH = FMLPaths.CONFIGDIR.get()
             .resolve("rts_building")
             .resolve("rtsbuilding-client-ui.json");
 
-    // ======================== Construction ========================
+    /** 共享的 UI 状态内存缓存实例 */
+    private static final UiStateCache CACHE = new UiStateCache();
+
+    // ======================== 构造 ========================
 
     private RtsClientUiStateStore() {
-        // Utility class, not instantiable
+        // 工具类，禁止实例化
     }
 
-    // ======================== Core I/O ========================
+    /** 返回内部缓存实例（供 {@link com.rtsbuilding.rtsbuilding.client.state.RtsScreenUiStateManager} 使用） */
+    public static UiStateCache cache() {
+        return CACHE;
+    }
+
+    // ======================== 纯 I/O 方法（包级私有） ========================
 
     /**
-     * Loads the UI state from the persistent config file.
-     * <p>Returns defaults if the file is missing or malformed.
-     *
-     * @return a validated {@link UiState}, never null
+     * 从持久化配置文件读取 UI 状态。
+     * <p>文件缺失或损坏时返回 null。
      */
-    public static synchronized UiState load() {
+    static UiState readFromFile() {
         if (!Files.isRegularFile(CONFIG_PATH)) {
-            return UiState.defaults();
+            return null;
         }
         try (Reader reader = Files.newBufferedReader(CONFIG_PATH)) {
             UiState state = GSON.fromJson(reader, UiState.class);
-            return state == null ? UiState.defaults() : state.sanitized();
-        } catch (IOException | RuntimeException ignored) {
-            return UiState.defaults();
+            if (state == null) {
+                return null;
+            }
+            return migrate(state);
+        } catch (IOException | RuntimeException e) {
+            LOG.warn("读取 UI 状态文件失败，将使用默认值: {}", CONFIG_PATH, e);
+            return null;
         }
     }
 
     /**
-     * Persists the UI state to the JSON config file.
-     * <p>Automatically validates and corrects all fields before writing.
-     *
-     * @param state the state to persist; writes defaults if null
+     * 将 UI 状态写入持久化配置文件。
+     * <p>调用前请确保状态已通过 {@link UiState#sanitized()} 校验。
      */
-    public static synchronized void save(UiState state) {
-        UiState safe = state == null ? UiState.defaults() : state.sanitized();
+    static void writeToFile(UiState state) {
+        if (state == null) {
+            return;
+        }
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
             try (Writer writer = Files.newBufferedWriter(CONFIG_PATH)) {
-                GSON.toJson(safe, writer);
+                GSON.toJson(state, writer);
             }
-        } catch (IOException ignored) {
-            // Silently ignore write failures; the old file remains available on next launch
+        } catch (IOException e) {
+            LOG.warn("写入 UI 状态文件失败，旧文件将保留: {}", CONFIG_PATH, e);
         }
     }
 
-    // ======================== Convenience field methods ========================
-    // The following methods provide lightweight access without going through RtsScreenUiStateManager.
+    /**
+     * 执行版本迁移，确保旧格式文件能被加载。
+     * <p>旧文件没有 {@code _storeVersion} 字段时默认为 0。
+     */
+    private static UiState migrate(UiState state) {
+        int version = state._storeVersion;
+        // 未来在此添加逐版本迁移逻辑：
+        // if (version < 1) { /* v0 → v1 */ version = 1; }
+        // if (version < 2) { /* v1 → v2 */ version = 2; }
+        state._storeVersion = CURRENT_STORE_VERSION;
+        return state;
+    }
+
+    // ======================== 公开方法（通过缓存代理） ========================
 
     /**
-     * Checks whether the intro reminder for the given key has been dismissed.
+     * 从缓存加载 UI 状态。首次调用时会从文件懒加载。
      *
-     * @param key the reminder identifier (case-insensitive, auto-trimmed)
-     * @return true if the reminder has been dismissed
+     * @return 可变的 {@link UiState} 实例，永不为 null
      */
+    public static synchronized UiState load() {
+        return CACHE.get();
+    }
+
+    // ======================== 便捷字段方法 ========================
+    // 以下方法通过缓存提供轻量级字段访问，无需经过 RtsScreenUiStateManager。
+    // 所有设置操作只标记缓存为脏，实际的 I/O 延迟到下次 flushIfDirty()。
+
+    /** 检查指定的引导提醒是否已被关闭。 */
     public static synchronized boolean isIntroReminderDismissed(String key) {
-        return load().isIntroReminderDismissed(key);
+        return CACHE.get().isIntroReminderDismissed(key);
     }
 
-    /**
-     * Marks the given key as dismissed so the corresponding intro reminder is no longer shown.
-     *
-     * @param key the reminder identifier
-     */
+    /** 将指定引导提醒标记为已关闭。 */
     public static synchronized void dismissIntroReminder(String key) {
-        UiState state = load();
-        state.addDismissedIntroReminderKey(key);
-        save(state);
+        CACHE.get().addDismissedIntroReminderKey(key);
+        CACHE.markDirty();
     }
 
-    /** Whether the container overlay is enabled. */
+    /** 容器覆盖层是否启用。 */
     public static synchronized boolean isContainerOverlayEnabled() {
-        return load().containerOverlayEnabled;
+        return CACHE.get().containerOverlayEnabled;
     }
 
-    /** Sets the container overlay enabled state and persists it. */
+    /** 设置容器覆盖层启用状态（仅标记脏，延迟写入）。 */
     public static synchronized void setContainerOverlayEnabled(boolean enabled) {
-        UiState state = load();
-        state.containerOverlayEnabled = enabled;
-        save(state);
+        CACHE.get().containerOverlayEnabled = enabled;
+        CACHE.markDirty();
     }
 
-    /** Whether the overlay Shift+click quick-import is enabled. */
+    /** 覆盖层 Shift+点击快速导入是否启用。 */
     public static synchronized boolean isOverlayShiftImportEnabled() {
-        return load().overlayShiftImportEnabled;
+        return CACHE.get().overlayShiftImportEnabled;
     }
 
-    /** Sets the overlay Shift-import enabled state and persists it. */
+    /** 设置覆盖层 Shift 导入启用状态（仅标记脏）。 */
     public static synchronized void setOverlayShiftImportEnabled(boolean enabled) {
-        UiState state = load();
-        state.overlayShiftImportEnabled = enabled;
-        save(state);
+        CACHE.get().overlayShiftImportEnabled = enabled;
+        CACHE.markDirty();
     }
 
     public static synchronized boolean isStorageRefreshQuietEnabled() {
-        return load().storageRefreshQuietEnabled;
+        return CACHE.get().storageRefreshQuietEnabled;
     }
 
     public static synchronized void setStorageRefreshQuietEnabled(boolean enabled) {
-        UiState state = load();
-        state.storageRefreshQuietEnabled = enabled;
-        save(state);
+        CACHE.get().storageRefreshQuietEnabled = enabled;
+        CACHE.markDirty();
     }
 
     public static synchronized boolean isStorageAutoRefreshEnabled() {
-        return load().storageAutoRefreshEnabled;
+        return CACHE.get().storageAutoRefreshEnabled;
     }
 
     public static synchronized void setStorageAutoRefreshEnabled(boolean enabled) {
-        UiState state = load();
-        state.storageAutoRefreshEnabled = enabled;
-        save(state);
+        CACHE.get().storageAutoRefreshEnabled = enabled;
+        CACHE.markDirty();
     }
 
     public static synchronized boolean isShowStorageReadyPopupEnabled() {
-        return load().showStorageReadyPopup;
+        return CACHE.get().showStorageReadyPopup;
     }
 
     public static synchronized void setShowStorageReadyPopupEnabled(boolean enabled) {
-        UiState state = load();
-        state.showStorageReadyPopup = enabled;
-        save(state);
+        CACHE.get().showStorageReadyPopup = enabled;
+        CACHE.markDirty();
     }
 
     public static synchronized boolean isShowWorkflowPanelEnabled() {
-        return load().showWorkflowPanel;
+        return CACHE.get().showWorkflowPanel;
     }
 
     public static synchronized void setShowWorkflowPanelEnabled(boolean enabled) {
-        UiState state = load();
-        state.showWorkflowPanel = enabled;
-        save(state);
+        CACHE.get().showWorkflowPanel = enabled;
+        CACHE.markDirty();
     }
 
-    // ======================== UiState data class ========================
+    // ======================== UiState 数据类 ========================
 
     /**
-     * Complete client UI state snapshot.
+     * 完整的客户端 UI 状态快照。
      *
-     * <p>All fields are public for Gson deserialisation direct assignment.
-     * External code should prefer {@link #sanitized()} to obtain a validated
-     * copy rather than manipulating raw fields directly.
+     * <p>所有字段均为 public 以支持 Gson 直接反序列化赋值。
+     * 外部代码应优先使用 {@link #sanitized()} 获取校验后的副本。
      */
     public static final class UiState {
-        public String buildShape = BuildShape.BLOCK.name();
+        /** 数据版本号，用于向前兼容的迁移检测 */
+        public int _storeVersion = CURRENT_STORE_VERSION;
+
+        public String buildShape = "BLOCK";
         public String fillMode = "FILL";
         public int rotationDegrees = 0;
         public boolean quickBuildOpen = true;
         public String quickBuildMode = "BUILD";
-        public boolean ultimineOpen = false;
         public int ultimineLimit = 64;
-        public String ultimineMode = "CHAIN";
         public String areaMineShape = "CHAIN";
         public boolean chunkCurtainVisible = false;
         public double rtsGuiScale = 2.0D;
@@ -211,19 +237,19 @@ public final class RtsClientUiStateStore {
         public boolean storageAutoRefreshEnabled = true;
         public boolean showStorageReadyPopup = false;
         public boolean showWorkflowPanel = true;
-        /** List of dismissed intro reminder keys */
+        /** 已关闭的引导提醒键列表 */
         public List<String> dismissedIntroReminderKeys = new ArrayList<>();
-        /** Persistent mapping of window panel bounds (key → bounds) */
+        /** 窗口面板边界持久化映射（键 → 边界） */
         public Map<String, PanelBounds> windowPanelBounds = new LinkedHashMap<>();
 
-        /** Immutable window panel position/size record. */
+        /** 窗口面板位置/大小的不可变记录。 */
         public static final class PanelBounds {
             public int x;
             public int y;
             public int width;
             public int height;
 
-            // Gson deserialisation requires a no-arg constructor
+            // Gson 反序列化需要无参构造
             public PanelBounds() {
             }
 
@@ -235,25 +261,24 @@ public final class RtsClientUiStateStore {
             }
         }
 
-        /** Returns a {@link UiState} with all fields set to their defaults. */
+        /** 返回所有字段为默认值的 {@link UiState}。 */
         static UiState defaults() {
             return new UiState();
         }
 
         /**
-         * Returns a validated copy of the current state with all fields clamped to legal ranges.
-         * <p>The original object is not modified.
+         * 返回当前状态的校验副本，所有字段被限制到合法范围。
+         * <p>不会修改原始对象。
          */
         UiState sanitized() {
             UiState clean = new UiState();
-            clean.buildShape = sanitizeEnum(this.buildShape, BuildShape.BLOCK.name());
+            clean._storeVersion = CURRENT_STORE_VERSION;
+            clean.buildShape = sanitizeEnum(this.buildShape, "BLOCK");
             clean.fillMode = sanitizeEnum(this.fillMode, "FILL");
             clean.rotationDegrees = Math.floorMod(this.rotationDegrees, 360);
             clean.quickBuildOpen = this.quickBuildOpen;
             clean.quickBuildMode = sanitizeEnum(this.quickBuildMode, "BUILD");
-            clean.ultimineOpen = this.ultimineOpen;
             clean.ultimineLimit = Math.max(1, Math.min(256, this.ultimineLimit));
-            clean.ultimineMode = sanitizeEnum(this.ultimineMode, "CHAIN");
             clean.areaMineShape = sanitizeEnum(this.areaMineShape, "CHAIN");
             clean.chunkCurtainVisible = this.chunkCurtainVisible;
             clean.rtsGuiScale = sanitizeScale(this.rtsGuiScale);
@@ -283,10 +308,7 @@ public final class RtsClientUiStateStore {
         }
 
         /**
-         * Checks whether the intro reminder for the given key has been dismissed (case-insensitive).
-         *
-         * @param key the reminder identifier
-         * @return true if the key is in the dismissed list
+         * 检查指定引导提醒键是否已被关闭（不区分大小写）。
          */
         public boolean isIntroReminderDismissed(String key) {
             String normalized = normalizeKey(key);
@@ -301,7 +323,7 @@ public final class RtsClientUiStateStore {
             return false;
         }
 
-        /** Package-private: adds an intro reminder key to the dismissed list (called by Store). */
+        /** 包级私有：添加一个引导提醒键到已关闭列表（由 Store 调用）。 */
         void addDismissedIntroReminderKey(String key) {
             String normalized = normalizeKey(key);
             if (normalized.isBlank()) {
@@ -315,11 +337,7 @@ public final class RtsClientUiStateStore {
         }
 
         /**
-         * Validates and normalises an enum value.
-         *
-         * @param value    the string to validate
-         * @param fallback the default to use when the value is invalid
-         * @return an uppercase valid enum name, or the fallback
+         * 校验并标准化枚举值。
          */
         private static String sanitizeEnum(String value, String fallback) {
             if (value == null || value.isBlank()) {
@@ -329,7 +347,7 @@ public final class RtsClientUiStateStore {
         }
 
         /**
-         * Snaps the scale value to the [1.0, 4.0] range, rounded to 0.5 steps.
+         * 将缩放值限制到 [1.0, 4.0] 范围，按 0.5 步长取整。
          */
         private static double sanitizeScale(double value) {
             if (!Double.isFinite(value)) {
@@ -340,10 +358,7 @@ public final class RtsClientUiStateStore {
         }
 
         /**
-         * Deduplicates, strips blanks, and lowercases a list of keys.
-         *
-         * @param values the raw key list
-         * @return a cleaned, ordered list
+         * 键列表去重、去除空白、转小写。
          */
         private static List<String> sanitizeKeys(List<String> values) {
             Set<String> unique = new LinkedHashSet<>();
@@ -359,10 +374,7 @@ public final class RtsClientUiStateStore {
         }
 
         /**
-         * Normalises a key: trims then lowercases.
-         *
-         * @param key the raw key
-         * @return the normalised string; empty string if null
+         * 标准化键：去除首尾空白后转小写。
          */
         private static String normalizeKey(String key) {
             return key == null ? "" : key.trim().toLowerCase(Locale.ROOT);

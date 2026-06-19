@@ -4,6 +4,7 @@ import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.record.LinkedStorageEntry;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowTextBox;
 import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsLinkStoragePayload;
@@ -424,5 +425,14 @@ public final class LinkedStoragePanel extends RtsWindowPanel {
         int thumbH = Math.max(14, h * visibleRows() / Math.max(1, totalRows));
         int thumbY = y + (h - thumbH) * this.scroll / maxScroll;
         g.fill(x + 1, thumbY, x + SCROLLBAR_W - 1, thumbY + thumbH, 0xFF8EA9C4);
+    }
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("linked_storage", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
     }
 }

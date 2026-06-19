@@ -42,10 +42,10 @@ import com.rtsbuilding.rtsbuilding.client.screen.workflow.RtsBlueprintResumePane
 import com.rtsbuilding.rtsbuilding.client.screen.workflow.RtsResumePlacementPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.workflow.RtsWorkflowPanel;
 import com.rtsbuilding.rtsbuilding.client.service.MiningOperationService;
-import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
 import com.rtsbuilding.rtsbuilding.client.state.RtsScreenUiStateManager;
+import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
-import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.common.build.BuilderMode;
 import com.rtsbuilding.rtsbuilding.common.RtsUltimineCollector;
 import com.rtsbuilding.rtsbuilding.common.shape.model.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.compat.ae2.RtsAe2IconResolver;
@@ -218,6 +218,9 @@ public final class BuilderScreen extends Screen {
         this.uiStateManager.registerWindowPanel("craft_quantity", this.craftQuantityWindowPanel);
         this.uiStateManager.registerWindowPanel("blueprint_name", this.blueprintNameWindowPanel);
         this.uiStateManager.registerWindowPanel("blueprint_materials", this.blueprintMaterialWindowPanel);
+        this.uiStateManager.registerWindowPanel("workflow", this.workflowPanel);
+        this.uiStateManager.registerWindowPanel("resume_placement", this.resumePlacementPanel);
+        this.uiStateManager.registerWindowPanel("blueprint_resume", this.blueprintResumePanel);
         this.storageLinkDetailHandler.init(this, this.controller);
         this.guidePanel.init(this, this.controller);
         this.gearMenuPanel.init(this, this.controller);
@@ -257,6 +260,18 @@ public final class BuilderScreen extends Screen {
     public boolean isDebugButtonVisible() {
         return this.uiStateManager.isDebugButtonVisible();
     }
+    /** 切换容器覆盖层可见性。 */
+    public void toggleContainerOverlayEnabled() { this.uiStateManager.toggleContainerOverlayEnabled(); }
+    /** 切换覆盖层 Shift 导入。 */
+    public void toggleOverlayShiftImportEnabled() { this.uiStateManager.toggleOverlayShiftImportEnabled(); }
+    /** 切换存储就绪弹窗。 */
+    public void toggleShowStorageReadyPopup() { this.uiStateManager.toggleShowStorageReadyPopup(); }
+    /** 切换工作流面板显示。 */
+    public void toggleShowWorkflowPanelEnabled() { this.uiStateManager.toggleShowWorkflowPanelEnabled(); }
+    /** 切换安静刷新。 */
+    public void toggleStorageRefreshQuietEnabled() { this.uiStateManager.toggleStorageRefreshQuietEnabled(); }
+    /** 切换自动刷新。 */
+    public void toggleStorageAutoRefreshEnabled() { this.uiStateManager.toggleStorageAutoRefreshEnabled(); }
     /** Returns whether the user is currently dragging the input sensitivity slider. */
     public boolean isDraggingInputSensitivity() {
         return this.draggingInputSensitivity;
@@ -382,6 +397,7 @@ public final class BuilderScreen extends Screen {
         this.shapeController.clearShapeBuildSession();
         this.controller.clearAreaMineSession();
         persistUiState();
+        this.uiStateManager.flush();
         this.pendingGuiBindSlot = -1;
         this.funnelHotkeyHeld = false;
         this.cameraInput.resetCameraVerticalHeld();
@@ -410,6 +426,8 @@ public final class BuilderScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        // 每 tick 写入脏状态（无脏时零开销）
+        this.uiStateManager.flush();
         enforceBlueprintPlacementModeLock();
         if (this.rtsFlightToggleCooldownTicks > 0) {
             this.rtsFlightToggleCooldownTicks--;

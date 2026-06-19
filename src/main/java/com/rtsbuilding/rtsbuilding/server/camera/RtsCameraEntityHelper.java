@@ -1,7 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.camera;
 
 import com.rtsbuilding.rtsbuilding.common.RtsEntities;
-import com.rtsbuilding.rtsbuilding.entity.RtsCameraEntity;
+import com.rtsbuilding.rtsbuilding.common.entity.RtsCameraEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;

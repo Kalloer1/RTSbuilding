@@ -5,62 +5,82 @@ import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.handler.ScreenShapeController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.BuildShape;
-import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildMode;
 import com.rtsbuilding.rtsbuilding.client.screen.quickbuild.QuickBuildPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
-import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
+import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
+import com.rtsbuilding.rtsbuilding.common.persist.UiStateCache;
 import com.rtsbuilding.rtsbuilding.common.shape.model.ShapeFillMode;
 import net.minecraft.util.Mth;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreenConstants.*;
 
 /**
- * Manages persistent UI preferences for {@link BuilderScreen} — the business management layer.
+ * 管理 {@link BuilderScreen} 的持久化 UI 偏好设置——业务管理层。
  *
- * <p>This class bridges the persistent {@link RtsClientUiStateStore.UiState} with runtime UI
- * components (panels, shape controller, camera controller, etc.) via bi-directional sync.
+ * <p>通过双向同步桥接 {@link RtsClientUiStateStore.UiState} 与运行时 UI 组件
+ *（面板、形状控制器、相机控制器等）。
  *
- * <h3>Architecture</h3>
+ * <h3>架构</h3>
  * <ul>
- *   <li><b>Manager</b> — bridges the {@link RtsClientUiStateStore Store} with UI components</li>
- *   <li><b>Batch load</b> — {@link #applyStoredUiState()} reads from the Store and dispatches to components</li>
- *   <li><b>Batch persist</b> — {@link #persistUiState()} collects state from components and writes to the Store</li>
- *   <li><b>Window panel bounds</b> — registers/unregisters draggable panels and persists their boundaries</li>
- *   <li><b>Scale management</b> — GUI scale adjustment and formatted label generation</li>
+ *   <li><b>Manager</b>——桥接 {@link RtsClientUiStateStore Store} 与 UI 组件</li>
+ *   <li><b>批量加载</b>——{@link #applyStoredUiState()} 从缓存读取并分发到各组件</li>
+ *   <li><b>批量持久化</b>——{@link #persistUiState()} 收集组件状态并标记脏</li>
+ *   <li><b>窗口面板边界</b>——注册/注销可拖拽面板并持久化其边界</li>
+ *   <li><b>缩放管理</b>——GUI 缩放调整和格式化标签生成</li>
  * </ul>
  *
- * <p>This class does not perform I/O directly; all persistence is delegated to {@link RtsClientUiStateStore}.
+ * <p>此类不直接执行 I/O；所有持久化通过 {@link UiStateCache} 延迟写入。
  *
+ * @see UiStateCache
  * @see RtsClientUiStateStore
  * @see BuilderScreen
  */
 public final class RtsScreenUiStateManager {
-    /** Client RTS controller, used to read/write camera, input, and visual preferences. */
+    /** 客户端 RTS 控制器，用于读写相机、输入和视觉偏好 */
     private final ClientRtsController controller;
-    /** Shape controller, used to read/write shape mode, fill mode, and rotation. */
+    /** 形状控制器，用于读写形状模式、填充模式和旋转 */
     private final ScreenShapeController shapeController;
-    /** Quick-build panel, persisted for its open state. */
+    /** 快速建造面板，持久化其打开状态 */
     private final QuickBuildPanel quickBuildPanel;
-    /** Ultimine panel, persisted for its open state and limit value. */
 
-    /** Registered persistable window panels (key → panel), managed indirectly in applyStoredUiState / persistUiState. */
+    /** 已注册的可持久化窗口面板（键 → 面板） */
     private final Map<String, RtsWindowPanel> persistablePanels = new LinkedHashMap<>();
 
-    /** Debug button visibility (runtime state, managed only by this class). */
+    /** UI 状态缓存（延迟写入，消除冗余 I/O） */
+    private final UiStateCache cache;
+
+    /** 控制器级别设置的声明式双向绑定列表 */
+    private final List<CtrlBind> ctrlBindings;
+
+    /** 调试按钮可见性（运行时状态，仅由此类管理） */
     private boolean debugButtonVisible = false;
-    /** Cached fixed RTS GUI scale (synced to the Store on persist). */
+    /** 缓存的固定 RTS GUI 缩放值 */
     private double fixedRtsGuiScale = DEFAULT_RTS_GUI_SCALE;
 
+    // =============== 覆盖层与存储 UI 偏好（运行时字段，通过 CtrlBind 与 UiState 同步） ===============
+    private boolean containerOverlayEnabled;
+    private boolean overlayShiftImportEnabled;
+    private boolean showStorageReadyPopup;
+    private boolean showWorkflowPanel;
+    private boolean storageRefreshQuietEnabled;
+    private boolean storageAutoRefreshEnabled;
+
     /**
-     * Constructs a UI state manager.
+     * 构造 UI 状态管理器。
      *
-     * @param controller     the client RTS controller
-     * @param shapeController the shape controller
-     * @param quickBuildPanel the quick-build panel (auto-registered as "quick_build")
+     * @param controller      客户端 RTS 控制器
+     * @param shapeController 形状控制器
+     * @param quickBuildPanel 快速建造面板（自动注册为 "quick_build"）
      */
     public RtsScreenUiStateManager(
             ClientRtsController controller,
@@ -69,48 +89,152 @@ public final class RtsScreenUiStateManager {
         this.controller = controller;
         this.shapeController = shapeController;
         this.quickBuildPanel = quickBuildPanel;
+        this.cache = RtsClientUiStateStore.cache();
 
-        // Register persistable-position window panels
+        // ===== 声明式控制器绑定 =====
+        this.ctrlBindings = List.of(
+                // ---- 简单布尔：直接 controller ↔ UiState ----
+                CtrlBind.bool(controller::isChunkCurtainVisible, controller::setChunkCurtainVisible,
+                        s -> s.chunkCurtainVisible, (s, v) -> s.chunkCurtainVisible = v),
+                CtrlBind.bool(controller::isStartCameraAtPlayerHead, controller::setStartCameraAtPlayerHead,
+                        s -> s.startCameraAtPlayerHead, (s, v) -> s.startCameraAtPlayerHead = v),
+                CtrlBind.bool(controller::isAllowPlacedBlockRecovery, controller::setAllowPlacedBlockRecovery,
+                        s -> s.allowPlacedBlockRecovery, (s, v) -> s.allowPlacedBlockRecovery = v),
+                CtrlBind.bool(controller::isToolProtectionEnabled, controller::setToolProtectionEnabled,
+                        s -> s.toolProtectionEnabled, (s, v) -> s.toolProtectionEnabled = v),
+                CtrlBind.bool(controller::isPlayerStatusOverlayEnabled, controller::setPlayerStatusOverlayEnabled,
+                        s -> s.playerStatusOverlayEnabled, (s, v) -> s.playerStatusOverlayEnabled = v),
+                CtrlBind.bool(controller::isInvertPanDragX, v -> controller.setInvertPanDragX(v),
+                        s -> s.invertPanDragX, (s, v) -> s.invertPanDragX = v),
+                CtrlBind.bool(controller::isInvertPanDragY, v -> controller.setInvertPanDragY(v),
+                        s -> s.invertPanDragY, (s, v) -> s.invertPanDragY = v),
+                CtrlBind.bool(controller::isSmoothCamera, controller::setSmoothCamera,
+                        s -> s.smoothCamera, (s, v) -> s.smoothCamera = v),
+                CtrlBind.bool(controller::isDamageSoundEnabled, controller::setDamageSoundEnabled,
+                        s -> s.damageSoundEnabled, (s, v) -> s.damageSoundEnabled = v),
+                CtrlBind.bool(controller::isDamageAutoReturnEnabled, controller::setDamageAutoReturnEnabled,
+                        s -> s.damageAutoReturnEnabled, (s, v) -> s.damageAutoReturnEnabled = v),
+                // lineConnected 走 shapeController 而非 controller
+                CtrlBind.bool(shapeController::isLineConnected, shapeController::setLineConnected,
+                        s -> s.lineConnected, (s, v) -> s.lineConnected = v),
+                // debugButtonVisible 是本地字段
+                CtrlBind.bool(() -> this.debugButtonVisible, v -> this.debugButtonVisible = v,
+                        s -> s.debugButtonVisible, (s, v) -> s.debugButtonVisible = v),
+
+                // ---- 覆盖层与存储 UI 偏好（本地字段 ↔ UiState） ----
+                CtrlBind.bool(() -> this.containerOverlayEnabled, v -> this.containerOverlayEnabled = v,
+                        s -> s.containerOverlayEnabled, (s, v) -> s.containerOverlayEnabled = v),
+                CtrlBind.bool(() -> this.overlayShiftImportEnabled, v -> this.overlayShiftImportEnabled = v,
+                        s -> s.overlayShiftImportEnabled, (s, v) -> s.overlayShiftImportEnabled = v),
+                CtrlBind.bool(() -> this.showStorageReadyPopup, v -> this.showStorageReadyPopup = v,
+                        s -> s.showStorageReadyPopup, (s, v) -> s.showStorageReadyPopup = v),
+                CtrlBind.bool(() -> this.showWorkflowPanel, v -> this.showWorkflowPanel = v,
+                        s -> s.showWorkflowPanel, (s, v) -> s.showWorkflowPanel = v),
+                CtrlBind.bool(() -> this.storageRefreshQuietEnabled, v -> this.storageRefreshQuietEnabled = v,
+                        s -> s.storageRefreshQuietEnabled, (s, v) -> s.storageRefreshQuietEnabled = v),
+                CtrlBind.bool(() -> this.storageAutoRefreshEnabled, v -> this.storageAutoRefreshEnabled = v,
+                        s -> s.storageAutoRefreshEnabled, (s, v) -> s.storageAutoRefreshEnabled = v),
+
+                // ---- 建造形状（collect 取 QuickBuildPanel，apply 连带加载和兜底） ----
+                new CtrlBind(
+                        state -> state.buildShape = this.quickBuildPanel.getBuildModeShape().name(),
+                        state -> {
+                            parseAndSetBuildShape(state.buildShape);
+                            this.quickBuildPanel.loadStoredShapes(
+                                    this.controller.getBuildShape(), this.controller.getAreaMineShape());
+                            this.shapeController.ensureFillModeForShape(this.controller.getBuildShape());
+                        }
+                ),
+                // ---- 填充模式 ----
+                new CtrlBind(
+                        state -> state.fillMode = this.shapeController.getShapeFillMode().name(),
+                        state -> parseAndSetFillMode(state.fillMode)
+                ),
+                // ---- 旋转角度 ----
+                new CtrlBind(
+                        state -> state.rotationDegrees = this.shapeController.getShapeRotateDegrees(),
+                        state -> this.shapeController.rotateToDegrees(Math.floorMod(state.rotationDegrees, 360))
+                ),
+                // ---- GUI 缩放（带 sanitize 兜底） ----
+                new CtrlBind(
+                        state -> state.rtsGuiScale = sanitizeRtsGuiScale(this.fixedRtsGuiScale),
+                        state -> this.fixedRtsGuiScale = sanitizeRtsGuiScale(state.rtsGuiScale)
+                ),
+                // ---- 输入灵敏度（int → fraction 转换） ----
+                new CtrlBind(
+                        state -> state.inputSensitivityIndex = this.controller.getInputSensitivityIndex(),
+                        state -> applyInputSensitivity(state.inputSensitivityIndex)
+                )
+        );
+
+        // 注册可持久化位置的窗口面板
         registerWindowPanel("quick_build", quickBuildPanel);
     }
 
     /**
-     * Registers a window panel so its position/size can be persisted.
-     * The key must be stable and unique; it is used as the JSON storage key.
-     * Re-registering overwrites the old value.
+     * 注册窗口面板，使其位置/大小可被持久化。
+     * 键必须稳定且唯一，用作 JSON 存储键。重复注册会覆盖旧值。
      */
     public void registerWindowPanel(String key, RtsWindowPanel panel) {
         this.persistablePanels.put(key, panel);
     }
 
-    /** Unregisters a window panel, stopping position persistence for it. */
+    /** 注销窗口面板，停止其位置持久化。 */
     public void unregisterWindowPanel(String key) {
         this.persistablePanels.remove(key);
     }
 
-    // ======================== Debug button ========================
+    // ======================== Flush（由 BuilderScreen.tick 调用） ========================
 
-    /** Whether the debug button is visible. */
+    /**
+     * 将缓存的脏状态刷入磁盘。仅在标记为脏时执行实际写入。
+     * <p>应在每 tick 调用一次（由 {@link BuilderScreen#tick()} 驱动）。
+     */
+    public void flush() {
+        this.cache.flushIfDirty();
+    }
+
+    // ======================== Debug 按钮 ========================
+
+    /** 调试按钮是否可见。 */
     public boolean isDebugButtonVisible() {
         return this.debugButtonVisible;
     }
 
-    /** Toggles debug button visibility. */
+    /** 切换调试按钮可见性。 */
     public void toggleDebugButton() {
         this.debugButtonVisible = !this.debugButtonVisible;
     }
 
-    // ======================== GUI Scale ========================
+    // ======================== 覆盖层与存储 UI 偏好 ========================
 
-    /** Returns the current fixed RTS GUI scale. */
+    public boolean isContainerOverlayEnabled() { return this.containerOverlayEnabled; }
+    public void toggleContainerOverlayEnabled() { this.containerOverlayEnabled = !this.containerOverlayEnabled; persistUiState(); }
+
+    public boolean isOverlayShiftImportEnabled() { return this.overlayShiftImportEnabled; }
+    public void toggleOverlayShiftImportEnabled() { this.overlayShiftImportEnabled = !this.overlayShiftImportEnabled; persistUiState(); }
+
+    public boolean isShowStorageReadyPopupEnabled() { return this.showStorageReadyPopup; }
+    public void toggleShowStorageReadyPopup() { this.showStorageReadyPopup = !this.showStorageReadyPopup; persistUiState(); }
+
+    public boolean isShowWorkflowPanelEnabled() { return this.showWorkflowPanel; }
+    public void toggleShowWorkflowPanelEnabled() { this.showWorkflowPanel = !this.showWorkflowPanel; persistUiState(); }
+
+    public boolean isStorageRefreshQuietEnabled() { return this.storageRefreshQuietEnabled; }
+    public void toggleStorageRefreshQuietEnabled() { this.storageRefreshQuietEnabled = !this.storageRefreshQuietEnabled; persistUiState(); }
+
+    public boolean isStorageAutoRefreshEnabled() { return this.storageAutoRefreshEnabled; }
+    public void toggleStorageAutoRefreshEnabled() { this.storageAutoRefreshEnabled = !this.storageAutoRefreshEnabled; persistUiState(); }
+
+    // ======================== GUI 缩放 ========================
+
+    /** 返回当前固定的 RTS GUI 缩放值。 */
     public double fixedRtsGuiScale() {
         return this.fixedRtsGuiScale;
     }
 
     /**
-     * Adjusts the GUI scale by the given delta and persists immediately.
-     *
-     * @param delta the scale adjustment (e.g. +0.5 or -0.5)
+     * 按给定增量调整 GUI 缩放并立即标记持久化。
      */
     public void adjustRtsGuiScale(double delta) {
         this.fixedRtsGuiScale = sanitizeRtsGuiScale(this.fixedRtsGuiScale + delta);
@@ -118,8 +242,8 @@ public final class RtsScreenUiStateManager {
     }
 
     /**
-     * Returns a formatted scale label.
-     * <p>Displays as "2x" for integer values and "2.5x" for half-values.
+     * 返回格式化的缩放标签。
+     * <p>整数值显示为 "2x"，半值显示为 "2.5x"。
      */
     public String rtsGuiScaleLabel() {
         double scale = sanitizeRtsGuiScale(this.fixedRtsGuiScale);
@@ -129,96 +253,60 @@ public final class RtsScreenUiStateManager {
         return String.format(Locale.ROOT, "%.1fx", scale);
     }
 
-    // ======================== Load / Persist ========================
+    // ======================== 加载 / 持久化 ========================
 
     /**
-     * Reads all UI state from persistent storage and applies it to the corresponding controllers/panels.
+     * 从缓存读取所有 UI 状态并应用到对应的控制器/面板。
      */
     public void applyStoredUiState() {
-        RtsClientUiStateStore.UiState state = RtsClientUiStateStore.load();
-        applyPanelState(state);
-        applyCameraState(state);
-        applyInputState(state);
-        applyShapeState(state);
-        applyMiscState(state);
-        applyWindowPanelBounds(state);
+        RtsClientUiStateStore.UiState state = this.cache.get();
+        // 先遍历面板自声明属性（含 BoundsProperty），再遍历控制器绑定
+        applyPanelProperties(state);
+        for (var bind : this.ctrlBindings) {
+            bind.apply.accept(state);
+        }
     }
 
     /**
-     * Collects all UI preferences from current runtime state and writes them back to persistent storage.
-     * <p>Should be called whenever state changes (e.g. panel toggle, shape switch, scale adjustment).
+     * 从当前运行状态收集所有 UI 偏好并写入缓存（标记为脏，不立即写盘）。
+     * <p>在状态变更时调用（如面板切换、形状切换、缩放调整）。
+     * 实际的 I/O 将在下次 tick 通过 {@link #flush()} 执行。
      */
     public void persistUiState() {
-        RtsClientUiStateStore.UiState state = RtsClientUiStateStore.load();
-        state.buildShape = this.quickBuildPanel.getBuildModeShape().name();
-        state.fillMode = this.shapeController.getShapeFillMode().name();
-        state.lineConnected = this.shapeController.isLineConnected();
-        state.rotationDegrees = this.shapeController.getShapeRotateDegrees();
-        state.quickBuildOpen = this.quickBuildPanel.isOpen();
-        state.quickBuildMode = this.quickBuildPanel.getMode().name();
-        state.ultimineOpen = false;
-        state.ultimineLimit = this.quickBuildPanel.getChainDestroyLimit();
-        state.ultimineMode = "CHAIN";
-        state.areaMineShape = this.quickBuildPanel.getRangeDestroyShape().name();
-        state.chunkCurtainVisible = this.controller.isChunkCurtainVisible();
-        state.rtsGuiScale = sanitizeRtsGuiScale(this.fixedRtsGuiScale);
-        state.inputSensitivityIndex = this.controller.getInputSensitivityIndex();
-        state.startCameraAtPlayerHead = this.controller.isStartCameraAtPlayerHead();
-        state.allowPlacedBlockRecovery = this.controller.isAllowPlacedBlockRecovery();
-        state.toolProtectionEnabled = this.controller.isToolProtectionEnabled();
-        state.playerStatusOverlayEnabled = this.controller.isPlayerStatusOverlayEnabled();
-        state.invertPanDragX = this.controller.isInvertPanDragX();
-        state.invertPanDragY = this.controller.isInvertPanDragY();
-        state.smoothCamera = this.controller.isSmoothCamera();
-        state.damageSoundEnabled = this.controller.isDamageSoundEnabled();
-        state.damageAutoReturnEnabled = this.controller.isDamageAutoReturnEnabled();
-        state.debugButtonVisible = this.debugButtonVisible;
-        persistWindowPanelBounds(state);
-        RtsClientUiStateStore.save(state);
+        RtsClientUiStateStore.UiState state = this.cache.get();
+        // 遍历控制器绑定（收集运行时值到 UiState）
+        for (var bind : this.ctrlBindings) {
+            bind.collect.accept(state);
+        }
+        // 遍历面板自声明属性（收集边界及其他面板专属状态）
+        collectPanelProperties(state);
+        this.cache.markDirty();
     }
 
-    // ====== apply* breakdown ======
+    // ====== 面板自声明属性迭代 ======
 
-    /** Restores panel open state and limit values. */
-    private void applyPanelState(RtsClientUiStateStore.UiState state) {
-        this.quickBuildPanel.setOpen(state.quickBuildOpen);
-        try {
-            this.quickBuildPanel.setMode(QuickBuildMode.valueOf(state.quickBuildMode));
-        } catch (IllegalArgumentException ignored) {
-            this.quickBuildPanel.setMode(QuickBuildMode.BUILD);
-        }
-        this.quickBuildPanel.loadChainDestroyLimit(state.ultimineLimit);
-        try {
-            this.controller.setAreaMineShape(AreaMineShape.valueOf(state.areaMineShape));
-        } catch (IllegalArgumentException ignored) {
-            this.controller.setAreaMineShape(AreaMineShape.CHAIN);
+    /** 遍历所有注册面板的自声明属性，将 UiState 的值应用到运行时。 */
+    private void applyPanelProperties(RtsClientUiStateStore.UiState state) {
+        for (RtsWindowPanel panel : this.persistablePanels.values()) {
+            for (PersistableProperty prop : panel.persistableProperties()) {
+                prop.applyToRuntime(state);
+            }
         }
     }
 
-    /** Restores camera, chunk curtain, and other visual preferences. */
-    private void applyCameraState(RtsClientUiStateStore.UiState state) {
-        this.controller.setStartCameraAtPlayerHead(state.startCameraAtPlayerHead);
-        this.controller.setAllowPlacedBlockRecovery(state.allowPlacedBlockRecovery);
-        this.controller.setToolProtectionEnabled(state.toolProtectionEnabled);
-        this.controller.setPlayerStatusOverlayEnabled(state.playerStatusOverlayEnabled);
-        this.controller.setSmoothCamera(state.smoothCamera);
-        this.controller.setDamageSoundEnabled(state.damageSoundEnabled);
-        this.controller.setDamageAutoReturnEnabled(state.damageAutoReturnEnabled);
-        this.controller.setChunkCurtainVisible(state.chunkCurtainVisible);
+    /** 遍历所有注册面板的自声明属性，将运行时值收集到 UiState。 */
+    private void collectPanelProperties(RtsClientUiStateStore.UiState state) {
+        for (RtsWindowPanel panel : this.persistablePanels.values()) {
+            for (PersistableProperty prop : panel.persistableProperties()) {
+                prop.collectFromRuntime(state);
+            }
+        }
     }
 
-    /** Restores input sensitivity and drag inversion. */
-    private void applyInputState(RtsClientUiStateStore.UiState state) {
-        this.controller.setInvertPanDragX(state.invertPanDragX);
-        this.controller.setInvertPanDragY(state.invertPanDragY);
-        applyInputSensitivity(state.inputSensitivityIndex);
-    }
+    // ====== 帮助方法（被 CtrlBind lambda 引用） ======
 
     /**
-     * Converts the stored sensitivity index to a [0, 1] fraction and applies it to the controller.
-     * <p>The number of presets in the controller determines the granularity of the index-to-fraction mapping.
-     *
-     * @param index the stored sensitivity index
+     * 将存储的灵敏度索引转换为 [0, 1] 分数值并应用到控制器。
      */
     private void applyInputSensitivity(int index) {
         int presetCount = Math.max(1, this.controller.getInputSensitivityPresetCount());
@@ -231,21 +319,7 @@ public final class RtsScreenUiStateManager {
         this.controller.setInputSensitivityByFraction(fraction);
     }
 
-    /** Restores shape mode, fill mode, and rotation angle. */
-    private void applyShapeState(RtsClientUiStateStore.UiState state) {
-        parseAndSetBuildShape(state.buildShape);
-        this.quickBuildPanel.loadStoredShapes(this.controller.getBuildShape(), this.controller.getAreaMineShape());
-        parseAndSetFillMode(state.fillMode);
-        this.shapeController.setLineConnected(state.lineConnected);
-        this.shapeController.rotateToDegrees(Math.floorMod(state.rotationDegrees, 360));
-        this.shapeController.ensureFillModeForShape(this.controller.getBuildShape());
-    }
-
-    /**
-     * Attempts to parse and set the build shape string.
-     *
-     * @param name the enum name of the build shape
-     */
+    /** 尝试解析并设置建造形状字符串。 */
     private void parseAndSetBuildShape(String name) {
         try {
             this.controller.setBuildShape(BuildShape.valueOf(name));
@@ -254,11 +328,7 @@ public final class RtsScreenUiStateManager {
         }
     }
 
-    /**
-     * Attempts to parse and set the fill mode string.
-     *
-     * @param name the enum name of the fill mode
-     */
+    /** 尝试解析并设置填充模式字符串。 */
     private void parseAndSetFillMode(String name) {
         try {
             this.shapeController.setShapeFillMode(ShapeFillMode.valueOf(name));
@@ -267,47 +337,49 @@ public final class RtsScreenUiStateManager {
         }
     }
 
-    /** Restores debug button visibility and GUI scale. */
-    private void applyMiscState(RtsClientUiStateStore.UiState state) {
-        this.debugButtonVisible = state.debugButtonVisible;
-        this.fixedRtsGuiScale = sanitizeRtsGuiScale(state.rtsGuiScale);
-    }
+    // ====== 缩放工具方法 ======
 
-    // ====== Window panel bounds persistence ======
-
-    /** Writes registered window panel bounds into the state. */
-    private void persistWindowPanelBounds(RtsClientUiStateStore.UiState state) {
-        state.windowPanelBounds.clear();
-        for (Map.Entry<String, RtsWindowPanel> entry : this.persistablePanels.entrySet()) {
-            RtsWindowPanel panel = entry.getValue();
-            if (panel.hasUserBoundsPreference()) {
-                state.windowPanelBounds.put(entry.getKey(),
-                        new RtsClientUiStateStore.UiState.PanelBounds(
-                                panel.getWindowX(), panel.getWindowY(),
-                                panel.getWindowWidth(), panel.getWindowHeight()));
-            }
-        }
-    }
-
-    /** Restores registered window panel bounds from the state (via setBounds to avoid intermediate clamp side effects). */
-    private void applyWindowPanelBounds(RtsClientUiStateStore.UiState state) {
-        for (Map.Entry<String, RtsWindowPanel> entry : this.persistablePanels.entrySet()) {
-            RtsClientUiStateStore.UiState.PanelBounds bounds = state.windowPanelBounds.get(entry.getKey());
-            if (bounds != null) {
-                RtsWindowPanel panel = entry.getValue();
-                panel.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
-            }
-        }
-    }
-
-    // ====== Scale utility ======
-
-    /** Snaps the scale to the valid range and rounds to the configured step. */
+    /** 将缩放值限制到合法范围并按配置步长取整。 */
     private static double sanitizeRtsGuiScale(double scale) {
         if (!Double.isFinite(scale)) {
             return DEFAULT_RTS_GUI_SCALE;
         }
         double snapped = Math.round(scale / RTS_GUI_SCALE_STEP) * RTS_GUI_SCALE_STEP;
         return Math.max(MIN_RTS_GUI_SCALE, Math.min(MAX_RTS_GUI_SCALE, snapped));
+    }
+
+    // ========================================================================
+    //  CtrlBind —— 控制器级别设置的声明式双向绑定
+    // ========================================================================
+
+    /**
+     * 控制器级别设置的声明式双向绑定。
+     * <p>每个绑定封装了从运行时收集值到 UiState 的 {@link #collect} 操作，
+     * 以及从 UiState 恢复到运行时的 {@link #apply} 操作。
+     * 由 {@link #ctrlBindings} 列表统一管理，取代旧式逐行 hardcode。
+     */
+    private record CtrlBind(
+            Consumer<RtsClientUiStateStore.UiState> collect,
+            Consumer<RtsClientUiStateStore.UiState> apply
+    ) {
+        /**
+         * 创建简单的布尔字段绑定。
+         *
+         * @param runtimeGet  运行时布尔获取器（如 {@code controller::isXxx}）
+         * @param runtimeSet  运行时布尔设置器（如 {@code controller::setXxx}）
+         * @param stateRead   从 UiState 读取布尔值（如 {@code s -> s.xxx}）
+         * @param stateWrite  向 UiState 写入布尔值（如 {@code (s, v) -> s.xxx = v}）
+         */
+        static CtrlBind bool(
+                BooleanSupplier runtimeGet,
+                Consumer<Boolean> runtimeSet,
+                Function<RtsClientUiStateStore.UiState, Boolean> stateRead,
+                BiConsumer<RtsClientUiStateStore.UiState, Boolean> stateWrite
+        ) {
+            return new CtrlBind(
+                    state -> stateWrite.accept(state, runtimeGet.getAsBoolean()),
+                    state -> runtimeSet.accept(stateRead.apply(state))
+            );
+        }
     }
 }

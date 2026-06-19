@@ -1,6 +1,6 @@
 package com.rtsbuilding.rtsbuilding.server.storage.session;
 
-import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.common.build.BuilderMode;
 import com.rtsbuilding.rtsbuilding.server.storage.state.RtsDestructionState;
 import com.rtsbuilding.rtsbuilding.server.storage.state.RtsFunnelState;
 import com.rtsbuilding.rtsbuilding.server.storage.state.RtsMiningState;

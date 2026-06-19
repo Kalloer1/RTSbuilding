@@ -1,4 +1,4 @@
-package com.rtsbuilding.rtsbuilding.common;
+package com.rtsbuilding.rtsbuilding.common.build;
 
 /**
  * 建造者模式枚举，定义 RTS 模式下玩家的操作模式。

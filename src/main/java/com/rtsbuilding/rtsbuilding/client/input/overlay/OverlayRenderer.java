@@ -3,6 +3,7 @@ package com.rtsbuilding.rtsbuilding.client.input.overlay;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.record.CraftableEntry;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
+import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -115,7 +116,7 @@ public final class OverlayRenderer {
     // =========================================================================
 
     public static void renderOverlayShiftImportButton(GuiGraphics g, Font font, OverlayLayout layout, double mouseX, double mouseY) {
-        boolean enabled = com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore.isOverlayShiftImportEnabled();
+        boolean enabled = RtsClientUiStateStore.isOverlayShiftImportEnabled();
         boolean hovered = inside(mouseX, mouseY, layout.shiftImportX(), layout.returnY(), layout.shiftImportW(), SLOT_SIZE);
         int bg = enabled
                 ? hovered ? 0xCC3AA156 : 0xCC2C873F

@@ -6,6 +6,7 @@ import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.shape.ShapeGeometryUtil;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.client.util.RtsTextureRenderer;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowButton;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowSlider;
@@ -140,6 +141,45 @@ public final class QuickBuildPanel extends RtsWindowPanel {
     private BuildShape lastFillShape;
     /** 直线连接模式按钮 */
     private WindowButton connectToggle;
+
+    // ======================== 持久化属性 ========================
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.boolField(
+                    "quick_build_open",
+                    state -> state.quickBuildOpen,
+                    (state, v) -> state.quickBuildOpen = v,
+                    this::isOpen,
+                    v -> setOpen(v)),
+            PersistableProperty.enumField(
+                    "quick_build_mode",
+                    state -> state.quickBuildMode,
+                    (state, v) -> state.quickBuildMode = v,
+                    () -> this.quickBuildMode,
+                    v -> this.quickBuildMode = v,
+                    QuickBuildMode.BUILD,
+                    QuickBuildMode.class),
+            PersistableProperty.intField(
+                    "chain_destroy_limit",
+                    state -> state.ultimineLimit,
+                    (state, v) -> state.ultimineLimit = v,
+                    () -> this.chainDestroyLimit,
+                    v -> this.chainDestroyLimit = v),
+            PersistableProperty.enumField(
+                    "area_mine_shape",
+                    state -> state.areaMineShape,
+                    (state, v) -> state.areaMineShape = v,
+                    () -> this.rangeDestroyShape,
+                    v -> this.rangeDestroyShape = v,
+                    AreaMineShape.CHAIN,
+                    AreaMineShape.class),
+            PersistableProperty.bounds("quick_build", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
+    }
 
     // ======================== 初始化 ========================
 

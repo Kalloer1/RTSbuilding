@@ -5,6 +5,7 @@ import com.rtsbuilding.rtsbuilding.client.record.CraftRecipeOption;
 import com.rtsbuilding.rtsbuilding.client.record.CraftableEntry;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -470,5 +471,14 @@ public final class RtsCraftQuantityWindowPanel extends RtsWindowPanel {
         int optionsX() {
             return x;
         }
+    }
+
+    private final List<PersistableProperty> properties = List.of(
+            PersistableProperty.bounds("craft_quantity", this)
+    );
+
+    @Override
+    public List<PersistableProperty> persistableProperties() {
+        return properties;
     }
 }

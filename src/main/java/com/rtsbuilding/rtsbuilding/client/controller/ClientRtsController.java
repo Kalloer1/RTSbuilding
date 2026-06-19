@@ -13,8 +13,8 @@ import com.rtsbuilding.rtsbuilding.client.screen.ultimine.AreaMineShape;
 import com.rtsbuilding.rtsbuilding.client.service.BuildPlacementService;
 import com.rtsbuilding.rtsbuilding.client.service.CameraOrbitService;
 import com.rtsbuilding.rtsbuilding.client.service.MiningOperationService;
-import com.rtsbuilding.rtsbuilding.client.state.RtsClientUiStateStore;
-import com.rtsbuilding.rtsbuilding.common.BuilderMode;
+import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
+import com.rtsbuilding.rtsbuilding.common.build.BuilderMode;
 import com.rtsbuilding.rtsbuilding.common.shape.model.ShapeFillMode;
 import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
 import com.rtsbuilding.rtsbuilding.network.builder.*;
@@ -114,16 +114,6 @@ public final class ClientRtsController {
     private AbstractContainerMenu relaxedRemoteMenu;
 
     private ClientRtsController() {
-        RtsClientUiStateStore.UiState uiState = RtsClientUiStateStore.load();
-        this.startCameraAtPlayerHead = uiState.startCameraAtPlayerHead;
-        this.allowPlacedBlockRecovery = uiState.allowPlacedBlockRecovery;
-        this.toolProtectionEnabled = uiState.toolProtectionEnabled;
-        this.playerStatusOverlayEnabled = uiState.playerStatusOverlayEnabled;
-        this.cameraOrbitService.setInvertPanDragX(uiState.invertPanDragX);
-        this.cameraOrbitService.setInvertPanDragY(uiState.invertPanDragY);
-        this.cameraOrbitService.setSmoothCamera(uiState.smoothCamera);
-        this.damageSoundEnabled = uiState.damageSoundEnabled;
-        this.damageAutoReturnEnabled = uiState.damageAutoReturnEnabled;
     }
 
     public static ClientRtsController get() {
@@ -935,7 +925,6 @@ public final class ClientRtsController {
             this.storageStateManager.clearStorageState();
             this.buildPlacementService.clearPlacementSelectionPreserveMode();
             this.miningOperationService.clearMiningState();
-            this.buildPlacementService.setBuildShape(BuildShape.BLOCK);
             this.lastFunnelTarget = null;
             this.funnelTargetCooldownTicks = 0;
             this.storageStateManager.setFunnelWithoutPacket(false);

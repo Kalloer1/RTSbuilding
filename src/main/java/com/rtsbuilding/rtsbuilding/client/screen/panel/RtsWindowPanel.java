@@ -2,6 +2,8 @@ package com.rtsbuilding.rtsbuilding.client.screen.panel;
 
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.common.persist.BoundsProvider;
+import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.client.widget.WindowButton;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,7 +23,7 @@ import java.util.List;
  * That separation lets us migrate visible panels one at a time while the current
  * container overlay and legacy input gate continue to work unchanged.
  */
-public abstract class RtsWindowPanel implements RtsPanel {
+public abstract class RtsWindowPanel implements RtsPanel, BoundsProvider {
     private static final int DEFAULT_TITLE_BAR_H = 20;
     private static final int DEFAULT_MIN_W = 80;
     private static final int DEFAULT_MIN_H = 60;
@@ -125,6 +127,18 @@ public abstract class RtsWindowPanel implements RtsPanel {
 
     /** Computes the default position after {@link #windowWidth} is known. */
     protected abstract void computeDefaultPosition();
+
+    // ======================== 可持久化属性 ========================
+
+    /**
+     * 返回此面板声明的可持久化属性列表。
+     * <p>Manager 的 {@code persistUiState()} 和 {@code applyStoredUiState()} 会遍历此列表，
+     * 自动完成运行时状态 ↔ UiState 的双向同步。
+     * <p>默认返回空列表。子类可重写以声明需要持久化的属性。
+     */
+    public List<PersistableProperty> persistableProperties() {
+        return List.of();
+    }
 
     @Override
     public void init(BuilderScreen screen, ClientRtsController controller) {
@@ -570,7 +584,15 @@ public abstract class RtsWindowPanel implements RtsPanel {
     protected void onClose() {
     }
 
+    /**
+     * 当面板边界发生变化时调用的回调。
+     * <p>基类实现会自动触发持久化，确保所有面板的拖拽/缩放结果被保存。
+     * 子类如需额外处理应调用 {@code super.onBoundsChanged()}。
+     */
     protected void onBoundsChanged() {
+        if (this.screen != null) {
+            this.screen.persistUiState();
+        }
     }
 
     private void markUserBoundsDirty() {
