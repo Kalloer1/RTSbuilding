@@ -176,7 +176,8 @@ public abstract class AreaShapeGenerator {
         List<BlockPos> boundary = new ArrayList<>();
         for (BlockPos pos : full) {
             boolean xEdge = !set.contains(pos.east()) || !set.contains(pos.west());
-            boolean yEdge = !set.contains(pos.above()) || !set.contains(pos.below());
+            // 单层 2D 形状没有上下邻居，不能因此把内部格子误判成边界。
+            boolean yEdge = minY != maxY && (!set.contains(pos.above()) || !set.contains(pos.below()));
             boolean zEdge = !set.contains(pos.north()) || !set.contains(pos.south());
             int edges = (xEdge ? 1 : 0) + (yEdge ? 1 : 0) + (zEdge ? 1 : 0);
             if (edges >= 1) {
