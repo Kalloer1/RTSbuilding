@@ -72,6 +72,27 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+tasks.register('verifyPinyinDictionary') {
+    group = 'verification'
+    description = 'Verify the bundled pinyin dictionary resource exists before packaging.'
+
+    def dict = file('src/main/resources/assets/rtsbuilding/pinyin/data.txt')
+    inputs.file(dict)
+
+    doLast {
+        if (!dict.isFile()) {
+            throw new GradleException("Missing pinyin dictionary: ${dict}")
+        }
+        if (dict.length() < 250_000L) {
+            throw new GradleException("Pinyin dictionary looks truncated: ${dict.length()} bytes")
+        }
+    }
+}
+
+tasks.named('processResources').configure {
+    dependsOn tasks.named('verifyPinyinDictionary')
+}
+
 // ======================================================================
 // Test configuration
 // ======================================================================
@@ -98,9 +119,7 @@ dependencies {
     
     compileOnly "dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}"
 
-    localRuntime "maven.modrinth:sophisticated-core:${sophisticated_core_version}"
-    localRuntime "maven.modrinth:sophisticated-storage:${sophisticated_storage_version}"
-    localRuntime "maven.modrinth:sophisticated-backpacks:${sophisticated_backpacks_version}"
+    // Sophisticated 系列由本地测试包 run/mods 提供，避免 Gradle localRuntime 再注入一份导致 JPMS 模块冲突。
     localRuntime "maven.modrinth:pipez:${pipez_version}"
     compileOnly "maven.modrinth:beyonddimensions:${beyonddimensions_version}"
 

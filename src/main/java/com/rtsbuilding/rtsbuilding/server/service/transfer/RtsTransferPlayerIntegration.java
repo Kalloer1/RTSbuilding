@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.service.transfer;
 
 import com.rtsbuilding.rtsbuilding.network.storage.S2CRtsStoragePagePayload;
+import com.rtsbuilding.rtsbuilding.compat.remote.RtsRemoteMenuCompat;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
@@ -169,6 +170,9 @@ public final class RtsTransferPlayerIntegration {
         if (menu == null || menuSlot < 0 || menuSlot >= menu.slots.size()) {
             return;
         }
+        if (RtsRemoteMenuCompat.isLocalSophisticatedMenu(menu, player)) {
+            return;
+        }
         List<LinkedHandler> activeLinked = RtsLinkedStorageResolver.resolveLinkedHandlers(player, session);
         if (activeLinked.isEmpty()) {
             return;
@@ -320,7 +324,8 @@ public final class RtsTransferPlayerIntegration {
             return;
         }
         ItemStack remain;
-        if (RtsTransferUtils.movesLinkedQuickMoveToPlayerInventory(player.containerMenu)) {
+        if (RtsTransferUtils.movesLinkedQuickMoveToPlayerInventory(player.containerMenu)
+                || RtsRemoteMenuCompat.isLocalSophisticatedMenu(player.containerMenu, player)) {
             remain = RtsTransferInserter.moveToPlayerInventoryOnly(player, extracted);
         } else {
             remain = RtsTransferInserter.moveLinkedStackIntoOpenMenu(player, extracted);
