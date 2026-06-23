@@ -127,6 +127,9 @@ public interface IWorkflowEngine {
      */
     void setWorkflowExtraData(ServerPlayer player, int entryId, @Nullable CompoundTag data);
 
+    /** 设置此工作流是否跳过自动覆盖和超时清理。 */
+    void setWorkflowProtected(ServerPlayer player, int entryId, boolean protectedWorkflow);
+
     /**
      * 返回工作流条目的额外持久化数据。
      *

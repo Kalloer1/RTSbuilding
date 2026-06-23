@@ -174,6 +174,33 @@ public final class RtsWorkflowSlotManager {
     }
 
     /**
+     * 自动替换一个可覆盖的普通工作流，并返回被移除的条目快照。
+     *
+     * <p>玩家标记为“不被覆盖”的条目会被跳过；显式删除和取消全部仍由引擎的
+     * 管理操作处理，不受这个自动替换策略影响。</p>
+     */
+    public @Nullable RtsWorkflowEntry removeOldestReplaceableEntry() {
+        rwLock.writeLock().lock();
+        try {
+            RtsWorkflowEntry candidate = null;
+            for (RtsWorkflowEntry entry : entries) {
+                if (entry.isOccupied()
+                        && !entry.protectedWorkflow()
+                        && (candidate == null || entry.createdAt() < candidate.createdAt())) {
+                    candidate = entry;
+                }
+            }
+            if (candidate != null) {
+                entries.remove(candidate);
+                entryIndex.remove(candidate.id());
+            }
+            return candidate;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    /**
      * 返回指定位置索引处的条目。
      */
     public @Nullable RtsWorkflowEntry getEntry(int index) {
@@ -387,7 +414,7 @@ public final class RtsWorkflowSlotManager {
             Iterator<RtsWorkflowEntry> it = entries.iterator();
             while (it.hasNext()) {
                 RtsWorkflowEntry e = it.next();
-                if (e.isOccupied() && (now - e.lastUpdatedAt() > maxIdleMillis)) {
+                if (e.isOccupied() && !e.protectedWorkflow() && (now - e.lastUpdatedAt() > maxIdleMillis)) {
                     removed.add(e.id());
                     entryIndex.remove(e.id());
                     it.remove();

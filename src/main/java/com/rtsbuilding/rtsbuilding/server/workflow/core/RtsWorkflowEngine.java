@@ -219,14 +219,21 @@ public final class RtsWorkflowEngine implements IWorkflowEngine {
             return Optional.empty();
         }
         RtsWorkflowSlotManager slots = getOrCreateSlots(player);
+        if (slots.isFull()) {
+            RtsWorkflowEntry replaced = slots.removeOldestReplaceableEntry();
+            if (replaced != null) {
+                fireEvent(WorkflowEventType.CANCELLED, player.getUUID(), replaced.id(), replaced);
+                RtsbuildingMod.LOGGER.info("[Workflow] {} 自动替换可覆盖工作流 #{}: {}",
+                        player.getGameProfile().getName(), replaced.id(), replaced.type());
+            }
+        }
         RtsWorkflowEntry entry = slots.addEntry(priority);
         if (entry == null) {
             String name = player.getGameProfile().getName();
-            RtsbuildingMod.LOGGER.warn("[Workflow] {} 工作流已满 ({}), 拒绝新工作流 {}",
+            RtsbuildingMod.LOGGER.warn("[Workflow] {} 工作流已满且没有可覆盖条目 ({}), 拒绝新工作流 {}",
                     name, RtsWorkflowSlotManager.MAX_SLOTS, type);
             player.displayClientMessage(
-                    Component.literal("§c工作流已满 (" + RtsWorkflowSlotManager.MAX_SLOTS
-                            + "/" + RtsWorkflowSlotManager.MAX_SLOTS + "), 无法开始新的操作！"),
+                    Component.literal("§c工作流已满且都被保护，无法开始新的操作！"),
                     true);
             return Optional.empty();
         }
@@ -489,6 +496,26 @@ public final class RtsWorkflowEngine implements IWorkflowEngine {
         } else {
             syncService.sendIdle(player);
         }
+    }
+
+    @Override
+    public void setWorkflowProtected(ServerPlayer player, int entryId, boolean protectedWorkflow) {
+        if (player == null) return;
+        ResourceKey<Level> dimension = player.level().dimension();
+        RtsWorkflowSlotManager slots = getSlots(player.getUUID(), dimension);
+        if (slots == null) return;
+
+        RtsWorkflowEntry entry = slots.findEntryById(entryId);
+        if (entry == null || !entry.isOccupied()) return;
+
+        entry.setProtectedWorkflow(protectedWorkflow);
+        syncService.notifyPlayer(player, slots);
+
+        player.displayClientMessage(
+                Component.literal(protectedWorkflow
+                        ? "§7[工作流] §b◆ 已设为不被覆盖"
+                        : "§7[工作流] §7◇ 已允许自动覆盖"),
+                true);
     }
 
     @Override

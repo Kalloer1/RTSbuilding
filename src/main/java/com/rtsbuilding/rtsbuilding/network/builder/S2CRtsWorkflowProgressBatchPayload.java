@@ -46,6 +46,7 @@ public record S2CRtsWorkflowProgressBatchPayload(
             buf.writeInt(entry.failedBlocks());
             buf.writeByte(entry.suspended());
             buf.writeByte(entry.paused());
+            buf.writeByte(entry.protectedWorkflow());
             buf.writeInt(entry.workflowEntryId());
             List<String> items = entry.missingItems();
             buf.writeInt(items.size());
@@ -69,6 +70,7 @@ public record S2CRtsWorkflowProgressBatchPayload(
             int failedBlocks = buf.readInt();
             byte suspended = buf.readByte();
             byte paused = buf.readByte();
+            byte protectedWorkflow = buf.readByte();
             int workflowEntryId = buf.readInt();
             int missingCount = buf.readInt();
             List<String> missingItems = new ArrayList<>(missingCount);
@@ -79,7 +81,7 @@ public record S2CRtsWorkflowProgressBatchPayload(
             entries.add(new S2CRtsWorkflowProgressPayload(
                     workflowIndex, workflowCount, workflowType, priority,
                     totalBlocks, completedBlocks, failedBlocks,
-                    missingItems, detailMessage, suspended, paused, workflowEntryId));
+                    missingItems, detailMessage, suspended, paused, protectedWorkflow, workflowEntryId));
         }
         return new S2CRtsWorkflowProgressBatchPayload(entries);
     }

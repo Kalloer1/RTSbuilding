@@ -549,6 +549,7 @@ public final class ClientRtsController {
                 payload.detailMessage(),
                 payload.suspended() != 0,
                 payload.paused() != 0,
+                payload.protectedWorkflow() != 0,
                 payload.workflowEntryId());
     }
 

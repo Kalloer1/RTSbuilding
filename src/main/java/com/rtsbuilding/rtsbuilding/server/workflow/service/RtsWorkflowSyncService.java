@@ -60,6 +60,7 @@ public final class RtsWorkflowSyncService {
                     status.detailMessage(),
                     status.suspended() ? (byte) 1 : (byte) 0,
                     status.paused() ? (byte) 1 : (byte) 0,
+                    status.protectedWorkflow() ? (byte) 1 : (byte) 0,
                     entry.id()));
         }
         PacketDistributor.sendToPlayer(player, new S2CRtsWorkflowProgressBatchPayload(entries));
@@ -88,6 +89,7 @@ public final class RtsWorkflowSyncService {
                 status.detailMessage(),
                 (byte) 0,
                 (byte) 0,
+                status.protectedWorkflow() ? (byte) 1 : (byte) 0,
                 entry.id()));
 
         // 如果还有剩余条目，通知更新后的状态

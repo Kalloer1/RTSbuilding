@@ -102,6 +102,17 @@ public final class RtsInteractionHandlers {
         });
     }
 
+    public static void handleSetWorkflowProtected(C2SRtsSetWorkflowProtectedPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                IWorkflowEngine engine = RtsWorkflowEngine.getInstance();
+                engine.setWorkflowProtected(
+                        serverPlayer,
+                        payload.workflowEntryId(),
+                        payload.protectedWorkflow());
+            }
+        });
+    }
     public static void handleScanResumePlacement(C2SRtsScanResumePlacementPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {

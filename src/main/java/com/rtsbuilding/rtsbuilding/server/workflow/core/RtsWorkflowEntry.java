@@ -47,6 +47,7 @@ public final class RtsWorkflowEntry {
     private String detailMessage = "";
     private boolean suspended;
     private boolean paused;
+    private boolean protectedWorkflow;
 
     /** 工作流类型特定的额外持久化数据（如蓝图蓝图源数据、剩余队列等）。 */
     private @Nullable CompoundTag extraData;
@@ -95,6 +96,9 @@ public final class RtsWorkflowEntry {
 
     /** {@code true} 表示此工作流已被用户暂停。 */
     public boolean paused() { return paused; }
+
+    /** {@code true} 表示此工作流不会被新工作流自动覆盖。 */
+    public boolean protectedWorkflow() { return protectedWorkflow; }
 
     /** 返回工作流类型特定的额外持久化数据，可能为 null。 */
     public @Nullable CompoundTag getExtraData() { return extraData; }
@@ -155,7 +159,7 @@ public final class RtsWorkflowEntry {
         }
         return RtsWorkflowStatus.fromRaw(
                 type, priority, totalBlocks, completedBlocks, failedBlocks,
-                List.copyOf(missingItems), detailMessage, suspended, paused, id);
+                List.copyOf(missingItems), detailMessage, suspended, paused, protectedWorkflow, id);
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -224,6 +228,11 @@ public final class RtsWorkflowEntry {
         touch();
     }
 
+    public void setProtectedWorkflow(boolean protectedWorkflow) {
+        this.protectedWorkflow = protectedWorkflow;
+        touch();
+    }
+
     /** 将此条目重置为默认（空闲）状态——用于回收槽位时。 */
     void reset() {
         this.type = null;
@@ -235,6 +244,7 @@ public final class RtsWorkflowEntry {
         this.detailMessage = "";
         this.suspended = false;
         this.paused = false;
+        this.protectedWorkflow = false;
         touch();
     }
 
@@ -257,6 +267,7 @@ public final class RtsWorkflowEntry {
     private static final String NBT_DETAIL = "detail";
     private static final String NBT_SUSPENDED = "suspended";
     private static final String NBT_PAUSED = "paused";
+    private static final String NBT_PROTECTED = "protected";
     private static final String NBT_CREATED_AT = "created_at";
     private static final String NBT_EXTRA_DATA = "extra_data";
     private static final String NBT_LAST_UPDATED_AT = "last_updated_at";
@@ -286,6 +297,7 @@ public final class RtsWorkflowEntry {
         }
         tag.putBoolean(NBT_SUSPENDED, suspended);
         tag.putBoolean(NBT_PAUSED, paused);
+        tag.putBoolean(NBT_PROTECTED, protectedWorkflow);
         if (extraData != null && !extraData.isEmpty()) {
             tag.put(NBT_EXTRA_DATA, extraData.copy());
         }
@@ -339,6 +351,7 @@ public final class RtsWorkflowEntry {
                 ? tag.getString(NBT_DETAIL) : "";
         entry.suspended = tag.getBoolean(NBT_SUSPENDED);
         entry.paused = tag.getBoolean(NBT_PAUSED);
+        entry.protectedWorkflow = tag.getBoolean(NBT_PROTECTED);
 
         // 恢复工作流类型特定的额外数据
         if (tag.contains(NBT_EXTRA_DATA, Tag.TAG_COMPOUND)) {
@@ -383,6 +396,7 @@ public final class RtsWorkflowEntry {
                 + ", progress=" + completedBlocks + "/" + totalBlocks
                 + (suspended ? ", SUSPENDED" : "")
                 + (paused ? ", PAUSED" : "")
+                + (protectedWorkflow ? ", PROTECTED" : "")
                 + "}";
     }
 }

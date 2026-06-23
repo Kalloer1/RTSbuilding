@@ -34,6 +34,7 @@ public record RtsWorkflowStatus(
         float progress,
         boolean suspended,
         boolean paused,
+        boolean protectedWorkflow,
         boolean isComplete,
         List<String> missingItems,
         String detailMessage,
@@ -53,7 +54,7 @@ public record RtsWorkflowStatus(
             RtsWorkflowType type, RtsWorkflowPriority priority,
             int totalBlocks, int completedBlocks, int failedBlocks,
             List<String> missingItems, String detailMessage,
-            boolean suspended, boolean paused, int entryId) {
+            boolean suspended, boolean paused, boolean protectedWorkflow, int entryId) {
         int remaining = totalBlocks > 0
                 ? Math.max(0, totalBlocks - (completedBlocks + failedBlocks))
                 : 0;
@@ -63,7 +64,7 @@ public record RtsWorkflowStatus(
         boolean isComplete = totalBlocks > 0
                 && (completedBlocks + failedBlocks) >= totalBlocks;
         return new RtsWorkflowStatus(type, priority, totalBlocks, completedBlocks,
-                failedBlocks, remaining, progress, suspended, paused, isComplete,
+                failedBlocks, remaining, progress, suspended, paused, protectedWorkflow, isComplete,
                 missingItems == null ? List.of() : List.copyOf(missingItems),
                 detailMessage == null ? "" : detailMessage, entryId);
     }
@@ -73,7 +74,7 @@ public record RtsWorkflowStatus(
      */
     public static RtsWorkflowStatus idle() {
         return new RtsWorkflowStatus(null, RtsWorkflowPriority.NORMAL,
-                0, 0, 0, 0, 0.0F, false, false, false,
+                0, 0, 0, 0, 0.0F, false, false, false, false,
                 List.of(), "", -1);
     }
 
