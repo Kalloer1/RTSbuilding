@@ -300,6 +300,44 @@ public final class BlueprintPanel {
             }
             return true;
         }
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE) {
+            if (!nameDialogValue.isEmpty()) {
+                nameDialogValue = nameDialogValue.substring(0, nameDialogValue.length() - 1);
+            }
+            return true;
+        }
+        boolean ctrlDown = org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(),
+                org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS
+                || org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(),
+                org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        if (ctrlDown) {
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_A) {
+                nameDialogValue = "";
+                nameDialogReplaceOnType = true;
+                return true;
+            }
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_C) {
+                org.lwjgl.glfw.GLFW.glfwSetClipboardString(Minecraft.getInstance().getWindow().getWindow(), nameDialogValue);
+                return true;
+            }
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_X) {
+                org.lwjgl.glfw.GLFW.glfwSetClipboardString(Minecraft.getInstance().getWindow().getWindow(), nameDialogValue);
+                nameDialogValue = "";
+                nameDialogReplaceOnType = false;
+                return true;
+            }
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_V) {
+                String clipboard = org.lwjgl.glfw.GLFW.glfwGetClipboardString(Minecraft.getInstance().getWindow().getWindow());
+                if (clipboard != null && nameDialogValue.length() + clipboard.length() < 80) {
+                    if (nameDialogReplaceOnType) {
+                        nameDialogValue = "";
+                        nameDialogReplaceOnType = false;
+                    }
+                    nameDialogValue += clipboard;
+                }
+                return true;
+            }
+        }
         return true;
     }
 
@@ -848,6 +886,20 @@ public final class BlueprintPanel {
             return;
         }
         CAPTURE.moveSelection(dx, dy, dz, BlueprintPanel::setStatus);
+    }
+
+    static void moveCapturePointA(int dx, int dy, int dz) {
+        if (!Config.areBlueprintsEnabled()) {
+            return;
+        }
+        CAPTURE.movePointA(dx, dy, dz, BlueprintPanel::setStatus);
+    }
+
+    static void moveCapturePointB(int dx, int dy, int dz) {
+        if (!Config.areBlueprintsEnabled()) {
+            return;
+        }
+        CAPTURE.movePointB(dx, dy, dz, BlueprintPanel::setStatus);
     }
 
     static void adjustCaptureSize(int dx, int dy, int dz) {

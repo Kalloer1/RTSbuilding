@@ -8,6 +8,8 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  *
  * Feedback payloads are S2C-only and should still route through
  * ClientPayloadDispatcher to preserve dedicated-server classloading safety.
+ *
+ * <p>Uses the optional registrar to allow clients without the mod to connect.</p>
  */
 public final class RtsFeedbackPackets {
     private RtsFeedbackPackets() {

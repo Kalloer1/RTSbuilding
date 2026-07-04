@@ -5,7 +5,9 @@ import com.rtsbuilding.rtsbuilding.common.shape.model.ShapeFillMode;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 长方体（BOX / 3D 立方体）形状生成器。
@@ -22,12 +24,10 @@ public class BoxShapeGenerator extends AreaShapeGenerator {
 
     @Override
     public List<BlockPos> generatePositions(AreaShapeInput input, ShapeFillMode fillMode) {
-        // 计算三个轴上的偏移量并限制最大范围
         int dx = clampOffset(input.end().getX() - input.start().getX());
         int dz = clampOffset(input.end().getZ() - input.start().getZ());
         int dy = clampOffset(input.heightOffset());
 
-        // 确定各轴的最小/最大范围
         int minX = Math.min(0, dx);
         int maxX = Math.max(0, dx);
         int minZ = Math.min(0, dz);
@@ -35,7 +35,10 @@ public class BoxShapeGenerator extends AreaShapeGenerator {
         int minY = Math.min(0, dy);
         int maxY = Math.max(0, dy);
 
-        // 生成实心长方体的所有方块位置（从上往下逐层）
+        if (fillMode == ShapeFillMode.SKELETON) {
+            return generateSkeletonPositions(input.start(), minX, maxX, minY, maxY, minZ, maxZ);
+        }
+
         List<BlockPos> full = new ArrayList<>();
         for (int y = maxY; y >= minY; y--) {
             for (int x = minX; x <= maxX; x++) {
@@ -45,11 +48,44 @@ public class BoxShapeGenerator extends AreaShapeGenerator {
             }
         }
 
-        // 实心模式下直接返回全部位置，空心/骨架模式则过滤出边界
         if (fillMode == ShapeFillMode.FILL || full.isEmpty()) {
             return full;
         }
 
         return filterBoundary(full, minY, maxY);
+    }
+
+    private static List<BlockPos> generateSkeletonPositions(BlockPos start, int minX, int maxX, int minY, int maxY, int minZ, int maxZ) {
+        Set<BlockPos> skeleton = new HashSet<>();
+
+        // 顶面4条棱线
+        for (int x = minX; x <= maxX; x++) {
+            skeleton.add(start.offset(x, maxY, minZ));
+            skeleton.add(start.offset(x, maxY, maxZ));
+        }
+        for (int z = minZ; z <= maxZ; z++) {
+            skeleton.add(start.offset(minX, maxY, z));
+            skeleton.add(start.offset(maxX, maxY, z));
+        }
+
+        // 底面4条棱线
+        for (int x = minX; x <= maxX; x++) {
+            skeleton.add(start.offset(x, minY, minZ));
+            skeleton.add(start.offset(x, minY, maxZ));
+        }
+        for (int z = minZ; z <= maxZ; z++) {
+            skeleton.add(start.offset(minX, minY, z));
+            skeleton.add(start.offset(maxX, minY, z));
+        }
+
+        // 竖边4条棱线
+        for (int y = minY; y <= maxY; y++) {
+            skeleton.add(start.offset(minX, y, minZ));
+            skeleton.add(start.offset(maxX, y, minZ));
+            skeleton.add(start.offset(maxX, y, maxZ));
+            skeleton.add(start.offset(minX, y, maxZ));
+        }
+
+        return new ArrayList<>(skeleton);
     }
 }

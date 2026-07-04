@@ -7,7 +7,7 @@ import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 /**
  * 挖掘网络包发送辅助器，向客户端发送视觉反馈数据包。
@@ -31,7 +31,7 @@ public final class RtsMiningNetworkHelper {
 
     /** 向指定位置发送破坏阶段裂纹更新。 */
     public static void sendMineProgress(ServerPlayer player, BlockPos pos, int stage) {
-        PacketDistributor.sendToPlayer(player, new S2CRtsMineProgressPayload(pos, (byte) stage));
+        RtsPacketSender.sendToPlayer(player, new S2CRtsMineProgressPayload(pos, (byte) stage));
     }
 
     /**
@@ -41,13 +41,13 @@ public final class RtsMiningNetworkHelper {
         if (player == null || pos == null) {
             return;
         }
-        PacketDistributor.sendToPlayer(player,
+        RtsPacketSender.sendToPlayer(player,
                 new S2CRtsBreakAnimationPayload(pos.immutable(), state, resultState));
     }
 
     /** 发送连锁挖掘进度更新（已处理数/总数）。 */
     public static void sendUltimineProgress(ServerPlayer player, int processed, int total) {
-        PacketDistributor.sendToPlayer(player, new S2CRtsUltimineProgressPayload(processed, total));
+        RtsPacketSender.sendToPlayer(player, new S2CRtsUltimineProgressPayload(processed, total));
     }
 
     /**

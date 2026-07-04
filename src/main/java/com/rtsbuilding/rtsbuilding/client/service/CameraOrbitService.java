@@ -4,8 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.rtsbuilding.rtsbuilding.client.bootstrap.ClientKeyMappings;
 import com.rtsbuilding.rtsbuilding.client.network.RtsClientPacketGateway;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
-import com.rtsbuilding.rtsbuilding.common.RtsEntities;
-import com.rtsbuilding.rtsbuilding.common.entity.RtsCameraEntity;
+import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
@@ -103,7 +102,7 @@ public final class CameraOrbitService {
     //  Fields — mirror camera & previous view restoration
     // =========================================================================
 
-    private RtsCameraEntity localMirrorCamera;
+    private AreaEffectCloud localMirrorCamera;
     private Entity previousCameraEntity;
     private CameraType previousCameraType = CameraType.FIRST_PERSON;
     private boolean previousBobView = true;
@@ -399,7 +398,7 @@ public final class CameraOrbitService {
         return this.localPitchDeg;
     }
 
-    public RtsCameraEntity getLocalMirrorCamera() {
+    public AreaEffectCloud getLocalMirrorCamera() {
         return this.localMirrorCamera;
     }
 
@@ -586,6 +585,9 @@ public final class CameraOrbitService {
 
         snapLocalMirrorCameraPose();
 
+        // 在多人模式下同步本地状态到服务端实体
+        syncLocalStateToServerEntity();
+
         if (minecraft.getCameraEntity() != this.localMirrorCamera) {
             if (this.cameraRestoreCooldownTicks <= 0) {
                 minecraft.setCameraEntity(this.localMirrorCamera);
@@ -630,8 +632,18 @@ public final class CameraOrbitService {
 
     private void snapLocalMirrorCameraPose() {
         if (this.localMirrorCamera != null) {
-            this.localMirrorCamera.snapTo(this.localX, this.localY, this.localZ, this.localYawDeg, this.localPitchDeg);
+            snapLocalCameraTo(this.localX, this.localY, this.localZ, this.localYawDeg, this.localPitchDeg);
         }
+    }
+
+    private void snapLocalCameraTo(double x, double y, double z, float yaw, float pitch) {
+        this.localMirrorCamera.setPos(x, y, z);
+        this.localMirrorCamera.setYRot(yaw);
+        this.localMirrorCamera.setXRot(pitch);
+        this.localMirrorCamera.setYHeadRot(yaw);
+        this.localMirrorCamera.setYBodyRot(yaw);
+        this.localMirrorCamera.xRotO = pitch;
+        this.localMirrorCamera.yRotO = yaw;
     }
 
     private void ensureLocalMirrorCamera(Minecraft minecraft) {
@@ -639,11 +651,78 @@ public final class CameraOrbitService {
             this.localMirrorCamera = null;
             return;
         }
+
+        // 首先尝试通过服务端实体 ID 获取服务端创建的相机实体
+        if (this.serverCameraEntityId > 0) {
+            Entity serverEntity = minecraft.level.getEntity(this.serverCameraEntityId);
+            if (serverEntity instanceof AreaEffectCloud cloud) {
+                // 使用服务端的实体（多人模式）
+                if (this.localMirrorCamera != cloud) {
+                    this.localMirrorCamera = cloud;
+                    // 确保服务端实体的属性正确
+                    cloud.setNoGravity(true);
+                    cloud.noPhysics = true;
+                    cloud.setInvisible(true);
+                    cloud.setRadius(0.0F);
+                    cloud.setDuration(Integer.MAX_VALUE);
+                }
+                return;
+            }
+        }
+
+        // 如果服务端实体不可用，使用本地实体（单人模式或服务端实体未加载）
         if (this.localMirrorCamera != null && this.localMirrorCamera.level() == minecraft.level) {
             return;
         }
-        this.localMirrorCamera = new RtsCameraEntity(RtsEntities.RTS_CAMERA_ENTITY.get(), minecraft.level);
-        this.localMirrorCamera.snapTo(this.localX, this.localY, this.localZ, this.localYawDeg, this.localPitchDeg);
+        this.localMirrorCamera = new AreaEffectCloud(minecraft.level, this.localX, this.localY, this.localZ);
+        this.localMirrorCamera.setNoGravity(true);
+        this.localMirrorCamera.noPhysics = true;
+        this.localMirrorCamera.setInvisible(true);
+        this.localMirrorCamera.setRadius(0.0F);
+        this.localMirrorCamera.setDuration(Integer.MAX_VALUE);
+        snapLocalCameraTo(this.localX, this.localY, this.localZ, this.localYawDeg, this.localPitchDeg);
+    }
+
+    /**
+     * 在多人模式下，同步客户端本地状态到服务端实体。
+     * 只有当本地实体与服务端实体不同时才进行同步。
+     */
+    private void syncLocalStateToServerEntity() {
+        if (this.localMirrorCamera == null) {
+            return;
+        }
+
+        // 检查是否使用了服务端实体
+        if (this.serverCameraEntityId > 0 && this.localMirrorCamera.getId() == this.serverCameraEntityId) {
+            // 是服务端实体，检查位置是否需要同步
+            // 只有当本地计算的位置与服务端实体位置差异较大时才同步（平滑处理）
+            double dx = this.localX - this.localMirrorCamera.getX();
+            double dy = this.localY - this.localMirrorCamera.getY();
+            double dz = this.localZ - this.localMirrorCamera.getZ();
+            double distSq = dx * dx + dy * dy + dz * dz;
+
+            // 只有当差异超过阈值时才同步（避免微小抖动）
+            if (distSq > 0.0001) {
+                // 服务端会处理实际的位置更新，这里客户端也更新是为了视觉效果
+                // 服务端的 move 方法会覆盖这个位置
+                snapToAreaEffectCloud(this.localMirrorCamera,
+                        this.localX, this.localY, this.localZ,
+                        this.localYawDeg, this.localPitchDeg);
+            }
+        }
+    }
+
+    /**
+     * 设置 AreaEffectCloud 实体的位置和旋转。
+     */
+    private static void snapToAreaEffectCloud(AreaEffectCloud cloud, double x, double y, double z, float yaw, float pitch) {
+        cloud.setPos(x, y, z);
+        cloud.setYRot(yaw);
+        cloud.setXRot(pitch);
+        cloud.setYHeadRot(yaw);
+        cloud.setYBodyRot(yaw);
+        cloud.xRotO = pitch;
+        cloud.yRotO = yaw;
     }
 
     // =========================================================================

@@ -5,7 +5,7 @@ import com.rtsbuilding.rtsbuilding.network.progression.S2CRtsQuestDetectStatusPa
 import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 /**
  * FTB 任务（Quests）检测服务，与 FTB Quests 模组集成。
@@ -92,7 +92,7 @@ public final class QuestService {
 
     public static void sendQuestDetectStatus(ServerPlayer player, byte phase,
             int scannedTasks, int totalTasks, int completedTasks) {
-        PacketDistributor.sendToPlayer(
+        RtsPacketSender.sendToPlayer(
                 player,
                 new S2CRtsQuestDetectStatusPayload(
                         phase,

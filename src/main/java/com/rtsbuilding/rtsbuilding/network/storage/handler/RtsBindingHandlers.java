@@ -75,6 +75,14 @@ public final class RtsBindingHandlers {
         });
     }
 
+    public static void handleSwapHotbarSlot(com.rtsbuilding.rtsbuilding.network.storage.C2SRtsSwapHotbarSlotPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                ServiceRegistry.getInstance().binding().swapHotbarSlot(serverPlayer, payload.slot(), payload.targetItemId());
+            }
+        });
+    }
+
     public static void handleSetQuickSlot(com.rtsbuilding.rtsbuilding.network.storage.C2SRtsSetQuickSlotPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {

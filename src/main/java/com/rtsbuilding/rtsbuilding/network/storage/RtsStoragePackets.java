@@ -10,6 +10,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * Registers linked-storage browser, GUI binding, and overlay transfer packets.
  * This class groups packet registration only; payload ids, codecs, and packet
  * directions stay in the payload records.
+ *
+ * <p>All packets use the optional registrar to allow clients without the mod
+ * to connect to the server.</p>
  */
 public final class RtsStoragePackets {
     private RtsStoragePackets() {
@@ -50,6 +53,11 @@ public final class RtsStoragePackets {
                 C2SRtsStoreHotbarSlotPayload.TYPE,
                 C2SRtsStoreHotbarSlotPayload.STREAM_CODEC,
                 RtsBindingHandlers::handleStoreHotbarSlot);
+
+        registrar.playToServer(
+                C2SRtsSwapHotbarSlotPayload.TYPE,
+                C2SRtsSwapHotbarSlotPayload.STREAM_CODEC,
+                RtsBindingHandlers::handleSwapHotbarSlot);
 
         registrar.playToServer(
                 C2SRtsSetQuickSlotPayload.TYPE,

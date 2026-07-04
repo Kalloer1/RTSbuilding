@@ -1,1 +1,22 @@
-/benchmark-visualization/benchmark.db
+# IDE VSCode 配置，不上传
+.vscode/
+
+# Gradle 缓存、编译产物
+.gradle/
+build/
+gradle/
+
+# 日志、崩溃报告
+*.log
+latest.log
+crash_report/
+crash_report_new/
+
+# 临时导出、测试文件
+jar_extract/
+.trae/
+benchmark-visualization/
+
+# Windows系统垃圾
+Thumbs.db
+Desktop.ini

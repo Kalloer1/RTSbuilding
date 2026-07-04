@@ -29,7 +29,7 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -177,7 +177,7 @@ public final class RtsCraftingExecutor {
         ServiceRegistry.getInstance().page().recordRecentItem(session, craftedItemId,
                 S2CRtsStoragePagePayload.RECENT_ITEM_CRAFTED, totalCraftedCount);
         ServiceRegistry.getInstance().session().saveToPlayerNbt(player, session);
-        PacketDistributor.sendToPlayer(player, new S2CRtsCraftFeedbackPayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCraftFeedbackPayload(
                 craftedItemId, totalCraftedCount,
                 new ArrayList<>(consumedCounts.keySet()),
                 new ArrayList<>(consumedCounts.values())));

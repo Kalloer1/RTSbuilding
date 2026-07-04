@@ -38,21 +38,29 @@ record LinkedRefPayload(
 
 // ---- 类别选择 -----------------------------------------------------
 
-record CategorySelection(CategorySelectionType type, String namespace, String tabKey) {
+record CategorySelection(CategorySelectionType type, String namespace, String tabKey, String customId) {
     static CategorySelection all() {
-        return new CategorySelection(CategorySelectionType.ALL, "", "");
+        return new CategorySelection(CategorySelectionType.ALL, "", "", "");
     }
 
     static CategorySelection mod(String namespace) {
-        return new CategorySelection(CategorySelectionType.MOD, namespace, "");
+        return new CategorySelection(CategorySelectionType.MOD, namespace, "", "");
     }
 
     static CategorySelection tab(String namespace, String tabKey) {
-        return new CategorySelection(CategorySelectionType.TAB, namespace, tabKey);
+        return new CategorySelection(CategorySelectionType.TAB, namespace, tabKey, "");
+    }
+
+    static CategorySelection custom(String customId) {
+        return new CategorySelection(CategorySelectionType.CUSTOM, "", "", customId);
     }
 
     boolean isCreativeTab() {
         return this.type == CategorySelectionType.TAB;
+    }
+
+    boolean isCustom() {
+        return this.type == CategorySelectionType.CUSTOM;
     }
 
     boolean matches(String namespace, Set<String> tabs) {
@@ -60,6 +68,7 @@ record CategorySelection(CategorySelectionType type, String namespace, String ta
             case ALL -> true;
             case MOD -> this.namespace.equals(namespace);
             case TAB -> this.namespace.equals(namespace) && tabs.contains(this.tabKey);
+            case CUSTOM -> false;
         };
     }
 }
@@ -67,5 +76,6 @@ record CategorySelection(CategorySelectionType type, String namespace, String ta
 enum CategorySelectionType {
     ALL,
     MOD,
-    TAB
+    TAB,
+    CUSTOM
 }

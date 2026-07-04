@@ -5,7 +5,7 @@ import com.rtsbuilding.rtsbuilding.network.builder.S2CRtsWorkflowProgressPayload
 import com.rtsbuilding.rtsbuilding.server.workflow.core.RtsWorkflowEntry;
 import com.rtsbuilding.rtsbuilding.server.workflow.model.RtsWorkflowStatus;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +36,7 @@ public final class RtsWorkflowSyncService {
         byte totalCountByte = (byte) Math.min(totalCount, 255);
 
         if (totalCount == 0) {
-            PacketDistributor.sendToPlayer(player, S2CRtsWorkflowProgressPayload.idle());
+            RtsPacketSender.sendToPlayer(player, S2CRtsWorkflowProgressPayload.idle());
             return;
         }
 
@@ -63,7 +63,7 @@ public final class RtsWorkflowSyncService {
                     status.protectedWorkflow() ? (byte) 1 : (byte) 0,
                     entry.id()));
         }
-        PacketDistributor.sendToPlayer(player, new S2CRtsWorkflowProgressBatchPayload(entries));
+        RtsPacketSender.sendToPlayer(player, new S2CRtsWorkflowProgressBatchPayload(entries));
     }
 
     /**
@@ -77,7 +77,7 @@ public final class RtsWorkflowSyncService {
         // 在移除前发送此条目的最终快照
         RtsWorkflowStatus status = entry.snapshot();
         int remainingCount = slots.occupiedCount() - 1;
-        PacketDistributor.sendToPlayer(player, new S2CRtsWorkflowProgressPayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsWorkflowProgressPayload(
                 (byte) removedAtIndex,
                 (byte) remainingCount,
                 status.type() != null ? (byte) status.type().ordinal() : (byte) -1,
@@ -101,7 +101,7 @@ public final class RtsWorkflowSyncService {
      */
     public void sendIdle(ServerPlayer player) {
         if (player != null) {
-            PacketDistributor.sendToPlayer(player, S2CRtsWorkflowProgressPayload.idle());
+            RtsPacketSender.sendToPlayer(player, S2CRtsWorkflowProgressPayload.idle());
         }
     }
 }

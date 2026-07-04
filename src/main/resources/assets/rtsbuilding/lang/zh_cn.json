@@ -1,4 +1,4 @@
-﻿{
+{
   "key.categories.rtsbuilding": "RTSbuilding",
   "key.rtsbuilding.toggle_rts": "切换俯视建造模式",
   "key.rtsbuilding.quick_funnel": "快速漏斗",
@@ -23,6 +23,17 @@
   "key.rtsbuilding.camera_up_secondary": "RTS 镜头：上升 2",
   "key.rtsbuilding.camera_down": "RTS 镜头：下降",
   "key.rtsbuilding.camera_down_arrow": "RTS 镜头：下降",
+  "key.rtsbuilding.quick_build": "RTS 快捷建造",
+  "key.rtsbuilding.toggle_chunk_display": "RTS 切换区块显示",
+  "key.rtsbuilding.cycle_shape": "循环形状",
+  "key.rtsbuilding.gui_binding_1": "快捷键槽 1",
+  "key.rtsbuilding.gui_binding_2": "快捷键槽 2",
+  "key.rtsbuilding.gui_binding_3": "快捷键槽 3",
+  "key.rtsbuilding.gui_binding_4": "快捷键槽 4",
+  "key.rtsbuilding.gui_binding_5": "快捷键槽 5",
+  "key.rtsbuilding.gui_binding_6": "快捷键槽 6",
+  "key.rtsbuilding.gui_binding_7": "快捷键槽 7",
+  "key.rtsbuilding.gui_binding_8": "快捷键槽 8",
   "gui.rtsbuilding.back": "返回",
   "gui.rtsbuilding.prev": "上页",
   "gui.rtsbuilding.next": "下页",
@@ -303,6 +314,8 @@
   "screen.rtsbuilding.blueprints.capture_cancel": "取消",
   "screen.rtsbuilding.blueprints.capture_point_a": "A：%s",
   "screen.rtsbuilding.blueprints.capture_point_b": "B：%s",
+  "screen.rtsbuilding.blueprints.capture_point_a_label": "选点 A",
+  "screen.rtsbuilding.blueprints.capture_point_b_label": "选点 B",
   "screen.rtsbuilding.blueprints.capture_size": "尺寸：%s",
   "screen.rtsbuilding.blueprints.capture_volume": "体积：%s 方块",
   "screen.rtsbuilding.blueprints.capture_waiting_a": "左键选择第一个角。",
@@ -714,5 +727,7 @@
   "screen.rtsbuilding.tooltip.shape_wall": "墙",
   "screen.rtsbuilding.tooltip.shape_circle": "圆",
   "screen.rtsbuilding.tooltip.shape_box": "体",
-  "screen.rtsbuilding.tooltip.shape_chain": "连锁"
+  "screen.rtsbuilding.tooltip.shape_chain": "连锁",
+  "jade.rtsbuilding.show_rts_info": "显示RTS信息",
+  "jade.rtsbuilding.rts_info": "RTS建筑信息"
 }

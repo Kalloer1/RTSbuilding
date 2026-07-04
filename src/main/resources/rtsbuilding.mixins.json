@@ -3,7 +3,9 @@
   "package": "com.rtsbuilding.rtsbuilding.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "LocalPlayerMixin"
+    "LocalPlayerMixin",
+    "ClientProxyMixin",
+    "RayTracingMixin"
   ],
   "mixins": [
     "ChestMenuMixin",

@@ -14,6 +14,7 @@ public final class ProgressionStateManager {
     private int progressionFluidCapacityBuckets = 100;
     private int progressionUltimineLimit = 256;
     private boolean progressionBypassHomeRadius;
+    private boolean modPresentSent = false;
 
     public boolean isProgressionEnabled() {
         return this.progressionEnabled;
@@ -67,7 +68,15 @@ public final class ProgressionStateManager {
     }
 
     public void requestProgressionState() {
+        if (!this.modPresentSent) {
+            RtsClientPacketGateway.sendModPresent();
+            this.modPresentSent = true;
+        }
         RtsClientPacketGateway.sendRequestProgressionState();
+    }
+
+    public void resetModPresentSent() {
+        this.modPresentSent = false;
     }
 
     public void setSurvivalProgressionEnabled(boolean enabled, Runnable onPreDisable) {

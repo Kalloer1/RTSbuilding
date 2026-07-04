@@ -52,6 +52,17 @@ public final class RtsInteractionHandlers {
         });
     }
 
+    public static void handleAttackEntity(C2SRtsAttackEntityPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (context.player() instanceof ServerPlayer serverPlayer) {
+                ServiceRegistry.getInstance().interaction().attackEntity(
+                        serverPlayer,
+                        payload.entityId(),
+                        payload.toolSlot());
+            }
+        });
+    }
+
     public static void handleQuickDrop(C2SRtsQuickDropPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {

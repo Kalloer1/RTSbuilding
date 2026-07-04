@@ -4,6 +4,8 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
  * Registers RTS pathfinding C2S packet.
+ *
+ * <p>Uses the optional registrar to allow clients without the mod to connect.</p>
  */
 public final class RtsPathfindingPackets {
 

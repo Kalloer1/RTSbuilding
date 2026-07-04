@@ -110,6 +110,9 @@ public class RtsbuildingMod {
         // 注册所有工作流管线，为蓝图放置、挖掘等操作建立处理链路
         RtsPipelineRegistration.registerAll();
 
+        // 加载自定义物品分类配置
+        com.rtsbuilding.rtsbuilding.server.storage.category.CustomCategoryManager.loadCategories();
+
         LOGGER.info("RTSBuilding 通用初始化完成");
     }
 
@@ -235,24 +238,16 @@ public class RtsbuildingMod {
         @SubscribeEvent
         static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
             if (event.getEntity() instanceof ServerPlayer serverPlayer) {
-                // 停止相机会话并销毁服务端相机实体
                 RtsCameraManager.stopIfActive(serverPlayer);
-                // 移除该玩家的伤害反馈会话
                 RtsDamageFeedbackManager.forget(serverPlayer);
-                // 清理网络会话状态
                 ServiceRegistry.getInstance().session().onPlayerLogout(serverPlayer);
-                // 清理进程管理器中的玩家数据
                 RtsProgressionManager.onPlayerLogout(serverPlayer);
-                // 清除挂起放置的扫描缓存，防止过期数据混淆
                 RtsPendingPlacementService.clearPlayerScanCache(serverPlayer.getUUID());
-                // 清除进度刷新缓存
                 RtsProgressRefresher.clearPlayerCache(serverPlayer.getUUID());
-                // 同步相关玩家持久化数据
                 RtsPluginService.syncRelatedPlayers(serverPlayer);
-                // 清空撤销历史 —— 旧世界的 BlockPos 不适用于新世界
                 ServerHistoryManager.clear(serverPlayer.getUUID());
-                // 持久化该玩家的数据
                 SaveScheduler.INSTANCE.onPlayerLogout(serverPlayer);
+                com.rtsbuilding.rtsbuilding.server.RtsClientModTracker.removeClient(serverPlayer);
             }
         }
 

@@ -6,6 +6,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
  * Registers quest-detect and RTS-home packets.
+ *
+ * <p>All packets use the optional registrar to allow clients without the mod
+ * to connect to the server.</p>
  */
 public final class RtsProgressionPackets {
     private RtsProgressionPackets() {

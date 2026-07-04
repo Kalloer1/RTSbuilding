@@ -67,6 +67,13 @@ public class Config {
             .translation("rtsbuilding.configuration.useRangeDestroySkeleton")
             .define("useRangeDestroySkeleton", true);
 
+    // ---- Input options ----
+
+    public static final ModConfigSpec.BooleanValue CENTER_MOUSE_ON_GUI_CLOSE = BUILDER
+            .comment("Center the mouse cursor when closing machine GUIs in RTS mode.")
+            .translation("rtsbuilding.configuration.centerMouseOnGuiClose")
+            .define("centerMouseOnGuiClose", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     public static void setSurvivalProgressionEnabled(boolean enabled) {
@@ -170,6 +177,15 @@ public class Config {
 
     public static void setRangeDestroySkeletonEnabled(boolean enabled) {
         USE_RANGE_DESTROY_SKELETON.set(enabled);
+        SPEC.save();
+    }
+
+    public static boolean isCenterMouseOnGuiCloseEnabled() {
+        return CENTER_MOUSE_ON_GUI_CLOSE.getAsBoolean();
+    }
+
+    public static void setCenterMouseOnGuiCloseEnabled(boolean enabled) {
+        CENTER_MOUSE_ON_GUI_CLOSE.set(enabled);
         SPEC.save();
     }
 

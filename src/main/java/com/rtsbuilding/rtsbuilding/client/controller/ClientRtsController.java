@@ -1320,6 +1320,11 @@ public final class ClientRtsController {
         RtsClientPacketGateway.sendStoreHotbarSlot(slot);
     }
 
+    public void swapHotbarSlotWithLinked(int slot) {
+        String selectedItemId = getSelectedItemId();
+        RtsClientPacketGateway.sendSwapHotbarSlot(slot, selectedItemId);
+    }
+
     public void fillInventoryFromLinked() {
         RtsClientPacketGateway.sendFillInventory();
     }
@@ -1655,6 +1660,10 @@ public final class ClientRtsController {
 
     public void interactEntityWithPinnedItem(int entityId, Vec3 hitLocation, String itemId, Vec3 rayOrigin, Vec3 rayDir) {
         this.buildPlacementService.interactEntityWithPinnedItem(entityId, hitLocation, itemId, rayOrigin, rayDir, this::beginRemoteMenuOpenGrace);
+    }
+
+    public void attackEntity(int entityId, int toolSlot) {
+        RtsClientPacketGateway.sendAttackEntity(entityId, toolSlot);
     }
 
     public void breakPlaced(BlockPos pos) {

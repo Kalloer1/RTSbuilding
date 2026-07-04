@@ -33,4 +33,13 @@ public interface InteractionService {
                         byte sourceType, byte toolSlot, String itemId,
                         double rayOriginX, double rayOriginY, double rayOriginZ,
                         double rayDirX, double rayDirY, double rayDirZ);
+
+    /**
+     * 远程攻击实体。
+     *
+     * @param player   目标玩家
+     * @param entityId 目标实体 ID
+     * @param toolSlot 使用的工具槽位编号
+     */
+    void attackEntity(ServerPlayer player, int entityId, int toolSlot);
 }

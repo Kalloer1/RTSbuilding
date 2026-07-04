@@ -1,6 +1,7 @@
 package com.rtsbuilding.rtsbuilding.server.plugin;
 
 import com.rtsbuilding.rtsbuilding.Config;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 import com.rtsbuilding.rtsbuilding.network.plugin.S2CRtsPluginStatePayload;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
@@ -9,7 +10,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -149,7 +149,7 @@ public final class RtsPluginService {
             personal.add(effective.personal());
             stacks.add(entry.stack().copyWithCount(1));
         }
-        PacketDistributor.sendToPlayer(player, new S2CRtsPluginStatePayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsPluginStatePayload(
                 pluginIds, families, radii, fieldDeployment, personal, stacks));
     }
 

@@ -15,7 +15,7 @@ import com.rtsbuilding.rtsbuilding.server.storage.model.LinkedHandler;
 import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResolver;
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 import java.util.List;
 
@@ -85,7 +85,7 @@ public final class RtsPageServiceImpl implements PageService {
         var result = RtsStoragePageBuilder.build(
                 player, session, page, session.browser.pageSize,
                 activeHandlers, activeFluidHandlers);
-        PacketDistributor.sendToPlayer(player, result.payload());
+        RtsPacketSender.sendToPlayer(player, result.payload());
         session.transfer.storageViewDirty = false;
         session.browser.page = result.safePage();
         registry.session().saveToPlayerNbt(player, session);
@@ -97,7 +97,7 @@ public final class RtsPageServiceImpl implements PageService {
         if (!RtsProgressionManager.canUse(player, RtsFeature.STORAGE_BROWSER)) return;
         if (session.transfer.storageViewDirty) return;
         session.transfer.storageViewDirty = true;
-        PacketDistributor.sendToPlayer(player, new S2CRtsStorageDirtyPayload(true));
+        RtsPacketSender.sendToPlayer(player, new S2CRtsStorageDirtyPayload(true));
     }
 
     @Override

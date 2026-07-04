@@ -1,5 +1,6 @@
 package com.rtsbuilding.rtsbuilding.client.network;
 
+import com.rtsbuilding.rtsbuilding.network.C2SRtsModPresentPayload;
 import com.rtsbuilding.rtsbuilding.common.build.BuilderMode;
 import com.rtsbuilding.rtsbuilding.network.builder.*;
 import com.rtsbuilding.rtsbuilding.network.camera.C2SRtsCameraMovePayload;
@@ -40,6 +41,10 @@ public final class RtsClientPacketGateway {
 
     public static void sendRequestProgressionState() {
         PacketDistributor.sendToServer(new C2SRtsRequestProgressionStatePayload());
+    }
+
+    public static void sendModPresent() {
+        PacketDistributor.sendToServer(new C2SRtsModPresentPayload());
     }
 
     public static void sendSetSurvivalProgression(boolean enabled) {
@@ -157,6 +162,10 @@ public final class RtsClientPacketGateway {
 
     public static void sendStoreHotbarSlot(int slot) {
         PacketDistributor.sendToServer(new C2SRtsStoreHotbarSlotPayload((byte) Mth.clamp(slot, 0, 8)));
+    }
+
+    public static void sendSwapHotbarSlot(int slot, String targetItemId) {
+        PacketDistributor.sendToServer(new C2SRtsSwapHotbarSlotPayload((byte) Mth.clamp(slot, 0, 8), targetItemId != null ? targetItemId : ""));
     }
 
     public static void sendFillInventory() {
@@ -505,6 +514,12 @@ public final class RtsClientPacketGateway {
                 rayDir.x,
                 rayDir.y,
                 rayDir.z));
+    }
+
+    public static void sendAttackEntity(int entityId, int toolSlot) {
+        PacketDistributor.sendToServer(new C2SRtsAttackEntityPayload(
+                entityId,
+                Mth.clamp(toolSlot, 0, 8)));
     }
 
     public static void sendBreakPlaced(BlockPos pos, Direction face, boolean allowAdjacentFallback) {

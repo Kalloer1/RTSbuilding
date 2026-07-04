@@ -1,8 +1,8 @@
 package com.rtsbuilding.rtsbuilding.server.camera;
 
-import com.rtsbuilding.rtsbuilding.common.entity.RtsCameraEntity;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraAnchorPayload;
 import com.rtsbuilding.rtsbuilding.network.camera.S2CRtsCameraStatePayload;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsFeature;
 import com.rtsbuilding.rtsbuilding.server.progression.RtsProgressionManager;
 import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
@@ -12,8 +12,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Map;
 import java.util.UUID;
@@ -98,31 +98,30 @@ public final class RtsCameraManager {
      * <p>将锚点对齐到玩家脚下方块中心，并根据半径限制创建相机实体。</p>
      */
     private static void startNormal(ServerPlayer player, boolean startAtPlayerHead) {
+        if (!com.rtsbuilding.rtsbuilding.server.RtsClientModTracker.clientHasMod(player)) {
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal("RTS camera requires the mod to be installed on the client."), true);
+            return;
+        }
         cleanupOrphanCameras(player.getServer());
         RtsCameraEntityHelper.discardOwnedCameras(player);
         ServerLevel level = player.serverLevel();
         Vec3 playerPos = player.position();
-        // 将锚点对齐到方块中心，使相机边界与放置边界匹配
         Vec3 anchor = new Vec3(Math.floor(playerPos.x) + 0.5D, playerPos.y, Math.floor(playerPos.z) + 0.5D);
         double maxRadius = RtsProgressionManager.getActionRadius(player);
 
-        // 偏航角吸附到 90° 倍数，俯仰角固定 70°
         float yaw = snapQuarter(player.getYRot());
         float pitch = 70.0F;
-        // 相机 Y 坐标：从玩家眼部或锚点上方 18 格
         double cameraY = startAtPlayerHead ? player.getEyeY() : anchor.y + 18.0D;
 
-        RtsCameraEntity camera = RtsCameraEntityHelper.createAndSpawnCamera(level, player.getUUID(),
+        AreaEffectCloud camera = RtsCameraEntityHelper.createAndSpawnCamera(level, player.getUUID(),
                 anchor.x, cameraY, anchor.z, yaw, pitch);
 
-        // 记录会话
         Session session = new Session(camera.getUUID(), anchor, camera.position(), yaw, pitch,
                 camera.getY() - anchor.y, false, maxRadius, startAtPlayerHead);
         SESSIONS.put(player.getUUID(), session);
         ServiceRegistry.getInstance().session().onRtsEnabled(player);
 
-        // 向客户端发送相机状态同步包
-        PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCameraStatePayload(
                 true,
                 camera.getId(),
                 anchor.x,
@@ -163,11 +162,14 @@ public final class RtsCameraManager {
      * <p>将锚点对齐到玩家所在区块中心（8, Y, 8），进入家选择会话。</p>
      */
     private static void startHomeSelection(ServerPlayer player, boolean startAtPlayerHead) {
+        if (!com.rtsbuilding.rtsbuilding.server.RtsClientModTracker.clientHasMod(player)) {
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal("RTS camera requires the mod to be installed on the client."), true);
+            return;
+        }
         cleanupOrphanCameras(player.getServer());
         RtsCameraEntityHelper.discardOwnedCameras(player);
         ServerLevel level = player.serverLevel();
         BlockPos playerPos = player.blockPosition();
-        // 计算玩家所在区块的中心坐标
         int centerChunkX = playerPos.getX() >> 4;
         int centerChunkZ = playerPos.getZ() >> 4;
         Vec3 anchor = new Vec3((centerChunkX << 4) + 8.0D, player.getY(), (centerChunkZ << 4) + 8.0D);
@@ -179,7 +181,7 @@ public final class RtsCameraManager {
         double cameraY = startAtPlayerHead ? player.getEyeY() : anchor.y + 18.0D;
         double cameraZ = anchor.z;
 
-        RtsCameraEntity camera = RtsCameraEntityHelper.createAndSpawnCamera(level, player.getUUID(),
+        AreaEffectCloud camera = RtsCameraEntityHelper.createAndSpawnCamera(level, player.getUUID(),
                 cameraX, cameraY, cameraZ, yaw, pitch);
 
         RtsProgressionManager.beginHomeSelection(player);
@@ -187,7 +189,7 @@ public final class RtsCameraManager {
                 camera.getY() - anchor.y, true, maxRadius, startAtPlayerHead);
         SESSIONS.put(player.getUUID(), session);
 
-        PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCameraStatePayload(
                 true,
                 camera.getId(),
                 anchor.x,
@@ -218,7 +220,7 @@ public final class RtsCameraManager {
         }
         RtsCameraEntityHelper.discardOwnedCameras(player);
 
-        PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(false, -1, 0.0D, 0.0D, 0.0D,
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCameraStatePayload(false, -1, 0.0D, 0.0D, 0.0D,
                 RtsProgressionManager.DEFAULT_MAX_ACTION_RADIUS_BLOCKS, 18.0D, 0.0F, 70.0F, false, false));
         ServiceRegistry.getInstance().session().onRtsDisabled(player);
     }
@@ -312,7 +314,7 @@ public final class RtsCameraManager {
         Vec3 playerPos = player.position();
         Vec3 newAnchor = new Vec3(Math.floor(playerPos.x) + 0.5D, playerPos.y, Math.floor(playerPos.z) + 0.5D);
 
-        RtsCameraEntity camera = getOrRestoreCamera(player, session);
+        AreaEffectCloud camera = getOrRestoreCamera(player, session);
 
         float safeRotateX = Mth.clamp(rotateX, -ROT_INPUT_CLAMP, ROT_INPUT_CLAMP);
         float safeRotateY = Mth.clamp(rotateY, -ROT_INPUT_CLAMP, ROT_INPUT_CLAMP);
@@ -376,14 +378,14 @@ public final class RtsCameraManager {
 
         // 保持移动边界为正方形，与可见的建筑边界一致
 
-        camera.snapTo(targetX, targetY, targetZ, yaw, pitch);
+        RtsCameraEntityHelper.snapTo(camera, targetX, targetY, targetZ, yaw, pitch);
 
         double heightOffset = targetY - newAnchor.y;
         SESSIONS.put(player.getUUID(), new Session(camera.getUUID(), newAnchor, new Vec3(targetX, targetY, targetZ),
                 yaw, pitch, heightOffset, session.homeSelection(), session.maxRadius(), session.closeRangeAllowed()));
 
         // 通知客户端更新后的锚点位置，使可视边界保持同步
-        PacketDistributor.sendToPlayer(player, new S2CRtsCameraAnchorPayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCameraAnchorPayload(
                 newAnchor.x, newAnchor.y, newAnchor.z, maxRadius(player, session)));
     }
 
@@ -391,13 +393,13 @@ public final class RtsCameraManager {
      * 获取或恢复相机实体。<p>如果相机丢失（因维度切换等），则按上次记录的会话状态重新创建。</p>
      */
     @SuppressWarnings("resource")
-    private static RtsCameraEntity getOrRestoreCamera(ServerPlayer player, Session session) {
+    private static AreaEffectCloud getOrRestoreCamera(ServerPlayer player, Session session) {
         Entity baseEntity = RtsCameraEntityHelper.findCameraEntity(player.getServer(), session.cameraUuid());
-        if (baseEntity instanceof RtsCameraEntity camera && baseEntity.level() == player.serverLevel()) {
-            if (camera.getOwnerUuid() == null) {
-                camera.setOwnerUuid(player.getUUID());
+        if (baseEntity instanceof AreaEffectCloud camera && baseEntity.level() == player.serverLevel()) {
+            if (RtsCameraEntityHelper.getOwnerUuid(camera) == null) {
+                RtsCameraEntityHelper.setOwnerUuid(camera, player.getUUID());
             }
-            if (!player.getUUID().equals(camera.getOwnerUuid())) {
+            if (!player.getUUID().equals(RtsCameraEntityHelper.getOwnerUuid(camera))) {
                 camera.discard();
             } else {
                 return camera;
@@ -409,7 +411,7 @@ public final class RtsCameraManager {
         }
 
         Vec3 cameraPos = session.cameraPos();
-        RtsCameraEntity restored = RtsCameraEntityHelper.createAndSpawnCamera(player.serverLevel(), player.getUUID(),
+        AreaEffectCloud restored = RtsCameraEntityHelper.createAndSpawnCamera(player.serverLevel(), player.getUUID(),
                 cameraPos.x, cameraPos.y, cameraPos.z, session.yawDeg(), session.pitchDeg());
 
         SESSIONS.put(player.getUUID(), new Session(
@@ -423,7 +425,7 @@ public final class RtsCameraManager {
                 session.maxRadius(),
                 session.closeRangeAllowed()));
 
-        PacketDistributor.sendToPlayer(player, new S2CRtsCameraStatePayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCameraStatePayload(
                 true,
                 restored.getId(),
                 session.anchor().x,

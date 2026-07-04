@@ -6,6 +6,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
  * Registers RTS plugin install, uninstall, and sync packets.
+ *
+ * <p>All packets use the optional registrar to allow clients without the mod
+ * to connect to the server.</p>
  */
 public final class RtsPluginPackets {
     private RtsPluginPackets() {

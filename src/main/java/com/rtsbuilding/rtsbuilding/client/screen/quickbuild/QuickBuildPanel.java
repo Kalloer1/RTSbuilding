@@ -639,6 +639,42 @@ public final class QuickBuildPanel extends RtsWindowPanel {
 
     // ======================== 输入处理 ========================
 
+    public void cycleShape() {
+        int currentIndex = -1;
+        if (isDestroyModeActive()) {
+            for (int i = 0; i < DESTROY_SHAPES.length; i++) {
+                if (DESTROY_SHAPES[i] == this.rangeDestroyShape) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            if (currentIndex >= 0) {
+                int nextIndex = (currentIndex + 1) % DESTROY_SHAPES.length;
+                setRangeDestroyShape(DESTROY_SHAPES[nextIndex]);
+            }
+        } else {
+            for (int i = 0; i < BUILD_SHAPES.length; i++) {
+                if (BUILD_SHAPES[i] == this.buildModeShape) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            if (currentIndex >= 0) {
+                int nextIndex = (currentIndex + 1) % BUILD_SHAPES.length;
+                setBuildModeShape(BUILD_SHAPES[nextIndex]);
+            }
+        }
+    }
+
+    @Override
+    protected boolean handleWindowKeyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            cycleShape();
+            return true;
+        }
+        return super.handleWindowKeyPressed(keyCode, scanCode, modifiers);
+    }
+
     @Override
     protected void handleContentClick(double mouseX, double mouseY, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {

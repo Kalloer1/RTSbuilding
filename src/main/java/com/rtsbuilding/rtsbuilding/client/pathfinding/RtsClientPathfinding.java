@@ -38,18 +38,22 @@ public final class RtsClientPathfinding {
     private static BlockPos highlightedTarget = null;
     private static long highlightFadeStartedAtMs = 0L;
     private static boolean highlightFading = false;
-    /**
-     * 当 &gt; 0 时，目标点 Y 轴偏移量（单位：格）。
-     * 用于「飞到目标上方」模式（Ctrl + 双击右键），
-     * 到达判定也要求 3D 接近（不含 horizontal-only 检查）。
-     */
+    private static java.util.List<BlockPos> currentPath = null;
+    private static int currentPathIndex = 0;
+    private static long lastPathRecalcTime = 0L;
     private static int targetYOffset = 0;
+    private static long lastStuckTime = 0L;
+    private static Vec3 lastStuckPos = null;
 
     /** 到达判定：水平距离平方阈值。 */
     private static final double REACH_DISTANCE_SQ = 0.1 * 0.1;
     /** 向量零长度判断阈值，避免除零。 */
     private static final double EPSILON = 0.01;
     private static final long TARGET_HIGHLIGHT_FADE_MS = 350L;
+    private static final long PATH_RECALC_INTERVAL_MS = 2000L;
+    private static final double WAYPOINT_REACH_DIST = 2.0;
+    private static final long STUCK_RECALC_DELAY_MS = 500L;
+    private static final double STUCK_DIST_THRESHOLD = 0.1;
 
     private RtsClientPathfinding() {}
 
@@ -82,6 +86,9 @@ public final class RtsClientPathfinding {
     public static void goTo(BlockPos target) {
         RtsClientPathfinding.target = target.immutable();
         targetYOffset = 0;
+        currentPath = null;
+        currentPathIndex = 0;
+        lastPathRecalcTime = System.currentTimeMillis();
         setHighlightedTarget(RtsClientPathfinding.target);
         RtsClientPacketGateway.sendPathfindingGoTo(target);
     }
@@ -102,6 +109,9 @@ public final class RtsClientPathfinding {
     public static void goToAbove(BlockPos target, int yOffset) {
         RtsClientPathfinding.target = target.immutable();
         targetYOffset = Math.max(1, yOffset);
+        currentPath = null;
+        currentPathIndex = 0;
+        lastPathRecalcTime = System.currentTimeMillis();
         setHighlightedTarget(RtsClientPathfinding.target);
         RtsClientPacketGateway.sendPathfindingGoTo(target);
     }
@@ -117,6 +127,10 @@ public final class RtsClientPathfinding {
     private static void stopMovement() {
         target = null;
         targetYOffset = 0;
+        currentPath = null;
+        currentPathIndex = 0;
+        lastStuckTime = 0L;
+        lastStuckPos = null;
         if (previousMode != null && Minecraft.getInstance().player instanceof LocalPlayer lp) {
             previousMode.onDeactivate(lp);
         }
@@ -160,7 +174,6 @@ public final class RtsClientPathfinding {
     public static void tickPre() {
         if (target == null) return;
 
-        // Ensure the registry is initialised on first tick
         RtsMovementModeRegistry.init();
 
         Minecraft mc = Minecraft.getInstance();
@@ -170,42 +183,77 @@ public final class RtsClientPathfinding {
             return;
         }
 
+        long now = System.currentTimeMillis();
+        if (currentPath == null || now - lastPathRecalcTime > PATH_RECALC_INTERVAL_MS) {
+            recalculatePath(player);
+            lastPathRecalcTime = now;
+        }
+
         Vec3 playerPos = player.position();
         Vec3 targetPos = computeTargetPos();
         Vec3 toTarget = targetPos.subtract(playerPos);
         Vec3 horizontal = new Vec3(toTarget.x, 0, toTarget.z);
         double horizontalDist = horizontal.length();
 
-        // ── Face the target (yaw) ──
+        if (isArrived(player, playerPos, targetPos, null)) {
+            finishArrived();
+            return;
+        }
+
         faceTarget(player, toTarget);
 
-        // ── Resolve movement mode ──
         MovementParams params = resolveMode(player);
         if (params == null) {
             cancel();
             return;
         }
 
-        // ── Arrival check ──
-        if (isArrived(player, playerPos, targetPos, params)) {
-            finishArrived();
+        applyPitch(player, toTarget, horizontalDist, params);
+        applySprint(player, params);
+        applyVelocity(player, toTarget, horizontal, horizontalDist, targetPos, playerPos, params);
+
+        handleStuckSmart(player, params, playerPos, horizontalDist);
+    }
+
+    private static void recalculatePath(LocalPlayer player) {
+        if (player.level() == null || target == null) {
+            currentPath = null;
+            currentPathIndex = 0;
             return;
         }
 
-        // ── Pitch ──
-        applyPitch(player, toTarget, horizontalDist, params);
-
-        // ── Sprint ──
-        applySprint(player, params);
-
-        // ── Velocity ──
-        applyVelocity(player, toTarget, horizontal, horizontalDist, targetPos, playerPos, params);
-
-        // ── Stuck / collision ──
-        if (player.horizontalCollision
-                && target.getY() + 1.0 > player.position().y + 0.2) {
-            handleStuck(player, params);
+        if (player.getAbilities().flying || player.isFallFlying()) {
+            currentPath = null;
+            currentPathIndex = 0;
+            return;
         }
+
+        BlockPos start = player.blockPosition();
+        RtsAStarPathfinder pathfinder = new RtsAStarPathfinder(player.level(), start, target);
+        currentPath = pathfinder.findPath();
+        currentPathIndex = 0;
+    }
+
+    private static Vec3 getCurrentWaypoint(LocalPlayer player) {
+        if (currentPath == null || currentPath.isEmpty()) {
+            return null;
+        }
+
+        Vec3 playerPos = player.position();
+
+        while (currentPathIndex < currentPath.size()) {
+            BlockPos waypoint = currentPath.get(currentPathIndex);
+            Vec3 waypointPos = new Vec3(waypoint.getX() + 0.5, getBlockSurfaceY(waypoint), waypoint.getZ() + 0.5);
+
+            double dist = playerPos.distanceTo(waypointPos);
+            if (dist <= WAYPOINT_REACH_DIST) {
+                currentPathIndex++;
+            } else {
+                return waypointPos;
+            }
+        }
+
+        return null;
     }
 
     // ==================================================================
@@ -324,15 +372,9 @@ public final class RtsClientPathfinding {
         double horizDistSq = dx * dx + dz * dz;
 
         if (targetYOffset > 0) {
-            // Precision landing (Ctrl+双击): require both horizontal AND vertical proximity,
-            // then disable creative flight so the player lands on whatever collision shape
-            // the block provides.
-            if (horizDistSq < 0.25) { // within 0.5 blocks horizontally
+            if (horizDistSq < 0.25) {
                 double dy = playerPos.y - targetPos.y;
                 if (Math.abs(dy) < 0.5) {
-                    // Close enough — initiate genuine landing:
-                    // disable creative flight so gravity pulls the player down
-                    // onto the block surface (handles slabs/stairs/carpets natively).
                     if (player.getAbilities().flying && !player.isFallFlying()) {
                         player.getAbilities().flying = false;
                         player.onUpdateAbilities();
@@ -343,9 +385,8 @@ public final class RtsClientPathfinding {
             return false;
         }
 
-        // Normal mode: per-mode Y check
         if (horizDistSq >= REACH_DISTANCE_SQ) return false;
-        return params.arrivalCheckHorizontalOnly() || playerPos.y >= targetPos.y;
+        return params == null || params.arrivalCheckHorizontalOnly() || playerPos.y >= targetPos.y;
     }
 
     /**
@@ -465,6 +506,34 @@ public final class RtsClientPathfinding {
                 player.setDeltaMovement(player.getDeltaMovement().x, 0.1, player.getDeltaMovement().z);
                 player.hurtMarked = true;
             }
+        }
+    }
+
+    private static void handleStuckSmart(LocalPlayer player, MovementParams params, Vec3 playerPos, double horizontalDist) {
+        if (horizontalDist < 0.5) {
+            return;
+        }
+
+        if (lastStuckPos != null) {
+            double distFromLastStuck = playerPos.distanceTo(lastStuckPos);
+            if (distFromLastStuck < STUCK_DIST_THRESHOLD) {
+                long now = System.currentTimeMillis();
+                if (now - lastStuckTime > STUCK_RECALC_DELAY_MS) {
+                    lastPathRecalcTime = 0L;
+                    recalculatePath(player);
+                    lastStuckTime = now;
+                }
+                handleStuck(player, params);
+                return;
+            }
+        }
+
+        if (player.horizontalCollision && target.getY() + 1.0 > player.position().y + 0.2) {
+            lastStuckPos = playerPos;
+            lastStuckTime = System.currentTimeMillis();
+            handleStuck(player, params);
+        } else {
+            lastStuckPos = null;
         }
     }
 

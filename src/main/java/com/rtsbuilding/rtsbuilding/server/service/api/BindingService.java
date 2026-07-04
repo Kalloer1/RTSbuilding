@@ -133,6 +133,16 @@ public interface BindingService {
     void storeHotbarSlot(ServerPlayer player, byte slotId);
 
     /**
+     * 将玩家快捷栏中指定槽位的物品与链接存储进行交换。
+     * 先将当前槽位的物品存入存储，再从存储中提取目标类型的物品取出。
+     *
+     * @param player 目标玩家
+     * @param slotId 快捷栏槽位 ID（0-8）
+     * @param targetItemId 目标物品ID（从存储中提取的物品类型）
+     */
+    void swapHotbarSlot(ServerPlayer player, byte slotId, String targetItemId);
+
+    /**
      * 关闭当前打开的远程菜单。
      * 当玩家通过远程交互打开了某个容器的 GUI 后，调用此方法关闭它。
      *

@@ -118,6 +118,57 @@ public final class ClientKeyMappings {
             "key.rtsbuilding.camera_down_arrow",
             GLFW.GLFW_KEY_DOWN,
             "key.categories.rtsbuilding");
+    public static final KeyMapping QUICK_BUILD = new KeyMapping(
+            "key.rtsbuilding.quick_build",
+            GLFW.GLFW_KEY_B,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping TOGGLE_CHUNK_DISPLAY = new KeyMapping(
+            "key.rtsbuilding.toggle_chunk_display",
+            GLFW.GLFW_KEY_H,
+            "key.categories.rtsbuilding");
+
+    public static final KeyMapping GUI_BINDING_1 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_1",
+            GLFW.GLFW_KEY_KP_1,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_2 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_2",
+            GLFW.GLFW_KEY_KP_2,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_3 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_3",
+            GLFW.GLFW_KEY_KP_3,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_4 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_4",
+            GLFW.GLFW_KEY_KP_4,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_5 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_5",
+            GLFW.GLFW_KEY_KP_5,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_6 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_6",
+            GLFW.GLFW_KEY_KP_6,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_7 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_7",
+            GLFW.GLFW_KEY_KP_7,
+            "key.categories.rtsbuilding");
+    public static final KeyMapping GUI_BINDING_8 = new KeyMapping(
+            "key.rtsbuilding.gui_binding_8",
+            GLFW.GLFW_KEY_KP_8,
+            "key.categories.rtsbuilding");
+
+    public static final KeyMapping[] GUI_BINDINGS = {
+            GUI_BINDING_1, GUI_BINDING_2, GUI_BINDING_3, GUI_BINDING_4,
+            GUI_BINDING_5, GUI_BINDING_6, GUI_BINDING_7, GUI_BINDING_8
+    };
+
+    public static final KeyMapping CYCLE_SHAPE = new KeyMapping(
+            "key.rtsbuilding.cycle_shape",
+            GLFW.GLFW_KEY_TAB,
+            "key.categories.rtsbuilding");
 
     private ClientKeyMappings() {
     }
@@ -146,6 +197,12 @@ public final class ClientKeyMappings {
         event.register(CAMERA_UP);
         event.register(CAMERA_UP_SECONDARY);
         event.register(CAMERA_DOWN);
+        event.register(QUICK_BUILD);
+        event.register(TOGGLE_CHUNK_DISPLAY);
+        event.register(CYCLE_SHAPE);
+        for (KeyMapping binding : GUI_BINDINGS) {
+            event.register(binding);
+        }
         migrateLegacyDragDefaults();
     }
 

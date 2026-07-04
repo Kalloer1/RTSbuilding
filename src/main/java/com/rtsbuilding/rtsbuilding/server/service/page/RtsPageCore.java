@@ -188,6 +188,16 @@ public final class RtsPageCore {
 
             List<String> localCategories = new ArrayList<>();
             localCategories.add(RtsPageSharedHelpers.CATEGORY_ALL);
+            
+            var customCats = com.rtsbuilding.rtsbuilding.server.storage.category.CustomCategoryManager.getCategories();
+            List<com.rtsbuilding.rtsbuilding.server.storage.category.CustomCategoryManager.CustomCategory> sortedCustomCats = 
+                    new ArrayList<>(customCats);
+            sortedCustomCats.sort(java.util.Comparator.comparingInt(
+                    com.rtsbuilding.rtsbuilding.server.storage.category.CustomCategoryManager.CustomCategory::order));
+            for (var cat : sortedCustomCats) {
+                localCategories.add(RtsPageSharedHelpers.encodeCustomCategory(cat.id()));
+            }
+            
             for (String ns : nsList) {
                 localCategories.add(RtsPageSharedHelpers.encodeModCategory(ns));
                 List<String> tabs = new ArrayList<>(modTabKeys.getOrDefault(ns, Set.of()));
@@ -215,7 +225,12 @@ public final class RtsPageCore {
                     continue;
                 }
                 Set<String> tabs = itemTabKeys.getOrDefault(id, Set.of());
-                if (!selectedCategory.matches(exactEntry.namespace(), tabs)) {
+                if (selectedCategory.isCustom()) {
+                    if (!com.rtsbuilding.rtsbuilding.server.storage.category.CustomCategoryManager.isItemInCategory(
+                            id, selectedCategory.customId())) {
+                        continue;
+                    }
+                } else if (!selectedCategory.matches(exactEntry.namespace(), tabs)) {
                     continue;
                 }
                 entries.add(exactEntry);

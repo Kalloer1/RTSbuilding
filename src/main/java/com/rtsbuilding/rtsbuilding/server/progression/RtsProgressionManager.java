@@ -7,7 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 public final class RtsProgressionManager {
     public static final int DEFAULT_MAX_ACTION_RADIUS_BLOCKS = 128;
@@ -134,7 +134,7 @@ public final class RtsProgressionManager {
             return;
         }
         HomeAnchor home = RtsHomeManager.getHome(player);
-        PacketDistributor.sendToPlayer(player, new S2CRtsProgressionStatePayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsProgressionStatePayload(
                 isEnabled(),
                 home != null,
                 home == null ? BlockPos.ZERO : home.pos(),

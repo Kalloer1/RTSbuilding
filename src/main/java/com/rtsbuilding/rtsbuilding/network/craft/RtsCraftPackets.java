@@ -9,6 +9,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  *
  * This class groups packet registration only; payload ids, codecs, and packet
  * directions stay in the payload records.
+ *
+ * <p>All packets use the optional registrar to allow clients without the mod
+ * to connect to the server.</p>
  */
 public final class RtsCraftPackets {
     private RtsCraftPackets() {

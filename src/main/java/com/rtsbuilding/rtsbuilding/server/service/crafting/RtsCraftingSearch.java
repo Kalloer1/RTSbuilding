@@ -14,7 +14,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.*;
 import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 import java.util.*;
 
@@ -156,7 +156,7 @@ public final class RtsCraftingSearch {
                 optionMissingSummaries.add(option.missingSummary());
             }
         }
-        PacketDistributor.sendToPlayer(player, new S2CRtsCraftablesPayload(
+        RtsPacketSender.sendToPlayer(player, new S2CRtsCraftablesPayload(
                 session.browser.craftSearch, session.browser.craftShowUnavailable,
                 Math.max(0, offset), append, hasMore,
                 recipeIds, resultItemIds, resultCounts, craftable, missingSummaries,

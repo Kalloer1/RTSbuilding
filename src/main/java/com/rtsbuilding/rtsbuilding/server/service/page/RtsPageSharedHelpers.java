@@ -35,6 +35,7 @@ public final class RtsPageSharedHelpers {
     static final String CATEGORY_ALL = "all";
     static final String CATEGORY_MOD_PREFIX = "mod|";
     static final String CATEGORY_TAB_PREFIX = "tab|";
+    static final String CATEGORY_CUSTOM_PREFIX = "custom|";
 
     private RtsPageSharedHelpers() {
     }
@@ -195,6 +196,13 @@ public final class RtsPageSharedHelpers {
             }
             return CategorySelection.tab(namespace, tabKey);
         }
+        if (normalizedCategory.startsWith(CATEGORY_CUSTOM_PREFIX)) {
+            String customId = normalizedCategory.substring(CATEGORY_CUSTOM_PREFIX.length());
+            if (customId.isBlank()) {
+                return CategorySelection.all();
+            }
+            return CategorySelection.custom(customId);
+        }
         return CategorySelection.all();
     }
 
@@ -205,9 +213,14 @@ public final class RtsPageSharedHelpers {
         String token = switch (selection.type()) {
             case MOD -> encodeModCategory(selection.namespace());
             case TAB -> encodeTabCategory(selection.namespace(), selection.tabKey());
+            case CUSTOM -> CATEGORY_CUSTOM_PREFIX + selection.customId();
             case ALL -> CATEGORY_ALL;
         };
         return categories.contains(token);
+    }
+
+    static String encodeCustomCategory(String customId) {
+        return CATEGORY_CUSTOM_PREFIX + customId;
     }
 
     // ---- player inventory bounds -----------------------------------------------

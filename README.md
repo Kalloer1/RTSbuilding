@@ -214,3 +214,54 @@ Linux/macOS:
 ```bash
 ./gradlew build --no-daemon --no-configuration-cache
 ```
+
+---
+
+## 改动说明 (Change Log)
+
+### 最新版本改动
+
+以下是相对于初始版本的主要改动：
+
+#### 1. 客户端可选支持
+- **功能**：RTS模组可以设置为客户端可选，不强制要求服务器安装
+- **修改文件**：`neoforge.mods.toml`
+- **说明**：修改模组配置，允许客户端独立使用RTS功能
+
+#### 2. RTS存储快捷栏交换
+- **功能**：在RTS存储覆盖层中右键快捷栏可以快速交换物品
+- **修改文件**：`RtsClientInputGate.java`, `OverlayInteraction.java`
+- **说明**：支持在存储覆盖层中通过右键操作快速交换手持物品与快捷栏物品
+
+#### 3. 蓝图双选点调整
+- **功能**：新建蓝图时可以同时调整两个选取点（Point A 和 Point B）
+- **修改文件**：`BlueprintCaptureController.java`, `BlueprintWindowPanel.java`
+- **说明**：之前仅支持单个选点调整，现在两个选点都可以通过输入框或方向键独立调整坐标
+
+#### 4. GUI槽位快捷键
+- **功能**：为绑定的GUI槽位添加了8个小键盘快捷键（KP_1 到 KP_8）
+- **修改文件**：`ClientKeyMappings.java`, `zh_cn.json`, `en_us.json`
+- **说明**：支持用户自定义修改按键绑定，并添加了中英文翻译
+
+#### 5. 区块显示与快捷建筑快捷键
+- **功能**：为区块显示（H键）和快捷建筑（B键）添加了快捷键绑定
+- **修改文件**：`ClientKeyMappings.java`, `zh_cn.json`, `en_us.json`
+- **说明**：方便快速切换区块显示状态和打开快捷建造面板
+
+#### 6. Tab键形状轮切
+- **功能**：在快捷建造模式下按Tab键循环切换不同形状模板
+- **修改文件**：`ClientKeyMappings.java`, `QuickBuildPanel.java`, `zh_cn.json`, `en_us.json`
+- **说明**：支持切换形状包括：方块、直线、方形、墙体、圆形、立方体等，Tab键可自定义绑定
+
+#### 7. RTS视角实体攻击
+- **功能**：在RTS视角下可以攻击实体
+- **修改文件**：`BuilderScreen.java`, `ClientRtsController.java`
+- **说明**：允许从RTS视角直接攻击实体目标
+
+---
+
+## 许可证 (License)
+
+LGPL-3.0-only for the current source tree and releases starting with 1.0.3-beta / 0.0.3Beta.
+
+Copyright (C) 2026 JerryLunar.

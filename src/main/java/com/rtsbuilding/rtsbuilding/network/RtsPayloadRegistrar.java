@@ -22,6 +22,11 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * owned by the individual payload records. The domain registrars below are only
  * a readability layer, so moving a payload between them must not change the
  * wire protocol.
+ *
+ * <p>This mod is server-required, client-optional. All payloads are registered
+ * using the optional registrar, allowing clients without the mod installed to
+ * connect to the server. The server-side logic will gracefully handle cases where
+ * certain packets are not sent by the client.</p>
  */
 @EventBusSubscriber(modid = RtsbuildingMod.MODID)
 public final class RtsPayloadRegistrar {
@@ -31,15 +36,25 @@ public final class RtsPayloadRegistrar {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
+        PayloadRegistrar optionalRegistrar = registrar.optional();
 
-        RtsCameraPackets.register(registrar);
-        RtsStoragePackets.register(registrar);
-        RtsBuilderPackets.register(registrar);
-        RtsCraftPackets.register(registrar);
-        RtsProgressionPackets.register(registrar);
-        RtsPluginPackets.register(registrar);
-        RtsFeedbackPackets.register(registrar);
-        RtsPathfindingPackets.register(registrar);
-        BlueprintPayloadRegistrar.register(registrar);
+        RtsCameraPackets.register(optionalRegistrar);
+        RtsStoragePackets.register(optionalRegistrar);
+        RtsBuilderPackets.register(optionalRegistrar);
+        RtsCraftPackets.register(optionalRegistrar);
+        RtsProgressionPackets.register(optionalRegistrar);
+        RtsPluginPackets.register(optionalRegistrar);
+        RtsFeedbackPackets.register(optionalRegistrar);
+        RtsPathfindingPackets.register(optionalRegistrar);
+        BlueprintPayloadRegistrar.register(optionalRegistrar);
+
+        optionalRegistrar.playToServer(C2SRtsModPresentPayload.TYPE, C2SRtsModPresentPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    context.enqueueWork(() -> {
+                        if (context.player() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                            com.rtsbuilding.rtsbuilding.server.RtsClientModTracker.markClientHasMod(serverPlayer);
+                        }
+                    });
+                });
     }
 }

@@ -11,6 +11,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  *
  * This class groups packet registration only; payload ids, codecs, and packet
  * directions stay in the payload records.
+ *
+ * <p>All packets use the optional registrar to allow clients without the mod
+ * to connect to the server.</p>
  */
 public final class RtsBuilderPackets {
     private RtsBuilderPackets() {
@@ -51,6 +54,11 @@ public final class RtsBuilderPackets {
                 C2SRtsInteractPayload.TYPE,
                 C2SRtsInteractPayload.STREAM_CODEC,
                 RtsInteractionHandlers::handleInteract);
+
+        registrar.playToServer(
+                C2SRtsAttackEntityPayload.TYPE,
+                C2SRtsAttackEntityPayload.STREAM_CODEC,
+                RtsInteractionHandlers::handleAttackEntity);
 
         registrar.playToServer(
                 C2SRtsQuickDropPayload.TYPE,

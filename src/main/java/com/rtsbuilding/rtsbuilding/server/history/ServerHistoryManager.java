@@ -8,7 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -126,7 +126,7 @@ public final class ServerHistoryManager {
     public static void sendSync(ServerPlayer player) {
         if (player == null) return;
         int undoSize = getUndoSize(player.getUUID());
-        PacketDistributor.sendToPlayer(player,
+        RtsPacketSender.sendToPlayer(player,
                 new com.rtsbuilding.rtsbuilding.network.builder.S2CRtsHistorySyncPayload(undoSize));
     }
 

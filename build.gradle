@@ -13,6 +13,9 @@ version = mod_version
 group = mod_group_id
 
 repositories {
+    maven { url = 'https://maven.aliyun.com/repository/public' }
+    maven { url = 'https://maven.aliyun.com/repository/central' }
+    maven { url = 'https://maven.neoforged.net/releases' }
     mavenCentral()
     maven { url = 'https://maven.blamejared.com' }
     maven { url = 'https://maven.createmod.net' }
@@ -228,6 +231,7 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
     expand replaceProperties
     from "src/main/templates"
     into "build/generated/sources/modMetadata"
+    filteringCharset = 'UTF-8'
 }
 sourceSets.main.resources.srcDir generateModMetadata
 neoForge.ideSyncTask generateModMetadata

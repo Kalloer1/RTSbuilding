@@ -16,7 +16,7 @@ import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.neoforged.neoforge.network.PacketDistributor;
+import com.rtsbuilding.rtsbuilding.network.RtsPacketSender;
 
 import java.lang.reflect.Field;
 import java.util.Optional;
@@ -142,7 +142,7 @@ public final class RtsRemoteMenuService {
         if (player == null || pos == null) {
             return;
         }
-        PacketDistributor.sendToPlayer(player, new S2CRtsRemoteMenuHintPayload(pos));
+        RtsPacketSender.sendToPlayer(player, new S2CRtsRemoteMenuHintPayload(pos));
         if (!(player.level() instanceof ServerLevel level) || !level.hasChunkAt(pos)) {
             return;
         }

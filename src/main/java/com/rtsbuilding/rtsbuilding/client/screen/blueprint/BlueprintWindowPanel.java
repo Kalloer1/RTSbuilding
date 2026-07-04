@@ -32,8 +32,8 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
     private static final int LEGACY_DEFAULT_H = 286;
     private static final int PLACEMENT_PANEL_W = 248;
     private static final int PLACEMENT_PANEL_H = 312;
-    private static final int CAPTURE_PANEL_W = 324;
-    private static final int CAPTURE_PANEL_H = 160;
+    private static final int CAPTURE_PANEL_W = 360;
+    private static final int CAPTURE_PANEL_H = 220;
     private static final int PLACEMENT_MIN_W = PLACEMENT_PANEL_W;
     private static final int PLACEMENT_MIN_H = PLACEMENT_PANEL_H;
     private static final int CAPTURE_MIN_W = CAPTURE_PANEL_W;
@@ -59,6 +59,12 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
     private WindowTextBox posXInput;
     private WindowTextBox posYInput;
     private WindowTextBox posZInput;
+    private WindowTextBox pointAXInput;
+    private WindowTextBox pointAYInput;
+    private WindowTextBox pointAZInput;
+    private WindowTextBox pointBXInput;
+    private WindowTextBox pointBYInput;
+    private WindowTextBox pointBZInput;
 
     private WindowButton saveCaptureButton;
     private WindowButton cancelButton;
@@ -71,6 +77,10 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
     private WindowButton[] sizeMinusButtons;
     private WindowButton[] posPlusButtons;
     private WindowButton[] posMinusButtons;
+    private WindowButton[] pointAPlusButtons;
+    private WindowButton[] pointAMinusButtons;
+    private WindowButton[] pointBPlusButtons;
+    private WindowButton[] pointBMinusButtons;
 
     @Override
     public void init(BuilderScreen screen, ClientRtsController controller) {
@@ -127,10 +137,16 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
                 x, y + 14, complete ? 0xFF8EEA9B : 0xFFFFC06C, w);
         drawLabel(g, Component.translatable("screen.rtsbuilding.blueprints.capture_window_scroll_hint"),
                 x, y + 26, 0xFF9FB3C8, w);
-        drawPointSummary(g, x, y + 42, w, complete);
 
         if (complete) {
-            renderCaptureXYZControls(g, mouseX, mouseY, partialTick, x, y + 54, w, !saving);
+            int pointSectionY = y + 40;
+            renderPointAControls(g, mouseX, mouseY, partialTick, x, pointSectionY, w, !saving);
+            int pointBSectionY = pointSectionY + 36;
+            renderPointBControls(g, mouseX, mouseY, partialTick, x, pointBSectionY, w, !saving);
+            int sizeSectionY = pointBSectionY + 36;
+            renderCaptureXYZControls(g, mouseX, mouseY, partialTick, x, sizeSectionY, w, !saving);
+        } else {
+            drawPointSummary(g, x, y + 42, w, complete);
         }
 
         Component status = saving
@@ -237,6 +253,36 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
                 this.sizePlusButtons[1], this.sizeMinusButtons[1], x + groupW + GAP, y, groupW, enabled);
         renderCompactAxisControl(g, mouseX, mouseY, partialTick, "Z", this.sizeZInput,
                 this.sizePlusButtons[2], this.sizeMinusButtons[2], x + (groupW + GAP) * 2, y, groupW, enabled);
+    }
+
+    private void renderPointAControls(GuiGraphics g, int mouseX, int mouseY, float partialTick,
+            int x, int y, int w, boolean enabled) {
+        g.drawString(this.screen.font(), Component.translatable("screen.rtsbuilding.blueprints.capture_point_a_label").getString(),
+                x, y, 0xFF8EEA9B, false);
+        renderPointAxisRow(g, mouseX, mouseY, partialTick, x + 24, y, w - 24,
+                this.pointAXInput, this.pointAYInput, this.pointAZInput,
+                this.pointAPlusButtons, this.pointAMinusButtons, enabled);
+    }
+
+    private void renderPointBControls(GuiGraphics g, int mouseX, int mouseY, float partialTick,
+            int x, int y, int w, boolean enabled) {
+        g.drawString(this.screen.font(), Component.translatable("screen.rtsbuilding.blueprints.capture_point_b_label").getString(),
+                x, y, 0xFFF5A962, false);
+        renderPointAxisRow(g, mouseX, mouseY, partialTick, x + 24, y, w - 24,
+                this.pointBXInput, this.pointBYInput, this.pointBZInput,
+                this.pointBPlusButtons, this.pointBMinusButtons, enabled);
+    }
+
+    private void renderPointAxisRow(GuiGraphics g, int mouseX, int mouseY, float partialTick,
+            int x, int y, int w, WindowTextBox xBox, WindowTextBox yBox, WindowTextBox zBox,
+            WindowButton[] plusButtons, WindowButton[] minusButtons, boolean enabled) {
+        int groupW = Math.max(1, (w - GAP * 2) / 3);
+        renderCompactAxisControl(g, mouseX, mouseY, partialTick, "X", xBox,
+                plusButtons[0], minusButtons[0], x, y, groupW, enabled);
+        renderCompactAxisControl(g, mouseX, mouseY, partialTick, "Y", yBox,
+                plusButtons[1], minusButtons[1], x + groupW + GAP, y, groupW, enabled);
+        renderCompactAxisControl(g, mouseX, mouseY, partialTick, "Z", zBox,
+                plusButtons[2], minusButtons[2], x + (groupW + GAP) * 2, y, groupW, enabled);
     }
 
     private void renderCompactAxisControl(GuiGraphics g, int mouseX, int mouseY, float partialTick,
@@ -453,7 +499,13 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         if (BlueprintPanel.isCaptureSelectionComplete()
                 && (clickTextBox(this.sizeXInput, mouseX, mouseY, button)
                 || clickTextBox(this.sizeYInput, mouseX, mouseY, button)
-                || clickTextBox(this.sizeZInput, mouseX, mouseY, button))) {
+                || clickTextBox(this.sizeZInput, mouseX, mouseY, button)
+                || clickTextBox(this.pointAXInput, mouseX, mouseY, button)
+                || clickTextBox(this.pointAYInput, mouseX, mouseY, button)
+                || clickTextBox(this.pointAZInput, mouseX, mouseY, button)
+                || clickTextBox(this.pointBXInput, mouseX, mouseY, button)
+                || clickTextBox(this.pointBYInput, mouseX, mouseY, button)
+                || clickTextBox(this.pointBZInput, mouseX, mouseY, button))) {
             return;
         }
         clearFocus();
@@ -462,7 +514,13 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
             clickButtons(mouseX, mouseY, button,
                     this.sizePlusButtons[0], this.sizeMinusButtons[0],
                     this.sizePlusButtons[1], this.sizeMinusButtons[1],
-                    this.sizePlusButtons[2], this.sizeMinusButtons[2]);
+                    this.sizePlusButtons[2], this.sizeMinusButtons[2],
+                    this.pointAPlusButtons[0], this.pointAMinusButtons[0],
+                    this.pointAPlusButtons[1], this.pointAMinusButtons[1],
+                    this.pointAPlusButtons[2], this.pointAMinusButtons[2],
+                    this.pointBPlusButtons[0], this.pointBMinusButtons[0],
+                    this.pointBPlusButtons[1], this.pointBMinusButtons[1],
+                    this.pointBPlusButtons[2], this.pointBMinusButtons[2]);
         }
     }
 
@@ -494,6 +552,12 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
             if (box != this.posXInput) this.posXInput.setFocused(false);
             if (box != this.posYInput) this.posYInput.setFocused(false);
             if (box != this.posZInput) this.posZInput.setFocused(false);
+            if (box != this.pointAXInput) this.pointAXInput.setFocused(false);
+            if (box != this.pointAYInput) this.pointAYInput.setFocused(false);
+            if (box != this.pointAZInput) this.pointAZInput.setFocused(false);
+            if (box != this.pointBXInput) this.pointBXInput.setFocused(false);
+            if (box != this.pointBYInput) this.pointBYInput.setFocused(false);
+            if (box != this.pointBZInput) this.pointBZInput.setFocused(false);
         }
         return clicked;
     }
@@ -631,6 +695,10 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
             commitCaptureSizeDraft();
         } else if (focused == this.posXInput || focused == this.posYInput || focused == this.posZInput) {
             commitPinnedPositionDraft();
+        } else if (focused == this.pointAXInput || focused == this.pointAYInput || focused == this.pointAZInput) {
+            commitCapturePointADraft();
+        } else if (focused == this.pointBXInput || focused == this.pointBYInput || focused == this.pointBZInput) {
+            commitCapturePointBDraft();
         }
     }
 
@@ -640,6 +708,40 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         int z = parsePositive(this.sizeZInput.getValue(), BlueprintPanel.captureSizeZ());
         BlueprintPanel.setCaptureSize(x, y, z);
         syncCaptureSizeInputs(true);
+    }
+
+    private void commitCapturePointADraft() {
+        BlockPos pointA = BlueprintPanel.getCapturePointA();
+        if (pointA == null) {
+            return;
+        }
+        int x = parseAnyInt(this.pointAXInput.getValue(), pointA.getX());
+        int y = parseAnyInt(this.pointAYInput.getValue(), pointA.getY());
+        int z = parseAnyInt(this.pointAZInput.getValue(), pointA.getZ());
+        int dx = x - pointA.getX();
+        int dy = y - pointA.getY();
+        int dz = z - pointA.getZ();
+        if (dx != 0 || dy != 0 || dz != 0) {
+            BlueprintPanel.moveCapturePointA(dx, dy, dz);
+            syncCapturePointInputs(true);
+        }
+    }
+
+    private void commitCapturePointBDraft() {
+        BlockPos pointB = BlueprintPanel.getCapturePointB();
+        if (pointB == null) {
+            return;
+        }
+        int x = parseAnyInt(this.pointBXInput.getValue(), pointB.getX());
+        int y = parseAnyInt(this.pointBYInput.getValue(), pointB.getY());
+        int z = parseAnyInt(this.pointBZInput.getValue(), pointB.getZ());
+        int dx = x - pointB.getX();
+        int dy = y - pointB.getY();
+        int dz = z - pointB.getZ();
+        if (dx != 0 || dy != 0 || dz != 0) {
+            BlueprintPanel.moveCapturePointB(dx, dy, dz);
+            syncCapturePointInputs(true);
+        }
     }
 
     private void commitPinnedPositionDraft() {
@@ -657,7 +759,9 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
     private WindowTextBox focusedTextBox() {
         WindowTextBox[] boxes = {
                 this.sizeXInput, this.sizeYInput, this.sizeZInput,
-                this.posXInput, this.posYInput, this.posZInput
+                this.posXInput, this.posYInput, this.posZInput,
+                this.pointAXInput, this.pointAYInput, this.pointAZInput,
+                this.pointBXInput, this.pointBYInput, this.pointBZInput
         };
         for (WindowTextBox box : boxes) {
             if (box != null && box.isFocused()) {
@@ -674,6 +778,12 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         this.posXInput.setFocused(false);
         this.posYInput.setFocused(false);
         this.posZInput.setFocused(false);
+        this.pointAXInput.setFocused(false);
+        this.pointAYInput.setFocused(false);
+        this.pointAZInput.setFocused(false);
+        this.pointBXInput.setFocused(false);
+        this.pointBYInput.setFocused(false);
+        this.pointBZInput.setFocused(false);
     }
 
     private void commitFocusedPositionBeforeBlur() {
@@ -774,6 +884,12 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         this.posXInput = createPositionInput();
         this.posYInput = createPositionInput();
         this.posZInput = createPositionInput();
+        this.pointAXInput = createPositionInput();
+        this.pointAYInput = createPositionInput();
+        this.pointAZInput = createPositionInput();
+        this.pointBXInput = createPositionInput();
+        this.pointBYInput = createPositionInput();
+        this.pointBZInput = createPositionInput();
     }
 
     private WindowTextBox createSizeInput() {
@@ -818,6 +934,10 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         this.sizeMinusButtons = axisButtons(false, true);
         this.posPlusButtons = axisButtons(true, false);
         this.posMinusButtons = axisButtons(false, false);
+        this.pointAPlusButtons = pointAxisButtons(true, true);
+        this.pointAMinusButtons = pointAxisButtons(false, true);
+        this.pointBPlusButtons = pointAxisButtons(true, false);
+        this.pointBMinusButtons = pointAxisButtons(false, false);
     }
 
     private WindowButton actionButton(String key, int width, WindowButton.OnPress onPress) {
@@ -849,8 +969,32 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         return buttons;
     }
 
+    private WindowButton[] pointAxisButtons(boolean plus, boolean pointA) {
+        WindowButton[] buttons = new WindowButton[3];
+        for (int i = 0; i < buttons.length; i++) {
+            int axis = i;
+            buttons[i] = new WindowButton(0, 0, SMALL_BUTTON_W, BUTTON_H,
+                    Component.literal(plus ? "+" : "-"),
+                    button -> {
+                        int delta = plus ? 1 : -1;
+                        if (pointA) {
+                            if (axis == 0) BlueprintPanel.moveCapturePointA(delta, 0, 0);
+                            if (axis == 1) BlueprintPanel.moveCapturePointA(0, delta, 0);
+                            if (axis == 2) BlueprintPanel.moveCapturePointA(0, 0, delta);
+                        } else {
+                            if (axis == 0) BlueprintPanel.moveCapturePointB(delta, 0, 0);
+                            if (axis == 1) BlueprintPanel.moveCapturePointB(0, delta, 0);
+                            if (axis == 2) BlueprintPanel.moveCapturePointB(0, 0, delta);
+                        }
+                        syncCapturePointInputs(true);
+                    });
+        }
+        return buttons;
+    }
+
     private void syncCaptureInputs() {
         syncCaptureSizeInputs(false);
+        syncCapturePointInputs(false);
     }
 
     private void syncCaptureSizeInputs(boolean force) {
@@ -863,6 +1007,29 @@ public final class BlueprintWindowPanel extends RtsWindowPanel {
         if (force || !this.sizeXInput.isFocused()) this.sizeXInput.setValue(Integer.toString(BlueprintPanel.captureSizeX()));
         if (force || !this.sizeYInput.isFocused()) this.sizeYInput.setValue(Integer.toString(BlueprintPanel.captureSizeY()));
         if (force || !this.sizeZInput.isFocused()) this.sizeZInput.setValue(Integer.toString(BlueprintPanel.captureSizeZ()));
+    }
+
+    private void syncCapturePointInputs(boolean force) {
+        BlockPos pointA = BlueprintPanel.getCapturePointA();
+        BlockPos pointB = BlueprintPanel.getCapturePointB();
+        if (pointA == null) {
+            if (force || !this.pointAXInput.isFocused()) this.pointAXInput.setValue("");
+            if (force || !this.pointAYInput.isFocused()) this.pointAYInput.setValue("");
+            if (force || !this.pointAZInput.isFocused()) this.pointAZInput.setValue("");
+        } else {
+            if (force || !this.pointAXInput.isFocused()) this.pointAXInput.setValue(Integer.toString(pointA.getX()));
+            if (force || !this.pointAYInput.isFocused()) this.pointAYInput.setValue(Integer.toString(pointA.getY()));
+            if (force || !this.pointAZInput.isFocused()) this.pointAZInput.setValue(Integer.toString(pointA.getZ()));
+        }
+        if (pointB == null) {
+            if (force || !this.pointBXInput.isFocused()) this.pointBXInput.setValue("");
+            if (force || !this.pointBYInput.isFocused()) this.pointBYInput.setValue("");
+            if (force || !this.pointBZInput.isFocused()) this.pointBZInput.setValue("");
+        } else {
+            if (force || !this.pointBXInput.isFocused()) this.pointBXInput.setValue(Integer.toString(pointB.getX()));
+            if (force || !this.pointBYInput.isFocused()) this.pointBYInput.setValue(Integer.toString(pointB.getY()));
+            if (force || !this.pointBZInput.isFocused()) this.pointBZInput.setValue(Integer.toString(pointB.getZ()));
+        }
     }
 
     private void syncPlacementInputs() {

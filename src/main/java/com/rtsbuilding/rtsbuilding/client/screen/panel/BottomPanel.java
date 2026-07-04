@@ -1373,6 +1373,10 @@ public final class BottomPanel {
                         this.controller.selectEmptyHand();
                         return true;
                     }
+                    if (this.controller.hasSelectedItem()) {
+                        this.controller.swapHotbarSlotWithLinked(index);
+                        return true;
+                    }
                     this.controller.storeFluidFromToolSlot(index);
                     return true;
                 }

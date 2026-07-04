@@ -1,4 +1,4 @@
-﻿{
+{
   "key.categories.rtsbuilding": "RTSbuilding",
   "key.rtsbuilding.toggle_rts": "Toggle RTS Mode",
   "key.rtsbuilding.quick_funnel": "Quick Funnel",
@@ -23,6 +23,17 @@
   "key.rtsbuilding.camera_up_secondary": "RTS Camera: Up 2",
   "key.rtsbuilding.camera_down": "RTS Camera: Down",
   "key.rtsbuilding.camera_down_arrow": "RTS Camera: Down",
+  "key.rtsbuilding.quick_build": "RTS Quick Build",
+  "key.rtsbuilding.toggle_chunk_display": "RTS Toggle Chunk Display",
+  "key.rtsbuilding.cycle_shape": "Cycle Shape",
+  "key.rtsbuilding.gui_binding_1": "Hotkey Slot 1",
+  "key.rtsbuilding.gui_binding_2": "Hotkey Slot 2",
+  "key.rtsbuilding.gui_binding_3": "Hotkey Slot 3",
+  "key.rtsbuilding.gui_binding_4": "Hotkey Slot 4",
+  "key.rtsbuilding.gui_binding_5": "Hotkey Slot 5",
+  "key.rtsbuilding.gui_binding_6": "Hotkey Slot 6",
+  "key.rtsbuilding.gui_binding_7": "Hotkey Slot 7",
+  "key.rtsbuilding.gui_binding_8": "Hotkey Slot 8",
   "gui.rtsbuilding.back": "Back",
   "gui.rtsbuilding.prev": "Prev",
   "gui.rtsbuilding.next": "Next",
@@ -260,6 +271,8 @@
   "rtsbuilding.configuration.useDestroyWireframeAnimation.tooltip": "Show the shrinking outline after a break is confirmed.",
   "rtsbuilding.configuration.useRangeDestroySkeleton": "Range destroy skeleton",
   "rtsbuilding.configuration.useRangeDestroySkeleton.tooltip": "Show skeleton borders for cube, circle, and other non-chain range break previews.",
+  "rtsbuilding.configuration.centerMouseOnGuiClose": "Center mouse on GUI close",
+  "rtsbuilding.configuration.centerMouseOnGuiClose.tooltip": "Center the mouse cursor when closing machine GUIs in RTS mode.",
   "config.rtsbuilding.blueprints_on": "Blueprints: ON",
   "config.rtsbuilding.blueprints_off": "Blueprints: OFF",
   "config.rtsbuilding.server_authority": "Server authority: multiplayer clients follow the server state.",
@@ -303,6 +316,8 @@
   "screen.rtsbuilding.blueprints.capture_cancel": "Cancel",
   "screen.rtsbuilding.blueprints.capture_point_a": "A: %s",
   "screen.rtsbuilding.blueprints.capture_point_b": "B: %s",
+  "screen.rtsbuilding.blueprints.capture_point_a_label": "Point A",
+  "screen.rtsbuilding.blueprints.capture_point_b_label": "Point B",
   "screen.rtsbuilding.blueprints.capture_size": "Size: %s",
   "screen.rtsbuilding.blueprints.capture_volume": "Volume: %s blocks",
   "screen.rtsbuilding.blueprints.capture_waiting_a": "Left-click first corner.",
@@ -714,5 +729,7 @@
   "screen.rtsbuilding.tooltip.shape_wall": "Wall",
   "screen.rtsbuilding.tooltip.shape_circle": "Circle",
   "screen.rtsbuilding.tooltip.shape_box": "Cube",
-  "screen.rtsbuilding.tooltip.shape_chain": "Chain"
+  "screen.rtsbuilding.tooltip.shape_chain": "Chain",
+  "jade.rtsbuilding.show_rts_info": "Show RTS Info",
+  "jade.rtsbuilding.rts_info": "RTS Building Info"
 }

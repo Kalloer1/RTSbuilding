@@ -13,6 +13,7 @@ import java.util.List;
  * 半径由起点到终点在 XZ 平面上的投影距离决定。
  * 支持 FILL（实心圆）和 HOLLOW（空心圆环）两种模式。
  * FILL 模式会使用洪水填充（Flood-Fill）填补内部空洞。
+ * SKELETON 模式对圆形无效，会被当作 HOLLOW 处理。
  */
 public class CircleShapeGenerator extends AreaShapeGenerator {
 
@@ -23,37 +24,38 @@ public class CircleShapeGenerator extends AreaShapeGenerator {
 
     @Override
     public List<BlockPos> generatePositions(AreaShapeInput input, ShapeFillMode fillMode) {
-        // 计算 XZ 平面上的偏移量
         int dx = input.end().getX() - input.start().getX();
         int dz = input.end().getZ() - input.start().getZ();
 
-        // 计算半径并限制最大值
         double radius = Math.sqrt((dx * (double) dx) + (dz * (double) dz));
         int r = Math.max(0, (int) Math.round(radius));
         r = Math.min(r, 64);
+
+        List<BlockPos> result = new ArrayList<>();
+
+        if (fillMode == ShapeFillMode.FILL) {
+            int outer2 = r * r;
+            for (int x = -r; x <= r; x++) {
+                for (int z = -r; z <= r; z++) {
+                    if (x * x + z * z <= outer2) {
+                        result.add(input.start().offset(x, 0, z));
+                    }
+                }
+            }
+            return fillInternalHoles(result);
+        }
 
         int outer2 = r * r;
         int inner = Math.max(0, r - 1);
         int inner2 = inner * inner;
 
-        // 遍历包围盒内的所有 XZ 坐标，筛选出圆形范围内的位置
-        List<BlockPos> result = new ArrayList<>();
         for (int x = -r; x <= r; x++) {
             for (int z = -r; z <= r; z++) {
                 int dist2 = x * x + z * z;
-                boolean inOuter = dist2 <= outer2;
-                boolean inInner = dist2 < inner2;
-                // 空心模式跳过内部点
-                if (!inOuter || (fillMode != ShapeFillMode.FILL && inInner)) {
-                    continue;
+                if (dist2 <= outer2 && dist2 >= inner2) {
+                    result.add(input.start().offset(x, 0, z));
                 }
-                result.add(input.start().offset(x, 0, z));
             }
-        }
-
-        // 实心模式需要填补栅格化产生的内部空洞
-        if (fillMode == ShapeFillMode.FILL) {
-            result = fillInternalHoles(result);
         }
 
         return result;

@@ -2,6 +2,7 @@ package com.rtsbuilding.rtsbuilding.network.camera.handler;
 
 import com.rtsbuilding.rtsbuilding.network.camera.C2SRtsCameraMovePayload;
 import com.rtsbuilding.rtsbuilding.network.camera.C2SRtsToggleCameraPayload;
+import com.rtsbuilding.rtsbuilding.server.RtsClientModTracker;
 import com.rtsbuilding.rtsbuilding.server.camera.RtsCameraManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -19,6 +20,7 @@ public final class RtsCameraNetworkHandlers {
     public static void handleToggle(C2SRtsToggleCameraPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsClientModTracker.markClientHasMod(serverPlayer);
                 RtsCameraManager.toggle(serverPlayer, payload.startAtPlayerHead());
             }
         });
@@ -27,6 +29,7 @@ public final class RtsCameraNetworkHandlers {
     public static void handleMove(C2SRtsCameraMovePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer serverPlayer) {
+                RtsClientModTracker.markClientHasMod(serverPlayer);
                 RtsCameraManager.move(
                         serverPlayer,
                         payload.forward(),

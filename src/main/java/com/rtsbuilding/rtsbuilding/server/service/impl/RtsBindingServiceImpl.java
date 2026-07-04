@@ -7,6 +7,7 @@ import com.rtsbuilding.rtsbuilding.server.service.QuestService;
 import com.rtsbuilding.rtsbuilding.server.service.RtsRemoteMenuService;
 import com.rtsbuilding.rtsbuilding.server.service.ServiceRegistry;
 import com.rtsbuilding.rtsbuilding.server.service.api.BindingService;
+import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferExtractor;
 import com.rtsbuilding.rtsbuilding.server.service.transfer.RtsTransferInserter;
 import com.rtsbuilding.rtsbuilding.server.storage.RtsStorageBindings;
 import com.rtsbuilding.rtsbuilding.server.storage.model.LinkedStorageRef;
@@ -14,9 +15,13 @@ import com.rtsbuilding.rtsbuilding.server.storage.resolver.RtsLinkedStorageResol
 import com.rtsbuilding.rtsbuilding.server.storage.session.RtsStorageSession;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 
 /**
@@ -162,6 +167,99 @@ public final class RtsBindingServiceImpl implements BindingService {
         player.containerMenu.broadcastChanges();
         registry.serviceOp().afterModification(player, session);
         QuestService.runQuestDetect(player, session, false);
+    }
+
+    @Override
+    public void swapHotbarSlot(ServerPlayer player, byte slotId, String targetItemId) {
+        RtsStorageSession session = registry.session().getIfPresent(player);
+        if (session == null) return;
+        RtsLinkedStorageResolver.sanitizeSessionDimension(player, session);
+
+        int slot = Math.max(0, Math.min(8, slotId));
+        ItemStack inSlot = player.getInventory().getItem(slot);
+
+        if (inSlot.isEmpty() && (targetItemId == null || targetItemId.isBlank())) {
+            return;
+        }
+
+        boolean hasLinkedStorage = RtsLinkedStorageResolver.hasAnyStorage(player, session);
+        
+        if (hasLinkedStorage) {
+            var activeLinked = RtsLinkedStorageResolver.resolveLinkedHandlers(player, session);
+            if (activeLinked.isEmpty()) return;
+            var insertHandlers = RtsLinkedStorageResolver.itemHandlersForInsert(activeLinked);
+            var extractHandlers = RtsLinkedStorageResolver.itemHandlersForExtract(activeLinked);
+
+            ItemStack toStore = inSlot.isEmpty() ? ItemStack.EMPTY : inSlot.copy();
+            ItemStack remaining = ItemStack.EMPTY;
+            
+            if (!toStore.isEmpty()) {
+                remaining = RtsTransferInserter.storeToLinkedOnlyPreferExisting(insertHandlers, toStore);
+            }
+
+            ItemStack extracted = ItemStack.EMPTY;
+            if (targetItemId != null && !targetItemId.isBlank()) {
+                ResourceLocation itemRl = ResourceLocation.tryParse(targetItemId);
+                if (itemRl != null) {
+                    Item targetItem = BuiltInRegistries.ITEM.get(itemRl);
+                    if (targetItem != Items.AIR) {
+                        int extractCount = inSlot.isEmpty() ? 64 : inSlot.getCount();
+                        extracted = RtsTransferExtractor.extractMatchingFromLinked(
+                                extractHandlers, targetItem, extractCount);
+                    }
+                }
+            }
+
+            if (!extracted.isEmpty()) {
+                player.getInventory().setItem(slot, extracted);
+            } else if (!remaining.isEmpty()) {
+                player.getInventory().setItem(slot, remaining);
+            } else {
+                player.getInventory().setItem(slot, ItemStack.EMPTY);
+            }
+            
+            player.containerMenu.broadcastChanges();
+            registry.serviceOp().afterModification(player, session);
+            QuestService.runQuestDetect(player, session, false);
+        } else {
+            if (targetItemId != null && !targetItemId.isBlank()) {
+                ResourceLocation itemRl = ResourceLocation.tryParse(targetItemId);
+                if (itemRl != null) {
+                    Item targetItem = BuiltInRegistries.ITEM.get(itemRl);
+                    if (targetItem != Items.AIR) {
+                        int extractCount = inSlot.isEmpty() ? 64 : inSlot.getCount();
+                        
+                        int foundIndex = -1;
+                        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+                            if (i == slot) continue;
+                            ItemStack stack = player.getInventory().getItem(i);
+                            if (!stack.isEmpty() && stack.is(targetItem)) {
+                                foundIndex = i;
+                                break;
+                            }
+                        }
+                        
+                        if (foundIndex >= 0) {
+                            ItemStack foundStack = player.getInventory().getItem(foundIndex);
+                            int count = Math.min(foundStack.getCount(), extractCount);
+                            
+                            if (!inSlot.isEmpty()) {
+                                player.getInventory().setItem(foundIndex, inSlot.copy());
+                            } else {
+                                player.getInventory().setItem(foundIndex, ItemStack.EMPTY);
+                            }
+                            
+                            ItemStack toMove = foundStack.split(count);
+                            player.getInventory().setItem(slot, toMove);
+                        } else if (!inSlot.isEmpty()) {
+                            player.getInventory().setItem(slot, ItemStack.EMPTY);
+                            player.getInventory().add(inSlot);
+                        }
+                    }
+                }
+            }
+            player.containerMenu.broadcastChanges();
+        }
     }
 
     @Override

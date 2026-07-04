@@ -12,6 +12,7 @@ import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.RtsCraftTerminalScreen;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
+import com.rtsbuilding.rtsbuilding.network.C2SRtsModPresentPayload;
 import com.rtsbuilding.rtsbuilding.network.storage.C2SRtsReturnCarriedPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -102,6 +103,13 @@ public final class RtsClientInputGate {
         if (ClientRtsController.get().isEnabled()) {
             event.setCanceled(true);
         }
+    }
+
+    @SubscribeEvent
+    public static void onClientLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        Minecraft.getInstance().execute(() -> {
+            PacketDistributor.sendToServer(new C2SRtsModPresentPayload());
+        });
     }
 
     @SubscribeEvent
@@ -367,6 +375,9 @@ public final class RtsClientInputGate {
         }
 
         if (!ClientRtsController.get().canUseStorageOverlay()) {
+            return;
+        }
+        if (!ClientRtsController.get().isEnabled()) {
             return;
         }
         if (event.getScreen() instanceof BuilderScreen) {

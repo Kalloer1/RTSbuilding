@@ -3,6 +3,12 @@ package com.rtsbuilding.rtsbuilding.network.blueprint;
 import com.rtsbuilding.rtsbuilding.network.ClientPayloadDispatcher;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
+/**
+ * Registers blueprint-related packets.
+ *
+ * <p>All packets use the optional registrar to allow clients without the mod
+ * to connect to the server.</p>
+ */
 public final class BlueprintPayloadRegistrar {
     private BlueprintPayloadRegistrar() {
     }

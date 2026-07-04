@@ -28,6 +28,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -159,5 +160,35 @@ public final class RtsInteractionServiceImpl implements InteractionService {
         }
 
         registry.page().requestPage(player, session.browser.page, session.browser.search, session.browser.category, session.browser.sort, session.browser.ascending, false);
+    }
+
+    @Override
+    public void attackEntity(ServerPlayer player, int entityId, int toolSlot) {
+        if (!RtsProgressionManager.canUse(player, RtsFeature.INTERACT)) {
+            return;
+        }
+        if (!RtsCameraManager.isActive(player)) {
+            return;
+        }
+        ServerLevel level = player.serverLevel();
+        Entity targetEntity = level.getEntity(entityId);
+        if (targetEntity == null || !targetEntity.isAlive()) {
+            return;
+        }
+        if (!(targetEntity instanceof LivingEntity)) {
+            return;
+        }
+        BlockPos effectiveBlockPos = targetEntity.blockPosition();
+        if (!level.hasChunkAt(effectiveBlockPos) || !level.mayInteract(player, effectiveBlockPos)) {
+            return;
+        }
+        int slot = Math.max(0, Math.min(8, toolSlot));
+        int previousSelected = player.getInventory().selected;
+        player.getInventory().selected = slot;
+        try {
+            player.attack(targetEntity);
+        } finally {
+            player.getInventory().selected = previousSelected;
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.rtsbuilding.rtsbuilding.client.screen.workflow;
 import com.rtsbuilding.rtsbuilding.client.controller.ClientRtsController;
 import com.rtsbuilding.rtsbuilding.client.screen.panel.RtsWindowPanel;
 import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreen;
+import com.rtsbuilding.rtsbuilding.client.screen.standalone.BuilderScreenConstants;
 import com.rtsbuilding.rtsbuilding.client.util.RtsClientUiUtil;
 import com.rtsbuilding.rtsbuilding.common.persist.PersistableProperty;
 import com.rtsbuilding.rtsbuilding.common.persist.RtsClientUiStateStore;
@@ -71,7 +72,7 @@ public final class RtsWorkflowPanel extends RtsWindowPanel {
     protected void computeDefaultPosition() {
         if (this.screen == null) return;
         this.windowX = Math.max(8, this.screen.width - PANEL_W - 8);
-        this.windowY = this.screen.topBarBottomY() + 14;
+        this.windowY = BuilderScreenConstants.TOP_H + 14;
     }
 
     @Override

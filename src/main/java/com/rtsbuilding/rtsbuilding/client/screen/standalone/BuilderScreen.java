@@ -599,6 +599,13 @@ public final class BuilderScreen extends Screen {
                 return true;
             }
         }
+        if (isWorldArea(mouseX, mouseY) && this.controller.getMode() == BuilderMode.INTERACT) {
+            InteractionTypes.InteractionTarget target = this.cursorPicker.pickInteractionTarget(false);
+            if (target != null && target.isEntityTarget()) {
+                this.controller.attackEntity(target.entityId(), getSelectedToolSlot());
+                return true;
+            }
+        }
         return false;
     }
 
@@ -1158,6 +1165,18 @@ public final class BuilderScreen extends Screen {
             this.controller.openCraftTerminal();
             return true;
         }
+        if (!isSearchFocused() && ClientKeyMappings.QUICK_BUILD.matches(keyCode, scanCode)) {
+            toggleQuickBuild();
+            return true;
+        }
+        if (!isSearchFocused() && ClientKeyMappings.TOGGLE_CHUNK_DISPLAY.matches(keyCode, scanCode)) {
+            this.controller.setChunkCurtainVisible(!this.controller.isChunkCurtainVisible());
+            return true;
+        }
+        if (!isSearchFocused() && ClientKeyMappings.CYCLE_SHAPE.matches(keyCode, scanCode)) {
+            this.quickBuildPanel.cycleShape();
+            return true;
+        }
         return false;
     }
 
@@ -1204,6 +1223,14 @@ public final class BuilderScreen extends Screen {
             setSelectedToolSlot(slot);
             this.controller.clearPlacementSelectionPreserveMode();
             return true;
+        }
+        for (int i = 0; i < ClientKeyMappings.GUI_BINDINGS.length; i++) {
+            if (!isSearchFocused() && ClientKeyMappings.GUI_BINDINGS[i].matches(keyCode, scanCode)) {
+                if (i < this.controller.getGuiBindingCount() && this.controller.hasGuiBinding(i)) {
+                    this.controller.openGuiBinding(i);
+                    return true;
+                }
+            }
         }
         if (!isSearchFocused() && ClientKeyMappings.PIN_QUICK_SLOT.matches(keyCode, scanCode)) {
             if (this.bottomPanel.hoveredPinPageButton) {
